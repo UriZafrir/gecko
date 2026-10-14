@@ -56,8 +56,13 @@ gecko agents          # what every coding agent is doing
 gecko attach api      # use a session from any terminal (Ctrl-\ detaches)
 gecko send claude "run the tests"       # type into a session (scriptable)
 gecko capture claude  # its text, tmux-aware
-gecko service install # start at login (systemd user unit / launchd / Windows Startup)
+gecko service uninstall # stop starting at login
 ```
+
+The first time `gecko` runs it sets the daemon to start at login (a systemd
+user unit, a launchd agent, or a script in the Windows Startup folder), so a
+reboot doesn't leave you without one. `gecko service uninstall` removes it
+and stops `gecko` from adding it back; `gecko service install` adds it again.
 
 `gecko open` opens Gecko in its own window. It starts at exactly 80×24,
 centered, and remembers the right size after the first time.

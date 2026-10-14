@@ -50,7 +50,7 @@ Usage:
   gecko daemon [--listen a]  run the daemon in the foreground
   gecko upgrade              restart the daemon with this binary, keeping every session
   gecko stop                 stop the daemon (ends all local sessions)
-  gecko service install      start the daemon at login (systemd/launchd)
+  gecko service install|uninstall   start the daemon at login (done on first run)
   gecko bridge               (internal) connect stdio to the daemon; used over ssh
   gecko version
 
@@ -136,6 +136,7 @@ func cmdDefault() error {
 		return err
 	}
 	c.Close()
+	autoService()
 	if headless() {
 		fmt.Println("gecko daemon is running. Over SSH, use `gecko attach <session>` or open the web UI:")
 		if err := cmdURL(); err != nil {
