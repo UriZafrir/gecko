@@ -1,11 +1,13 @@
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+# Package version: the latest release tag without its "v".
+PKG_VERSION ?= $(or $(patsubst v%,%,$(shell git describe --tags --abbrev=0 2>/dev/null)),0.0.0)
 LDFLAGS := -s -w -X main.version=$(VERSION)
 GO ?= go
 export GOTOOLCHAIN ?= local
 
 PREFIX ?= $(HOME)/.local
 DESKTOP_DIR := $(PREFIX)/share/gecko/desktop
-.PHONY: all web build test dist install install-desktop desktop clean dev
+.PHONY: all web build test dist packages install install-desktop desktop clean dev
 
 all: web build
 
@@ -26,6 +28,11 @@ dist: web
 		os=$${t%/*}; arch=$${t#*/}; ext=; [ $$os = windows ] && ext=.exe; \
 		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch $(GO) build -trimpath -ldflags "$(LDFLAGS)" -o dist/gecko-$$os-$$arch$$ext ./cmd/gecko || exit 1; \
 	done
+
+# Installers: .deb/.rpm, a macOS app (zip) and Windows setup.exe, in
+# dist/packages. One platform: make packages PLATFORMS=linux
+packages: web
+	GO="$(GO)" VERSION="$(VERSION)" PKG_VERSION="$(PKG_VERSION)" LDFLAGS="$(LDFLAGS)" packaging/build.sh $(PLATFORMS)
 
 install: all
 	install -d $(PREFIX)/bin

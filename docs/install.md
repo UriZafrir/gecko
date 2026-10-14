@@ -11,6 +11,38 @@ make install    # ~/.local/bin/gecko, plus an app-menu launcher on Linux
 make dist       # cross-compiles linux/darwin/windows/freebsd × amd64/arm64
 ```
 
+## Installation packages
+
+```sh
+make packages                    # all of them, into dist/packages
+make packages PLATFORMS=linux    # or macos, windows (several are fine)
+```
+
+| Platform | Package | Installs |
+| --- | --- | --- |
+| Linux | `gecko_<ver>_<arch>.deb`, `gecko-<ver>.<arch>.rpm` (amd64, arm64) | `/usr/bin/gecko`, an app-menu launcher and the icon |
+| macOS | `Gecko-<ver>-macos.zip` | `Gecko.app` for Apple silicon and Intel; drag it to Applications |
+| Windows | `Gecko-<ver>-setup-<arch>.exe` (amd64, arm64) | Gecko for the current user (no admin), a Start menu entry, and optionally `gecko` on PATH and a desktop shortcut |
+
+The version is the latest `v*` tag (`0.0.0` without one); set
+`PKG_VERSION=1.2.3` to override it. Linux packages are made with
+[nfpm](https://nfpm.goreleaser.com), which `go run` fetches when it isn't
+installed. Windows installers need NSIS (`apt install nsis`,
+`brew install makensis`). Everything builds on any OS.
+
+Notes:
+
+- **macOS:** the app isn't signed or notarized, so the first launch is
+  blocked. Open it from **System Settings > Privacy & Security > Open
+  Anyway**, or run `xattr -dr com.apple.quarantine /Applications/Gecko.app`.
+  For the command line:
+  `sudo ln -s /Applications/Gecko.app/Contents/MacOS/gecko /usr/local/bin/gecko`.
+- **Windows:** installing over a running daemon keeps it and its sessions
+  going on the old version; the next start uses the new one. Uninstalling
+  stops the daemon.
+- **Linux:** a package upgrade doesn't touch a running daemon; run
+  `gecko upgrade` to switch to the new binary and keep your sessions.
+
 For client development, run `make dev` (rebuilds on change) and start the
 daemon with `GECKO_WEB_DIR=$PWD/web/dist gecko daemon`. It then serves the
 client from disk, so a page reload picks up changes without restarting the
