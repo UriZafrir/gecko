@@ -6,17 +6,12 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import { SearchAddon } from '@xterm/addon-search';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { ClipboardAddon, Base64 } from '@xterm/addon-clipboard';
-import { copyText, isMac } from './util.js';
+import { copyText } from './util.js';
 
 export const FONT = '"JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace';
 
 // OSC 52 writes go to the system clipboard (also through tmux and ssh);
 // reads are refused so programs can't snoop on the clipboard.
-const clipboardProvider = {
-  readText: async () => '',
-  writeText: async (_sel, text) => { await copyText(text); },
-};
-
 const TERMINAL_REPLY = /^(?:\x1b\[[?>=]?[\d;]*[cRn]|\x1b\[\?[\d;]*\$y|\x1b\[[IO]|\x1b\][\d;]*[^\x07\x1b]*(?:\x07|\x1b\\)|\x1bP[\s\S]*?\x1b\\)+$/;
 
 export class Pane {
@@ -28,6 +23,11 @@ export class Pane {
     this.attached = false;
     this.exited = false;
     this.lastUsed = Date.now();
+    // The last text the app copied (OSC 52), e.g. what Claude copies when
+    // you select in it, and when the last click began: an app copy after
+    // it is the app's current selection (see App.terminalMenu).
+    this.appCopy = null;
+    this.lastDown = 0;
     this.el = document.createElement('div');
     this.el.className = 'pane';
     this.el.dataset.id = id;
@@ -43,7 +43,7 @@ export class Pane {
       cursorInactiveStyle: 'outline',
       macOptionIsMeta: s.optionIsMeta,
       macOptionClickForcesSelection: true,
-      rightClickSelectsWord: !isMac,
+      rightClickSelectsWord: false, // right-click is Gecko's menu (main.js)
       drawBoldTextInBrightColors: false,
       minimumContrastRatio: app.termContrast || 1.1,
       smoothScrollDuration: 0,
@@ -59,7 +59,15 @@ export class Pane {
     const u = new Unicode11Addon();
     this.term.loadAddon(u);
     this.term.unicode.activeVersion = '11';
-    this.term.loadAddon(new ClipboardAddon(new Base64(), clipboardProvider));
+    this.term.loadAddon(new ClipboardAddon(new Base64(), {
+      readText: async () => '',
+      writeText: async (_sel, text) => {
+        if (this.muted > 0) return; // replayed history: an old copy
+        this.appCopy = { text, at: Date.now() };
+        await copyText(text);
+      },
+    }));
+    this.el.addEventListener('mousedown', (ev) => { if (ev.button === 0) this.lastDown = Date.now(); }, true);
     this.term.open(this.el);
     this.loadRenderer();
 

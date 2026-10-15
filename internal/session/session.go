@@ -14,6 +14,7 @@ import (
 	"reflect"
 	"regexp"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -682,7 +683,11 @@ func changed(a, b proto.SessionInfo) bool {
 		(a.GitStatus == nil) != (b.GitStatus == nil) || (a.GitStatus != nil && *a.GitStatus != *b.GitStatus) || (a.Agent == nil) != (b.Agent == nil) {
 		return true
 	}
-	return a.Agent != nil && *a.Agent != *b.Agent
+	if a.Agent == nil {
+		return false
+	}
+	x, y := *a.Agent, *b.Agent
+	return x.Name != y.Name || x.Status != y.Status || x.Detail != y.Detail || x.Since != y.Since || !slices.Equal(x.Choices, y.Choices)
 }
 
 type gitEntry struct {
@@ -800,8 +805,79 @@ var (
 	reWorking = regexp.MustCompile(`(?i)(esc to interrupt|esc to cancel|ctrl\+c to (interrupt|cancel)|press esc to stop)`)
 	reAsk     = regexp.MustCompile(`(?i)(do you want to|would you like to|allow (this|once|always)|\(y/n\)|\[y/n\]|approve|permission|❯ 1\. yes|press enter to|waiting for (your )?(input|approval)|continue\?)`)
 	reJunk    = regexp.MustCompile(`^[\s─━│┃╭╮╰╯┌┐└┘├┤┬┴┼═║╔╗╚╝>❯›$#%·•*+\-_=~.:|]*$`)
-	reHint    = regexp.MustCompile(`(?i)(for shortcuts|to toggle|bypass permissions|auto-accept|context left|tokens? used|\? for help)`)
+	reHint    = regexp.MustCompile(`(?i)(for shortcuts|to toggle|bypass permissions|auto-accept|context left|tokens? used|\? for help|^\W*tip:|esc to interrupt|shift\+tab|(ctrl|alt)\+\w+ to )`)
+	// An agent's own input box, e.g. Claude's "❯ " between two rules: it's
+	// at its prompt, not asking anything.
+	rePromptLine = regexp.MustCompile(`^[\s│┃|]*[❯›>][\s\x{00a0}]*([^\d\s\x{00a0}].*)?$`)
+	reRule       = regexp.MustCompile(`^\s*[─━╭╰┌└]{3,}`)
+	// What the agent is doing or last said ("● Running the tests"), and its
+	// spinner ("✢ Clauding… (1m 55s · ↓ 7.8k tokens)").
+	reBullet  = regexp.MustCompile(`^\s*●\s+(.+)$`)
+	reSpinner = regexp.MustCompile(`^\s*\S\s+(\p{L}+….*)$`)
+	// A numbered answer, e.g. "❯ 1. Yes" or "│   2) No │".
+	reOption = regexp.MustCompile(`^[\s│┃|]*(?:[❯›>▶►]\s*)?([1-9])[.)]\s+(.*?)[\s│┃|]*$`)
+	// The key hint some answers end with, e.g. "(esc)" or "(shift+tab)".
+	reKeyHint = regexp.MustCompile(`(?i)\s*\((?:esc|tab|enter|shift\+tab|(?:ctrl|alt|cmd|meta)\+\S+)\)$`)
+	reYesNo   = regexp.MustCompile(`(?i)[(\[]y(?:es)?/n(?:o)?[)\]]`)
+	reEnter   = regexp.MustCompile(`(?i)press enter to`)
 )
+
+// askChoices reads the answers a waiting agent offers at the bottom of its
+// screen, and the question above them. The last numbered menu (1., 2., ...)
+// wins; otherwise a (y/n) or "press enter" prompt. Only the bottom counts:
+// a list or a "(y/n)" in the conversation above is not a question.
+func askChoices(tail []string) (choices []proto.Choice, question string) {
+	// The last few lines with something to say (not borders or hints).
+	bottom := len(tail)
+	for i, seen := len(tail)-1, 0; i >= 0 && seen < 4; i-- {
+		if l := strings.Trim(strings.TrimSpace(tail[i]), " │┃|"); l != "" && !reJunk.MatchString(l) && !reHint.MatchString(l) {
+			bottom, seen = i, seen+1
+		}
+	}
+	var run, last []proto.Choice
+	start, lastStart, lastEnd := 0, -1, -1
+	for i, l := range tail {
+		m := reOption.FindStringSubmatch(l)
+		if m == nil {
+			continue
+		}
+		n := int(m[1][0] - '0')
+		label := reKeyHint.ReplaceAllString(strings.TrimSpace(m[2]), "")
+		if r := []rune(label); len(r) > 60 {
+			label = string(r[:60]) + "…"
+		}
+		switch {
+		case n == 1:
+			run, start = []proto.Choice{{Key: "1", Label: label}}, i
+		case n == len(run)+1:
+			run = append(run, proto.Choice{Key: m[1], Label: label})
+		default:
+			continue
+		}
+		if len(run) >= 2 {
+			last, lastStart, lastEnd = run, start, i
+		}
+	}
+	if last != nil && lastEnd >= bottom {
+		for i := lastStart - 1; i >= 0; i-- {
+			if l := strings.Trim(strings.TrimSpace(tail[i]), " │┃|"); len(l) >= 4 && !reJunk.MatchString(l) && !reHint.MatchString(l) {
+				question = l
+				break
+			}
+		}
+		return last, question
+	}
+	for i := len(tail) - 1; i >= bottom; i-- {
+		l := strings.Trim(strings.TrimSpace(tail[i]), " │┃|")
+		if reYesNo.MatchString(l) {
+			return []proto.Choice{{Key: "y", Label: "Yes"}, {Key: "n", Label: "No"}}, l
+		}
+		if reEnter.MatchString(l) {
+			return []proto.Choice{{Key: "enter", Label: "Continue"}}, l
+		}
+	}
+	return nil, ""
+}
 
 // tmux's default status bar: "[session] 0:bash* 1:vim-" (status-left, then
 // the window list), at the bottom or, with status-position top, the top.
@@ -833,22 +909,56 @@ func agentStatus(screen []string, sinceOutput, sinceInput time.Duration, attenti
 	from := max(0, len(screen)-20)
 	tail := screen[from:]
 	st := proto.AgentState{Status: "idle"}
-	working := ""
-	asking := false
-	for _, l := range tail {
-		if reWorking.MatchString(l) {
-			working = strings.TrimSpace(l)
-		}
-		if reAsk.MatchString(l) {
-			asking = true
+	// The agent's own input box, if it shows one: the last "❯ " under a rule.
+	prompt := -1
+	for i := 1; i < len(tail); i++ {
+		if rePromptLine.MatchString(tail[i]) && reRule.MatchString(tail[i-1]) {
+			prompt = i
 		}
 	}
+	atPrompt := prompt >= 0
+	working := false
+	asking := false
+	bullet, spinner := "", ""
+	for i, l := range tail {
+		// With an input box, "esc to interrupt" counts only in the status
+		// line under it; above it is the conversation, which may say anything.
+		if reWorking.MatchString(l) && (!atPrompt || i > prompt) {
+			working = true
+		}
+		// Status lines like "bypass permissions on" aren't questions.
+		if reAsk.MatchString(l) && !reHint.MatchString(l) {
+			asking = true
+		}
+		if m := reBullet.FindStringSubmatch(l); m != nil {
+			bullet = strings.TrimSpace(m[1])
+		} else if m := reSpinner.FindStringSubmatch(l); m != nil && working {
+			spinner = strings.TrimSpace(m[1])
+		}
+	}
+	// Its own input box showing: whatever the conversation above says, the
+	// agent isn't asking (its questions replace the box).
+	if atPrompt {
+		asking = false
+	}
+	st.Detail = bullet
+	if st.Detail == "" {
+		st.Detail = spinner
+	}
 	switch {
-	case working != "":
-		st.Status, st.Detail = "working", working
+	case working:
+		st.Status = "working"
 	case asking || attention:
 		st.Status = "needs-input"
-	case sinceOutput < 1500*time.Millisecond && sinceInput > time.Second:
+		if !atPrompt {
+			if c, q := askChoices(tail); c != nil || q != "" {
+				st.Choices, st.Detail = c, q
+			}
+		}
+	// Agents that show no working marker: busy while their output flows.
+	// Not one at its own prompt, which shows a marker when it works and
+	// otherwise only redraws now and then.
+	case !atPrompt && sinceOutput < 1500*time.Millisecond && sinceInput > time.Second:
 		st.Status = "working"
 	}
 	if st.Detail == "" {

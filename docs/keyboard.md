@@ -16,7 +16,7 @@
 | Find | ⌘F | Ctrl+Shift+F |
 | Rename tab / workspace | F2 or double-click | F2 or double-click |
 | Text size | ⌘= / ⌘- / ⌘0 | Ctrl+= / Ctrl+- / Ctrl+0 |
-| Show / hide workspaces sidebar | ⌘B | Ctrl+Shift+B |
+| Show / hide workspaces sidebar | ⌘B or ⌘` | Ctrl+Shift+B or Ctrl+` |
 | Fullscreen (hold Esc to leave) | ⌃⌘F | F11 |
 
 The mouse wheel switches too: over the tab bar it moves to the next or

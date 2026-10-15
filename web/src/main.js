@@ -40,6 +40,7 @@ import { Pane, FONT } from './pane.js';
 import { THEMES, AUTO, resolveTheme, paintTheme, swatch } from './themes.js';
 import { Keys, prettyCombo, comboOf, ACTIONS, DEFAULTS, DEFAULT_TAB_MODIFIER, TAB_MODIFIERS } from './keys.js';
 import { startupChime } from './sound.js';
+import { siClaude, siGooglegemini, siCursor, siGithubcopilot, siQwen, siOpencode } from 'simple-icons';
 import { $, esc, ago, shortPath, copyText, readClipboard, fuzzy, store, save, isTouch, isMac } from './util.js';
 
 const MAX_LIVE_PANES = 12;
@@ -74,14 +75,63 @@ function initialTheme() {
   return store('scheme', old[t] || AUTO);
 }
 
+// A CSS color (as getComputedStyle gives it, or #rgb/#rrggbb) as [r, g, b].
+function toRgb(c) {
+  c = c.trim();
+  const m = c.match(/^#([\da-f]{3}|[\da-f]{6})$/i);
+  if (m) {
+    const h = m[1].length === 3 ? m[1].replace(/./g, '$&$&') : m[1];
+    return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
+  }
+  const n = c.match(/[\d.]+/g);
+  return n ? n.slice(0, 3).map(Number) : [128, 128, 128];
+}
+
+// #rrggbb between two colors (t = 0 is a, 1 is b).
+function hexMix(a, b, t) {
+  return '#' + a.map((v, i) => Math.round(v + (b[i] - v) * t).toString(16).padStart(2, '0')).join('');
+}
+
+// Sort by position in a dragged order; whatever isn't in it yet (new
+// tabs, workspaces, machines) follows, sorted by fallback.
+function byOrder(list, order, key, fallback) {
+  const pos = new Map((order || []).map((k, i) => [k, i]));
+  return list.sort((a, b) => {
+    const pa = pos.get(key(a)), pb = pos.get(key(b));
+    if (pa != null && pb != null) return pa - pb;
+    if (pa != null || pb != null) return pa != null ? -1 : 1;
+    return fallback(a, b);
+  });
+}
+
+// A new dragged order: what's shown now, plus what isn't (a machine that's
+// offline keeps the place of its tabs), capped so it can't grow forever.
+function newOrder(shown, old) {
+  const seen = new Set(shown);
+  return [...shown, ...(old || []).filter((k) => !seen.has(k))].slice(0, 500);
+}
+
 // Settings saved in ~/.gecko-terminal/settings.json (the rest of what the
 // browser stores is per-window state, like which tab is open).
-const SYNCED = ['theme', 'opacity', 'fontSize', 'mobileFontSize', 'copyOnSelect', 'smartCopy', 'optionIsMeta', 'renderer', 'sidebarHidden', 'keys', 'startupSound'];
+const SYNCED = ['theme', 'opacity', 'fontSize', 'mobileFontSize', 'copyOnSelect', 'smartCopy', 'optionIsMeta', 'renderer', 'sidebarHidden', 'keys', 'startupSound', 'order', 'quickReplies'];
 
 // Protocol version this client speaks; see internal/proto.
 const PROTOCOL = 6;
 const WATCH_MIN_COLS = 20, WATCH_MIN_ROWS = 3; // the Digital Watch LCD
 const OUTDATED = 'The Gecko background service is older than this window, so some features are missing. Click to restart it.';
+
+// Next steps offered on an idle agent's card; each sends its text as the
+// agent's next prompt. Editable (setting "quickReplies"), one per line:
+// "Label | text to send", or just the text.
+const QUICK_REPLIES = ['Go | go', 'Commit + push | commit and push', 'Try harder | try harder', 'Dig deeper | dig deeper'];
+
+function parseQuickReplies(lines) {
+  return (Array.isArray(lines) ? lines : QUICK_REPLIES).map((l) => {
+    const [a, b] = String(l).split('|').map((x) => x.trim());
+    const text = b || a;
+    return text ? { label: b ? a || text : text[0].toUpperCase() + text.slice(1), text } : null;
+  }).filter(Boolean).slice(0, 8);
+}
 
 const STATUS_TEXT = { working: 'Working', 'needs-input': 'Needs you', idle: 'Idle', running: 'Running' };
 
@@ -105,6 +155,8 @@ export function tabLabel(s) {
 
 // Git info drawn by Gecko itself, so prompts don't need powerline or a
 // patched font: branch icon, branch, and working-tree state.
+// A robot face: agents, counted next to it in a workspace's title.
+const AGENTS_ICON = '<svg class="agi" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="3.75" width="11" height="8.5" rx="2.2"/><circle cx="5.9" cy="8" r="1.05" class="f"/><circle cx="10.1" cy="8" r="1.05" class="f"/></svg>';
 const BRANCH_ICON = '<svg class="gi" viewBox="0 0 16 16" aria-hidden="true"><circle cx="4.5" cy="3.5" r="1.7"/><circle cx="4.5" cy="12.5" r="1.7"/><circle cx="11.5" cy="5" r="1.7"/><path d="M4.5 5.2v5.6M11.5 6.7c0 3-6.2 2.2-6.8 4.1"/></svg>';
 
 function gitStateText(g) {
@@ -157,7 +209,27 @@ const TMUX_ICON = tag('TMUX');
 
 // Tabs show their number (the Alt/⌘+N shortcut) in a square whose color
 // carries the state: pink needs you, ochre working, sage idle agent.
-function numGlyph(s, n) {
+// Logos of the coding agents Gecko recognizes (internal/inspect), from
+// Simple Icons. Agents without one there get a terminal prompt.
+const AGENT_LOGOS = {
+  claude: siClaude.path, gemini: siGooglegemini.path, cursor: siCursor.path,
+  copilot: siGithubcopilot.path, qwen: siQwen.path, opencode: siOpencode.path,
+};
+const AGENT_PROMPT = 'M2.6 5.4 4.2 3.8 12.4 12l-8.2 8.2-1.6-1.6L9.2 12zM12.5 18h9v2.4h-9z';
+
+// A tab's agent, as its logo in the color of what it's doing (working,
+// needs you, idle). Where it's shown, the tab number keeps out of it.
+function agentMark(s) {
+  if (!s.agent) return '';
+  const st = s.agent.status;
+  // The working fade keeps time with the clock, so the frequent re-renders
+  // of the sidebar and tab bar don't restart it (cycle as in style.css).
+  const phase = st === 'working' ? ` style="animation-delay:-${Date.now() % 2000}ms"` : '';
+  return `<svg class="alogo s-${esc(st)}"${phase} viewBox="0 0 24 24" aria-hidden="true"><title>${esc(`${s.agent.name}: ${STATUS_TEXT[st] || st}`)}</title><path d="${AGENT_LOGOS[s.agent.name] || AGENT_PROMPT}"/></svg>`;
+}
+
+function numGlyph(s, n, plain = false) {
+  if (plain && s.agent) s = { ...s, agent: null, running: true };
   const st = s.agent ? s.agent.status : s.attention ? 'bell' : s.running || (s.kind && s.kind !== 'shell') ? 'busy' : '';
   const label = s.agent ? STATUS_TEXT[s.agent.status] || s.agent.status : st === 'bell' ? 'Bell' : '';
   return `<i class="num ${st ? 's-' + st : ''}"${label ? ` title="${esc(label)}"` : ''}>${n}</i>`;
@@ -195,6 +267,8 @@ class App {
       sidebarHidden: store('sidebarHidden', false),
       keys: store('keys', {}), // key binding overrides
       startupSound: store('startupSound', true),
+      quickReplies: store('quickReplies', null), // null: QUICK_REPLIES
+      order: store('order', {}), // dragged order of workspaces, tabs and machines: { ws, tabs, hosts }
     };
     // `gecko open` asks for a window that fits a terminal of this size,
     // centered; done once, then dropped from the URL.
@@ -335,7 +409,7 @@ class App {
     const out = [];
     for (const s of this.sessions.values()) if (s.workspace === ws) out.push(s);
     for (const s of this.exited.values()) if (s.workspace === ws) out.push({ ...s, exited: true });
-    return out.sort((a, b) => (a.created || 0) - (b.created || 0));
+    return byOrder(out, this.settings.order?.tabs, (t) => t.id, (a, b) => (a.created || 0) - (b.created || 0));
   }
 
   workspaces() {
@@ -343,7 +417,12 @@ class App {
     for (const s of this.sessions.values()) names.set(s.workspace, true);
     for (const s of this.exited.values()) names.set(s.workspace, true);
     names.set(this.ws, true);
-    return [...names.keys()].sort((a, b) => (a === 'default' ? -1 : b === 'default' ? 1 : a.localeCompare(b)));
+    return byOrder([...names.keys()], this.settings.order?.ws, (w) => w, (a, b) => (a === 'default' ? -1 : b === 'default' ? 1 : a.localeCompare(b)));
+  }
+
+  // Machines in the order they were dragged into.
+  sortedHosts() {
+    return byOrder([...this.hosts], this.settings.order?.hosts, (h) => h.name, () => 0);
   }
 
   ensureWorkspace() {
@@ -539,11 +618,17 @@ class App {
 
   // ---------------------------------------------------------------- actions
 
+  // The machine a new tab opens on: the current tab's, or this one.
+  defaultHost() {
+    const cur = this.activeSession();
+    return cur && !cur.exited ? cur.host : this.hostName;
+  }
+
   async newTab(opts = {}) {
     const cur = this.activeSession();
     const p = this.activePane();
     const req = {
-      host: opts.host ?? (cur && !cur.exited ? cur.host : this.hostName),
+      host: opts.host ?? this.defaultHost(),
       workspace: opts.workspace ?? this.ws,
       cwd: opts.cwd ?? (cur && (opts.host ?? cur.host) === cur.host ? cur.cwd : ''),
       name: opts.name || '',
@@ -1445,6 +1530,13 @@ class App {
       if (el.dataset.act === 'host-new') this.newTab({ host: el.dataset.host, cwd: '' });
     });
     $('#dock').addEventListener('click', (ev) => {
+      const prompt = ev.target.closest('[data-prompt]');
+      if (prompt) {
+        // Typed, then Enter on its own, as if typed by hand.
+        this.conn.input(prompt.dataset.id, prompt.dataset.prompt);
+        setTimeout(() => this.conn.input(prompt.dataset.id, '\r'), 50);
+        return;
+      }
       const reply = ev.target.closest('[data-reply]');
       if (reply) {
         const id = reply.dataset.id;
@@ -1464,6 +1556,9 @@ class App {
       if (el.dataset.act === 'host-new') this.newTab({ host: el.dataset.host, cwd: '' });
       if (el.dataset.act === 'template') this.openTemplate(el.dataset.name);
     });
+    this.bindReorder();
+    this.bindContextMenu();
+    this.bindNumberReveal();
     this.keepTerminalFocus();
     this.bindWatch();
     this.bindKeybar();
@@ -1479,6 +1574,523 @@ class App {
       if (p) p.sendSize(true);
     });
     document.addEventListener('visibilitychange', () => this.updateTitle());
+  }
+
+  // Tab numbers stay hidden until they're useful: while dragging (see
+  // .reordering) and while the go-to-tab modifier (Alt, or ⌘ on macOS) is
+  // held.
+  bindNumberReveal() {
+    const prop = { alt: 'altKey', ctrl: 'ctrlKey', cmd: 'metaKey' };
+    const name = { alt: 'Alt', ctrl: 'Control', cmd: 'Meta' };
+    const hide = () => document.body.classList.remove('show-nums');
+    window.addEventListener('keydown', (ev) => {
+      if (ev.key === name[this.keys.tabModifier]) document.body.classList.add('show-nums');
+    }, true);
+    window.addEventListener('keyup', (ev) => {
+      if (!ev[prop[this.keys.tabModifier]]) hide();
+    }, true);
+    window.addEventListener('blur', hide);
+  }
+
+  // Right-click (or long-press) a tab, workspace, machine or tmux session
+  // for what can be done with it.
+  bindContextMenu() {
+    const open = (ev) => {
+      const items = this.menuFor(ev.target);
+      if (!items) return;
+      ev.preventDefault();
+      this.showMenu(ev.clientX, ev.clientY, items);
+    };
+    $('#side').addEventListener('contextmenu', open);
+    $('#tabs').addEventListener('contextmenu', open);
+    // In a terminal, right-click is always Gecko's menu, whatever runs
+    // there: it neither selects a word nor reaches an app that reads the
+    // mouse (Claude, vim, htop), so it behaves the same everywhere.
+    const paneAt = (t) => [...this.panes.values()].find((x) => x.el.contains(t));
+    for (const type of ['mousedown', 'mouseup']) {
+      $('#panes').addEventListener(type, (ev) => {
+        if (ev.button === 2 && paneAt(ev.target)) ev.stopPropagation();
+      }, true);
+    }
+    $('#panes').addEventListener('contextmenu', (ev) => {
+      const p = paneAt(ev.target);
+      if (!p) return;
+      ev.preventDefault();
+      this.showMenu(ev.clientX, ev.clientY, this.terminalMenu(p, ev.clientX, ev.clientY));
+    });
+  }
+
+  // The web address under a point of a terminal, if any.
+  linkAt(p, x, y) {
+    const t = p.term, r = t.element.querySelector('.xterm-screen')?.getBoundingClientRect();
+    if (!r) return null;
+    const col = Math.floor((x - r.left) / (r.width / t.cols)), row = Math.floor((y - r.top) / (r.height / t.rows));
+    const line = t.buffer.active.getLine(t.buffer.active.viewportY + row)?.translateToString(true) || '';
+    for (const m of line.matchAll(/https?:\/\/[^\s"'<>()]+/g)) {
+      if (col >= m.index && col < m.index + m[0].length) return m[0].replace(/[.,;:!?]+$/, '');
+    }
+    return null;
+  }
+
+  terminalMenu(p, x, y) {
+    const key = (a) => prettyCombo(this.keys.first(a));
+    const own = p.term.hasSelection() ? p.term.getSelection() : '';
+    const mouseApp = p.term.modes.mouseTrackingMode !== 'none';
+    // Apps that read the mouse (Claude) select by themselves and copy what
+    // you select; that is the selection then.
+    const appSel = !own && mouseApp && p.appCopy && p.appCopy.at > p.lastDown ? p.appCopy.text : '';
+    const sel = own || appSel;
+    const trimmed = sel.trim();
+    const link = this.linkAt(p, x, y) || (/^https?:\/\/\S+$/.test(trimmed) ? trimmed : null);
+    const short = sel && !sel.includes('\n') && sel.length <= 40;
+    const copied = (ok) => this.toast(ok ? 'Copied' : 'Copy failed: the browser blocked clipboard access');
+    return [
+      own && { label: 'Copy', hint: key('copy'), run: () => this.copySelection(p) },
+      appSel && { label: 'Copy', run: () => copyText(appSel).then(copied) },
+      link && { label: 'Open link', run: () => window.open(link, '_blank', 'noopener') },
+      link && { label: 'Copy link', run: () => copyText(link).then(copied) },
+      { label: 'Paste', hint: isMac ? '⌘V' : 'Ctrl+Shift+V', run: () => this.paste() },
+      '-',
+      { label: short ? `Find “${sel}”` : 'Find…', hint: key('find'), run: () => this.openFind(short ? sel : '') },
+      { label: 'Select all', run: () => p.term.selectAll() },
+      { label: 'Select text…', hint: key('selectText'), run: () => this.openTextView() },
+      // In an app that reads the mouse but doesn't select by itself (vim,
+      // htop), how to select anyway.
+      !sel && mouseApp && !p.appCopy && { note: `${isMac ? '⌥' : 'Shift'}-drag to select here` },
+    ];
+  }
+
+  menuFor(target) {
+    const sep = '-';
+    const tab = target.closest('[data-drag="tab"]');
+    if (tab) {
+      const id = tab.dataset.key;
+      const s = this.sessions.get(id);
+      const shortcut = id === this.activeId() ? prettyCombo(this.keys.first('closeTab')) : '';
+      if (!s) return [{ label: 'Close tab', run: () => this.closeTab(id), hint: shortcut, danger: true }];
+      const others = this.tabsOf(s.workspace).filter((t) => t.id !== id);
+      return [
+        { label: 'New tab here', hint: 'Same machine and folder', run: () => this.newTab({ host: s.host, cwd: s.cwd, workspace: s.workspace }) },
+        sep,
+        { label: 'Rename…', run: () => this.renameTab(id) },
+        { label: 'Move to workspace…', run: () => this.moveTab(id) },
+        s.kind === 'shell' && { label: 'Change folder…', run: () => this.openFolderPicker(id) },
+        sep,
+        others.length && { label: 'Close other tabs', run: async () => { for (const t of others) await this.closeTab(t.id); } },
+        { label: 'Close tab', hint: shortcut, danger: true, run: () => this.closeTab(id) },
+      ];
+    }
+    const ws = target.closest('.ws-row')?.dataset.key;
+    if (ws) {
+      const folded = this.collapsed[ws];
+      return [
+        { label: 'New tab in workspace', run: () => this.newTab({ workspace: ws, cwd: '' }) },
+        sep,
+        { label: 'Rename…', run: () => this.renameWorkspace(ws) },
+        { label: folded ? 'Expand' : 'Collapse', run: () => this.toggleFold(ws) },
+        sep,
+        { label: 'Close workspace', danger: true, run: () => this.closeWorkspace(ws) },
+      ];
+    }
+    const tmuxWin = target.closest('.tmux-win');
+    if (tmuxWin) {
+      const { host, name, idx } = tmuxWin.dataset;
+      const w = this.tmux.find((t) => t.host === host && t.name === name)?.wins?.find((x) => x.index === +idx);
+      return [
+        { label: 'Open', run: () => this.openTmux(host, name, +idx) },
+        { label: 'Rename…', run: () => this.renameTmuxWindow(host, name, +idx) },
+        sep,
+        { label: 'Close window', danger: true, run: async () => {
+          if (await this.confirm(`Close tmux window \`${idx}:${w?.name || ''}\` in \`${name}\`? This ends what runs in it.`, 'Close window')) this.tmuxDo(host, 'kill-window', `${name}:${idx}`);
+        } },
+      ];
+    }
+    const tmux = target.closest('.tmux-row');
+    if (tmux) {
+      const { host, name } = tmux.querySelector('.tmux').dataset;
+      const tab = this.tmuxTab(host, name);
+      return [
+        { label: tab ? 'Go to its tab' : 'Open in a new tab', run: () => this.openTmux(host, name) },
+        { label: 'New window', run: () => this.tmuxDo(host, 'new-window', name) },
+        { label: 'Rename…', run: () => this.renameTmuxSession(host, name) },
+      ];
+    }
+    const hostName = target.closest('.host')?.dataset.host;
+    if (hostName) {
+      const h = this.hosts.find((x) => x.name === hostName);
+      if (!h) return null;
+      const outdated = !h.local && h.status === 'connected' && (h.version || 0) < PROTOCOL;
+      return [
+        { label: `New tab on ${h.name}`, disabled: h.status !== 'connected', run: () => this.newTab({ host: h.name, cwd: '' }) },
+        !h.local && h.status === 'error' && { label: 'Fix connection…', run: () => this.addHost({ name: h.name, target: h.target, error: h.error }) },
+        !h.local && h.status === 'connected' && { label: outdated ? 'Update Gecko' : 'Reinstall Gecko', hint: 'Its tabs keep running', run: () => this.updateHost(h.name) },
+        !h.local && sep,
+        !h.local && { label: 'Remove machine', hint: 'Its sessions keep running', danger: true, run: () => this.removeHost(h.name) },
+      ];
+    }
+    const tpl = target.closest('.ws.template [data-name]');
+    if (tpl) return [{ label: `Open ${tpl.dataset.name}`, run: () => this.openTemplate(tpl.dataset.name) }];
+    return null;
+  }
+
+  // A small menu at the pointer: arrow keys and Enter, or click; Escape,
+  // a click elsewhere or scrolling closes it.
+  showMenu(x, y, items) {
+    this.closeMenu?.();
+    // Drop empty entries and separators that would start, end or double up.
+    const list = items.filter(Boolean).filter((it, i, a) => it !== '-' || (i > 0 && a[i - 1] !== '-' && i < a.length - 1 && !a[i + 1].note));
+    const el = document.createElement('div');
+    el.id = 'ctxmenu';
+    el.setAttribute('role', 'menu');
+    el.innerHTML = list.map((it, i) => it === '-' ? '<hr>'
+      : it.note ? `<p class="note">${esc(it.note)}</p>`
+      : `<button role="menuitem" data-i="${i}" class="${it.danger ? 'danger' : ''}" ${it.disabled ? 'disabled' : ''}><span>${esc(it.label)}</span>${it.hint ? `<kbd>${esc(it.hint)}</kbd>` : ''}</button>`).join('');
+    document.body.appendChild(el);
+    const r = el.getBoundingClientRect();
+    el.style.left = Math.max(4, Math.min(x, innerWidth - r.width - 4)) + 'px';
+    el.style.top = Math.max(4, Math.min(y, innerHeight - r.height - 4)) + 'px';
+    const buttons = [...el.querySelectorAll('button:not(:disabled)')];
+    let on = -1;
+    const mark = (i) => {
+      on = (i + buttons.length) % buttons.length;
+      buttons.forEach((b, j) => b.classList.toggle('on', j === on));
+    };
+    const close = () => {
+      el.remove();
+      this.closeMenu = null;
+      // Unless what was chosen opened something to type in, the keyboard
+      // goes back to the shell.
+      requestAnimationFrame(() => {
+        if (!document.activeElement?.closest?.('input, textarea, #palette, #modal, #textview, #find, #compose')) this.activePane()?.focus();
+      });
+      window.removeEventListener('pointerdown', outside, true);
+      window.removeEventListener('keydown', key, true);
+      window.removeEventListener('blur', close);
+      window.removeEventListener('resize', close);
+      window.removeEventListener('wheel', close, true);
+    };
+    const run = (b) => {
+      close();
+      list[+b.dataset.i].run();
+    };
+    const outside = (e) => { if (!el.contains(e.target)) close(); };
+    const key = (e) => {
+      const k = { ArrowDown: 1, ArrowUp: -1 }[e.key];
+      if (k) mark(on < 0 && k < 0 ? -1 : on + k);
+      else if (e.key === 'Enter' && on >= 0) run(buttons[on]);
+      else if (e.key === 'Escape') close();
+      else return;
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    el.addEventListener('click', (e) => { const b = e.target.closest('button'); if (b && !b.disabled) run(b); });
+    el.addEventListener('pointermove', (e) => { const i = buttons.indexOf(e.target.closest('button')); if (i >= 0) mark(i); });
+    window.addEventListener('pointerdown', outside, true);
+    window.addEventListener('keydown', key, true);
+    window.addEventListener('blur', close);
+    window.addEventListener('resize', close);
+    window.addEventListener('wheel', close, true);
+    this.closeMenu = close;
+  }
+
+  // Drag workspaces, tabs (in the sidebar or the tab bar) and machines to
+  // reorder them; drop a tab on another workspace to move it there. Done
+  // with pointer events: the sidebar keeps focus in the terminal by
+  // cancelling mousedown, which rules out native drag and drop.
+  bindReorder() {
+    const onDown = (ev) => {
+      if (ev.button !== 0 || ev.pointerType === 'touch') return;
+      const src = ev.target.closest('[data-drag]');
+      if (!src || ev.target.closest('.x, .fold[data-act], input')) return;
+      const start = { x: ev.clientX, y: ev.clientY };
+      const move = (e) => {
+        if (!this.drag) {
+          if (Math.hypot(e.clientX - start.x, e.clientY - start.y) < 6) return;
+          // Numbers show first: in the tab bar they change the tabs' size.
+          document.body.classList.add('reordering');
+          this.drag = { kind: src.dataset.drag, key: src.dataset.key, src, ghost: this.dragGhost(src, start) };
+          this.drag.ghost.item.classList.add('dragging');
+        }
+        const at = this.drag.ghost.move(e.clientX, e.clientY);
+        this.autoScroll(at.x, e.clientY);
+        this.dragOver(at.x, at.y);
+      };
+      const end = (e) => {
+        window.removeEventListener('pointermove', move, true);
+        window.removeEventListener('pointerup', end, true);
+        window.removeEventListener('keydown', esc, true);
+        const d = this.drag;
+        if (!d) return;
+        this.drag = null;
+        clearTimeout(d.recheck);
+        d.ghost.item.classList.remove('dragging');
+        document.body.classList.remove('reordering');
+        this.markDrop(null);
+        // The click that ends a drag isn't a click on the row.
+        const swallow = (c) => { c.stopPropagation(); c.preventDefault(); };
+        window.addEventListener('click', swallow, { capture: true, once: true });
+        setTimeout(() => window.removeEventListener('click', swallow, true), 0);
+        if (e && d.at) this.dropAt(d, d.at);
+        this.render();
+        d.ghost.land(d.kind, d.key);
+      };
+      const esc = (e) => {
+        if (e.key !== 'Escape' || !this.drag) return;
+        e.preventDefault();
+        e.stopPropagation();
+        this.drag.at = null;
+        end(null);
+      };
+      window.addEventListener('pointermove', move, true);
+      window.addEventListener('pointerup', end, true);
+      window.addEventListener('keydown', esc, true);
+    };
+    $('#side').addEventListener('pointerdown', onDown);
+    $('#tabs').addEventListener('pointerdown', onDown);
+  }
+
+  // A copy of the dragged item that follows the pointer, kept in its lane:
+  // along the tab bar, or up and down the sidebar. A workspace
+  // brings its tabs along. It lives next to the original (inside the
+  // sidebar or tab bar) so the theme's styles still apply to it. The
+  // original stays in the list as an empty slot, so the item is never
+  // seen twice; the copy lifts off when picked up and settles into its
+  // place when let go.
+  dragGhost(src, start) {
+    const item = src.dataset.drag === 'ws' ? src.closest('.ws') : src.dataset.drag === 'host' ? src.closest('.host') : src;
+    const r = item.getBoundingClientRect();
+    const box = src.closest('#tabbar') || $('#side');
+    const el = document.createElement(item.tagName === 'LI' ? 'ul' : 'div');
+    el.className = 'drag-ghost' + (item.classList.contains('host') ? ' hostlist' : '');
+    el.style.width = r.width + 'px';
+    el.style.height = r.height + 'px';
+    el.appendChild(item.cloneNode(true));
+    box.appendChild(el);
+    const off = { x: start.x - r.left, y: start.y - r.top };
+    // Correct for an ancestor that shifts fixed positioning (the phone
+    // drawer is transformed).
+    el.style.left = '0px';
+    el.style.top = '0px';
+    const o = el.getBoundingClientRect();
+    const ease = 'cubic-bezier(.2, .8, .3, 1)';
+    const fast = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 1;
+    el.animate([{ opacity: 1, transform: 'none', boxShadow: 'none' }, {}], { duration: 140 * fast, easing: ease });
+    return {
+      el,
+      item,
+      // Glide onto the item's place in the freshly rendered list (or back
+      // to where it was, when the drag was cancelled).
+      land: (kind, key) => {
+        const lane = box.id === 'tabbar' ? $('#tabs') : $('#side-body');
+        const row = [...lane.querySelectorAll(`[data-drag="${kind}"]`)].find((e) => e.dataset.key === key);
+        const to = row && (kind === 'ws' ? row.closest('.ws') : kind === 'host' ? row.closest('.host') : row);
+        const left = parseFloat(el.style.left) + o.left, top = parseFloat(el.style.top) + o.top;
+        const t = to?.getBoundingClientRect();
+        if (to) to.style.visibility = 'hidden';
+        const anim = el.animate(t
+          ? [{}, { opacity: 1, transform: `translate(${t.left - left}px, ${t.top - top}px)`, boxShadow: 'none' }]
+          : [{}, { opacity: 0 }], { duration: 160 * fast, easing: ease, fill: 'forwards' });
+        anim.finished.then(() => {
+          el.remove();
+          if (to) to.style.visibility = '';
+        });
+      },
+      // Returns the point the item is held at.
+      move: (x, y) => {
+        const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+        if (box.id === 'tabbar') {
+          const lane = $('#tabs').getBoundingClientRect();
+          x = clamp(x, lane.left + off.x, lane.right - r.width + off.x);
+          y = start.y;
+        } else {
+          // Its own section of the sidebar (workspaces or machines), as
+          // much of it as is scrolled into view.
+          const body = $('#side-body').getBoundingClientRect();
+          const sec = (src.closest('.group') || $('#side-body')).getBoundingClientRect();
+          const top = Math.max(body.top, sec.top), bottom = Math.min(body.bottom, sec.bottom);
+          x = start.x;
+          // The whole copy when it fits; a tall workspace keeps just the
+          // point it's held by inside.
+          y = r.height <= bottom - top ? clamp(y, top + off.y, bottom - r.height + off.y) : clamp(y, top, bottom);
+        }
+        el.style.left = x - off.x - o.left + 'px';
+        el.style.top = y - off.y - o.top + 'px';
+        return { x, y };
+      },
+    };
+  }
+
+  // Where the dragged item would land: { el, key, pos: before|after|into }.
+  // Within a list the other items slide out of the way as soon as the
+  // pointer crosses into one of them, so what you see is where it lands.
+  // Where that can't be shown (a tab bar tab over the sidebar, a folded
+  // workspace) a line or outline marks the spot instead.
+  dragOver(x, y) {
+    const d = this.drag;
+    d.last = { x, y };
+    // Rows still sliding are not where they look; wait for them.
+    if (performance.now() < d.busyUntil) return;
+    const hit = document.elementFromPoint(x, y);
+    const unit = d.src.dataset.drag === 'tab' ? (d.src.classList.contains('tab') ? d.src : d.src.parentElement) : d.src.closest('.ws, .host');
+    const half = (el) => {
+      const r = el.getBoundingClientRect();
+      return el.classList.contains('tab') ? (x < r.left + r.width / 2 ? 'before' : 'after') : (y < r.top + r.height / 2 ? 'before' : 'after');
+    };
+    let at = null, target = null;
+    const row = d.kind === 'tab' ? hit?.closest('[data-drag="tab"]') : hit?.closest(d.kind === 'ws' ? '.ws[data-ws]' : '.host[data-host]');
+    const wsRow = d.kind === 'tab' && !row && hit?.closest('.ws-row');
+    if (row) {
+      target = row.classList.contains('tab-row') ? row.parentElement : row;
+      if (target === unit) return;
+      const key = row.dataset.key || row.dataset.ws || row.dataset.host;
+      const pos = target.parentElement === unit.parentElement
+        ? (unit.compareDocumentPosition(target) & Node.DOCUMENT_POSITION_FOLLOWING ? 'after' : 'before')
+        : half(target);
+      at = { el: row, key, pos };
+      if (unit.classList.contains('tab') !== target.classList.contains('tab')) target = null; // tab bar <-> sidebar
+    } else if (wsRow) {
+      // A workspace's name: first in that workspace.
+      const ul = wsRow.parentElement.querySelector('ul');
+      const first = ul && [...ul.children].find((li) => li !== unit);
+      if (first && unit.tagName === 'LI') {
+        if (first.previousElementSibling === unit) return;
+        target = first;
+        at = { el: first, key: first.firstElementChild.dataset.key, pos: 'before' };
+      } else {
+        at = { el: wsRow, key: wsRow.dataset.key, pos: 'into' };
+        if (ul && unit.tagName === 'LI') { this.slide(() => ul.append(unit)); d.at = at; return this.markDrop(null); }
+      }
+    }
+    if (target) {
+      this.slide(() => target[at.pos](unit));
+      this.markDrop(null);
+      d.at = at;
+    } else if (at) {
+      this.markDrop(at);
+      d.at = at;
+    } else if (d.marked) {
+      // Off the list after a marked spot: nothing to drop on.
+      this.markDrop(null);
+      d.at = null;
+    }
+    d.marked = !!at && !target && !(wsRow && unit.tagName === 'LI');
+  }
+
+  // Change the order of rows, then slide each from where it was (FLIP).
+  slide(change) {
+    const els = [...document.querySelectorAll('#side .ws-row, #side .ws li, #side .ws.template, #side .host, #side .group > h3, #tabs .tab')]
+      .filter((e) => !e.closest('.drag-ghost'));
+    const was = new Map(els.map((e) => [e, e.getBoundingClientRect()]));
+    for (const e of els) for (const a of e.getAnimations()) a.cancel();
+    change();
+    this.mirror();
+    const ms = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 150;
+    this.renumber(ms);
+    if (!ms) return;
+    for (const e of els) {
+      const a = was.get(e), b = e.getBoundingClientRect();
+      const dx = a.left - b.left, dy = a.top - b.top;
+      if (dx || dy) e.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: ms, easing: 'cubic-bezier(.2, .8, .3, 1)' });
+    }
+    const d = this.drag;
+    d.busyUntil = performance.now() + ms;
+    clearTimeout(d.recheck);
+    d.recheck = setTimeout(() => this.drag === d && this.dragOver(d.last.x, d.last.y), ms + 10);
+  }
+
+  // The current workspace's tabs are in both the tab bar and the sidebar;
+  // whichever one is being dragged in, the other follows. A tab dragged
+  // off to another workspace leaves the tab bar.
+  mirror() {
+    const ul = [...document.querySelectorAll('#side-body .ws[data-ws]')].find((b) => b.dataset.ws === this.ws)?.querySelector('ul');
+    if (!ul) return;
+    const bar = $('#tabs');
+    const tabs = new Map([...bar.querySelectorAll('.tab')].map((e) => [e.dataset.key, e]));
+    const rows = new Map([...ul.querySelectorAll('.tab-row')].map((e) => [e.dataset.key, e.parentElement]));
+    if (this.drag.src.closest('#tabs')) {
+      for (const k of tabs.keys()) if (rows.has(k)) ul.append(rows.get(k));
+    } else {
+      for (const [k, e] of tabs) e.style.display = rows.has(k) ? '' : 'none';
+      for (const k of rows.keys()) if (tabs.has(k)) bar.append(tabs.get(k));
+    }
+  }
+
+  // Tab numbers as the order now on screen would make them, so they change
+  // while dragging, not after. Numbers run across workspaces; a folded
+  // workspace counts its tabs without showing them.
+  renumber(ms) {
+    const ids = [];
+    const inBar = !!this.drag.src.closest('#tabs');
+    for (const block of document.querySelectorAll('#side-body .ws[data-ws]')) {
+      const ws = block.dataset.ws;
+      const rows = ws === this.ws && inBar ? $('#tabs').querySelectorAll('.tab') : block.querySelector('ul')?.querySelectorAll('.tab-row');
+      ids.push(...(rows ? [...rows].map((r) => r.dataset.key) : this.tabsOf(ws).map((t) => t.id)));
+    }
+    const nums = new Map(ids.map((id, i) => [id, String(i + 1)]));
+    for (const row of document.querySelectorAll('[data-drag="tab"]')) {
+      const num = row.querySelector('.num');
+      const n = nums.get(row.dataset.key);
+      if (!num || !n || num.textContent === n) continue;
+      num.textContent = n;
+      if (ms) num.animate([{ transform: 'scale(0.5)', opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: ms + 50, easing: 'cubic-bezier(.3, 1.4, .5, 1)' });
+    }
+  }
+
+  // Near the sidebar's edges, scroll it.
+  autoScroll(x, y) {
+    const body = $('#side-body');
+    const r = body.getBoundingClientRect();
+    if (x < r.left || x > r.right) return;
+    if (y < r.top + 24) body.scrollTop -= 12;
+    else if (y > r.bottom - 24) body.scrollTop += 12;
+  }
+
+  markDrop(at) {
+    for (const el of document.querySelectorAll('.drop-before, .drop-after, .drop-into')) el.classList.remove('drop-before', 'drop-after', 'drop-into');
+    if (at) at.el.classList.add('drop-' + at.pos);
+  }
+
+  dropAt(d, at) {
+    const place = (list, key, target, pos) => {
+      const out = list.filter((k) => k !== key);
+      const i = out.indexOf(target);
+      out.splice(i < 0 ? out.length : pos === 'after' ? i + 1 : i, 0, key);
+      return out;
+    };
+    const order = { ...this.settings.order };
+    if (d.kind === 'ws') {
+      order.ws = newOrder(place(this.workspaces(), d.key, at.key, at.pos), order.ws);
+    } else if (d.kind === 'host') {
+      order.hosts = newOrder(place(this.hosts.map((h) => h.name), d.key, at.key, at.pos), order.hosts);
+    } else if (d.kind === 'tab') {
+      const tab = this.sessions.get(d.key) || this.exited.get(d.key);
+      if (!tab) return;
+      let ws, ids;
+      if (at.pos === 'into') {
+        // Onto a workspace: the end of its tabs.
+        ws = at.key;
+        const last = this.tabsOf(ws).filter((t) => t.id !== d.key).pop();
+        ids = last ? place(this.allTabs().map((t) => t.id), d.key, last.id, 'after') : this.allTabs().map((t) => t.id);
+      } else {
+        ws = (this.sessions.get(at.key) || this.exited.get(at.key))?.workspace;
+        ids = place(this.allTabs().map((t) => t.id), d.key, at.key, at.pos);
+      }
+      if (!ws) return;
+      order.tabs = newOrder(ids, order.tabs);
+      if (ws !== tab.workspace) {
+        if (this.sessions.has(d.key)) this.conn.send({ t: 'patch', id: d.key, patch: { workspace: ws } });
+        else tab.workspace = ws;
+        // Follow the tab when it was the one being looked at.
+        if (this.activeId() === d.key) {
+          this.selectNeighbor(d.key);
+          this.activeByWs[ws] = d.key;
+          save('activeByWs', this.activeByWs);
+          this.ws = ws;
+          save('workspace', ws);
+        }
+      }
+    }
+    this.setSetting('order', order);
   }
 
   // Double-click detection that survives the sidebar re-rendering between
@@ -1539,7 +2151,7 @@ class App {
   // dock, margins) must not take focus away from it; only text fields and
   // overlays (palette, prompts, find, compose, text view) get focus.
   keepTerminalFocus() {
-    const ownsFocus = 'input, textarea, select, [contenteditable], #palette, #modal, #textview, #find, #compose';
+    const ownsFocus = 'input, textarea, select, [contenteditable], #palette, #modal, #textview, #find, #compose, #ctxmenu';
     document.addEventListener('mousedown', (ev) => {
       if (this.touch || ev.button !== 0) return;
       const t = ev.target;
@@ -1909,6 +2521,7 @@ class App {
     add('Restart Gecko', 'Restarts the background service with the installed version; your tabs and what runs in them keep going', () => this.restartService(), 'Command', undefined, 'restart upgrade update reload daemon service');
     add('Open on another device', 'Phone or tablet: shows a link and QR code', () => this.openShare(), 'Command', undefined, 'phone mobile tablet qr share link');
     add('Notify me when agents need input', '', () => this.enableNotifications(), 'Setting', undefined, 'notifications alerts');
+    add('Edit quick replies…', 'The next steps offered on an idle agent', () => this.editQuickReplies(), 'Setting', undefined, 'agent claude buttons prompts go commit push');
     add(`Startup sound: ${this.settings.startupSound ? 'on' : 'off'}`, 'A short chime when Gecko opens', () => this.setSetting('startupSound', !this.settings.startupSound), 'Setting', undefined, 'sound audio chime startup launch mute');
     add(`Copy on select: ${this.settings.copyOnSelect ? 'on' : 'off'}`, 'Toggle', () => this.setSetting('copyOnSelect', !this.settings.copyOnSelect), 'Setting', undefined, 'clipboard selection');
     if (!isMac) add(`Ctrl+C copies selected text: ${this.settings.smartCopy ? 'on' : 'off'}`, 'Without a selection it still interrupts', () => this.setSetting('smartCopy', !this.settings.smartCopy), 'Setting');
@@ -2088,6 +2701,30 @@ class App {
     this.closePalette(v.trim());
   }
 
+  // The quick replies on an idle agent's card, one per line.
+  editQuickReplies() {
+    const m = $('#modal');
+    const cur = Array.isArray(this.settings.quickReplies) ? this.settings.quickReplies : QUICK_REPLIES;
+    m.innerHTML = `<div class="card quick" role="dialog" aria-modal="true" aria-labelledby="qr-title">
+      <h2 id="qr-title">Quick replies</h2>
+      <p>Offered on an agent's card when it's idle. One per line: <code>Label | text to send</code>, or just the text. Up to 8.</p>
+      <textarea rows="7" spellcheck="false">${esc(cur.join('\n'))}</textarea>
+      <div class="row"><button data-reset>Reset</button><span></span><button data-no>Cancel</button><button class="primary" data-yes>Save</button></div></div>`;
+    m.hidden = false;
+    const ta = m.querySelector('textarea');
+    const done = () => { m.hidden = true; m.innerHTML = ''; this.activePane()?.focus(); };
+    m.querySelector('[data-yes]').onclick = () => {
+      const lines = ta.value.split('\n').map((l) => l.trim()).filter(Boolean);
+      this.setSetting('quickReplies', lines.join('\n') === QUICK_REPLIES.join('\n') ? null : lines);
+      this.renderDock();
+      done();
+    };
+    m.querySelector('[data-no]').onclick = done;
+    m.querySelector('[data-reset]').onclick = () => { ta.value = QUICK_REPLIES.join('\n'); ta.focus(); };
+    m.onkeydown = (ev) => { if (ev.key === 'Escape') done(); };
+    ta.focus();
+  }
+
   confirm(text, verb) {
     return new Promise((resolve) => {
       const m = $('#modal');
@@ -2205,31 +2842,94 @@ class App {
 
   // ---------------------------------------------------------------- find
 
+  // Find in the terminal: every match highlighted, the current one
+  // stronger, "3 of 7". It searches again as the terminal changes, so in a
+  // full-screen app that redraws (Claude) the highlights follow the text,
+  // and scrolling in the app finds more.
   bindFind() {
     const box = $('#find');
     const input = box.querySelector('input');
-    const go = (back) => {
+    const count = box.querySelector('.count');
+    const note = box.querySelector('.note');
+    let pane = null, watch = null, results = null, timer = 0;
+    const decorations = () => {
+      const css = getComputedStyle(document.documentElement);
+      const bg = toRgb(css.getPropertyValue('--surface-term') || css.getPropertyValue('--bg'));
+      const accent = toRgb(css.getPropertyValue('--accent'));
+      return {
+        matchBackground: hexMix(bg, accent, 0.35), matchOverviewRuler: hexMix(bg, accent, 0.6),
+        activeMatchBackground: hexMix(bg, accent, 0.8), activeMatchBorder: hexMix(bg, accent, 1), activeMatchColorOverviewRuler: hexMix(bg, accent, 1),
+      };
+    };
+    const detach = () => {
+      watch?.dispose();
+      results?.dispose();
+      watch = results = null;
+      clearTimeout(timer);
+      pane?.search.clearDecorations();
+      pane = null;
+    };
+    // Follow the shown tab, and its changes.
+    const attach = () => {
       const p = this.activePane();
-      if (!p || !input.value) return;
-      const ok = back ? p.search.findPrevious(input.value) : p.search.findNext(input.value);
-      box.classList.toggle('miss', !ok);
+      if (p === pane) return p;
+      detach();
+      pane = p;
+      if (!p) return null;
+      results = p.search.onDidChangeResults(({ resultIndex, resultCount }) => {
+        count.textContent = !input.value ? '' : !resultCount ? 'No results' : resultIndex < 0 ? `${resultCount}+` : `${resultIndex + 1} of ${resultCount}`;
+        box.classList.toggle('miss', !!input.value && !resultCount);
+      });
+      watch = p.term.onWriteParsed(() => {
+        clearTimeout(timer);
+        timer = setTimeout(() => go(false, true), 150);
+      });
+      return p;
+    };
+    const go = (back, again = false) => {
+      const p = attach();
+      if (!p) return;
+      const s = this.sessions.get(p.id);
+      const full = p.term.buffer.active.type === 'alternate';
+      note.hidden = !full;
+      if (full) note.textContent = `${s ? tabLabel(s) : 'This app'} is full screen, so only what's on screen can be searched. Scroll in it to search further.`;
+      if (!input.value) {
+        p.search.clearDecorations();
+        count.textContent = '';
+        box.classList.remove('miss');
+        return;
+      }
+      const opts = { decorations: decorations(), incremental: again };
+      if (back) p.search.findPrevious(input.value, opts);
+      else p.search.findNext(input.value, opts);
+    };
+    const close = () => {
+      box.hidden = true;
+      detach();
+      this.activePane()?.focus();
     };
     input.addEventListener('keydown', (ev) => {
       if (ev.key === 'Enter') { ev.preventDefault(); go(ev.shiftKey); }
-      if (ev.key === 'Escape') { box.hidden = true; this.activePane()?.search.clearDecorations(); this.activePane()?.focus(); }
+      if (ev.key === 'Escape') close();
     });
-    input.addEventListener('input', () => go(false));
-    box.querySelector('[data-close]').onclick = () => { box.hidden = true; this.activePane()?.focus(); };
+    input.addEventListener('input', () => go(false, true));
+    box.querySelector('[data-prev]').onclick = () => go(true);
+    box.querySelector('[data-next]').onclick = () => go(false);
+    box.querySelector('[data-close]').onclick = close;
+    this.findGo = go;
+    // Another tab shown while Find is open: search that one.
+    this.findFollow = () => { if (!box.hidden && this.activePane() !== pane) go(false, true); };
   }
 
-  openFind() {
+  openFind(text = '') {
     const box = $('#find');
     box.hidden = false;
     const input = box.querySelector('input');
-    const sel = this.activePane()?.term.getSelection();
+    const sel = text || this.activePane()?.term.getSelection();
     if (sel && !sel.includes('\n')) input.value = sel;
     input.focus();
     input.select();
+    this.findGo(false, true);
   }
 
   // ---------------------------------------------------------------- render
@@ -2256,10 +2956,13 @@ class App {
   }
 
   render() {
+    // Re-rendering mid-drag would pull the rows out from under the pointer.
+    if (this.drag) { this.drag.stale = true; return; }
     this.renderWatch?.();
     this.renderSidebar();
     this.renderTabs();
     this.showActive();
+    this.findFollow?.();
     this.renderEmpty();
     this.renderDock();
     this.renderStatus();
@@ -2277,11 +2980,11 @@ class App {
       const working = agents.filter((t) => t.agent.status === 'working').length;
       const hosts = [...new Set(tabs.map((t) => t.host))].filter((h) => h && h !== this.hostName);
       const folded = this.collapsed[ws];
-      parts.push(`<div class="ws ${ws === this.ws ? 'cur' : ''}">
-        <div class="ws-row">
+      parts.push(`<div class="ws ${ws === this.ws ? 'cur' : ''}" data-ws="${esc(ws)}">
+        <div class="ws-row" data-drag="ws" data-key="${esc(ws)}">
           <button class="ws-name" data-act="ws" data-ws="${esc(ws)}" aria-expanded="${!folded}" title="Click to ${folded ? 'expand' : 'collapse'}, double-click to rename"><span class="fold" aria-hidden="true">${folded ? '▸' : '▾'}</span>${esc(ws)}</button>
-          ${need ? `<span class="pill need" title="Agents waiting for you">${need}</span>` : ''}
-          ${working ? `<span class="pill work" title="Agents working">${working}</span>` : ''}
+          ${need ? `<span class="agents need" title="Agents waiting for you">${AGENTS_ICON}${need}</span>` : ''}
+          ${working ? `<span class="agents work" title="Agents working">${AGENTS_ICON}${working}</span>` : ''}
           ${hosts.length ? `<span class="hosts">${esc(hosts.join(', '))}</span>` : ''}
           <button class="x" data-act="ws-close" data-ws="${esc(ws)}" aria-label="Close workspace ${esc(ws)}" title="Close workspace and its tabs">×</button>
         </div>`);
@@ -2291,8 +2994,8 @@ class App {
           const active = ws === this.ws && t.id === this.activeId();
           const sub = t.agent?.detail || (t.kind === 'shell' ? shortPath(t.cwd) : t.command) || '';
           const tip = [t.host, t.repo && `${t.repo} on ${t.branch || '?'}${t.git ? ' (' + gitStateText(t.git) + ')' : ''}`, sub].filter(Boolean).join(' · ');
-          parts.push(`<li><div class="tab-row ${active ? 'cur' : ''} ${t.exited ? 'gone' : ''}" role="button" data-act="tab" data-id="${esc(t.id)}" title="${esc(tip)}">
-            ${numGlyph(t, nums.get(t.id))}<span class="nm">${esc(tabLabel(t))} ${gitChip(t)}</span>${t.host !== this.hostName ? `<span class="where">${esc(t.host)}</span>` : '<span></span>'}<button class="x" data-act="tab-close" data-id="${esc(t.id)}" aria-label="Close tab" title="Close tab">×</button></div></li>`);
+          parts.push(`<li><div class="tab-row ${active ? 'cur' : ''} ${t.exited ? 'gone' : ''}" role="button" data-act="tab" data-id="${esc(t.id)}" data-drag="tab" data-key="${esc(t.id)}" title="${esc(tip)}">
+            ${numGlyph(t, nums.get(t.id), true)}<span class="nm">${agentMark(t)}${esc(tabLabel(t))} ${gitChip(t)}</span>${t.host !== this.hostName ? `<span class="where">${esc(t.host)}</span>` : '<span></span>'}<button class="x" data-act="tab-close" data-id="${esc(t.id)}" aria-label="Close tab" title="Close tab">×</button></div></li>`);
         }
         parts.push('</ul>');
       }
@@ -2304,13 +3007,14 @@ class App {
       parts.push(`<div class="ws template"><button class="ws-name" data-act="template" data-name="${esc(t.name)}">${esc(t.name)} <span class="hosts">open</span></button></div>`);
     }
     parts.push('</div><div class="group"><h3>Machines <button class="mini" data-act="add-host" title="Add a machine" aria-label="Add a machine">+</button></h3><ul class="hostlist">');
-    for (const h of this.hosts) {
+    const next = this.defaultHost();
+    for (const h of this.sortedHosts()) {
       const tm = this.tmux.filter((t) => t.host === h.name);
       const broken = !h.local && h.status === 'error';
       const outdated = !h.local && h.status === 'connected' && (h.version || 0) < PROTOCOL;
-      parts.push(`<li class="host st-${esc(h.status)}">
-        <div class="host-row">
-          <button class="host-main" data-act="${broken ? 'host-fix' : outdated ? 'host-update' : 'host-new'}" data-host="${esc(h.name)}" title="${esc(broken ? 'Fix the connection to ' + h.name : outdated ? h.name + ' runs an older Gecko; click to update it (its tabs keep running)' : 'New tab on ' + h.name)}">
+      parts.push(`<li class="host st-${esc(h.status)}${h.name === next ? ' next' : ''}" data-host="${esc(h.name)}">
+        <div class="host-row" data-drag="host" data-key="${esc(h.name)}">
+          <button class="host-main" data-act="${broken ? 'host-fix' : outdated ? 'host-update' : 'host-new'}" data-host="${esc(h.name)}" title="${esc(broken ? 'Fix the connection to ' + h.name : outdated ? h.name + ' runs an older Gecko; click to update it (its tabs keep running)' : 'New tab on ' + h.name + (h.name === next ? `. New tabs (${prettyCombo(this.keys.first('newTab'))}) open here, on the current tab's machine` : ''))}">
             <i class="hdot"></i><span class="nm">${esc(h.name)}</span><span class="where">${esc(h.local ? 'this machine' : h.status === 'connected' ? h.os || '' : h.status)}</span><span class="plus${outdated ? ' upd' : ''}">${broken ? 'fix' : outdated ? 'update' : '+'}</span>
           </button>
           ${h.local ? '' : `<button class="x" data-act="host-rm" data-host="${esc(h.name)}" aria-label="Remove ${esc(h.name)}" title="Remove ${esc(h.name)}">×</button>`}
@@ -2341,11 +3045,16 @@ class App {
     const act = this.activeId();
     const nums = this.tabNumbers();
     $('#ws-title').textContent = this.ws;
+    // + says where a new tab opens, once there's more than one machine.
+    const next = this.defaultHost();
+    const nt = $('#new-tab');
+    nt.innerHTML = '+' + (this.hosts.length > 1 && next ? `<span class="where">${esc(next)}</span>` : '');
+    nt.title = `New tab on ${next || 'this machine'} (${prettyCombo(this.keys.first('newTab'))})`;
     $('#tabs').innerHTML = tabs.map((t) => {
       const n = nums.get(t.id);
       return `
-      <div class="tab ${t.id === act ? 'cur' : ''} ${t.exited ? 'gone' : ''} ${t.attention ? 'bell' : ''}" data-tab="${esc(t.id)}" role="tab" aria-selected="${t.id === act}" title="${esc(`${tabLabel(t)} - ${t.host}${t.cwd ? ' · ' + t.cwd : ''}${n <= 9 ? ` (${prettyCombo((isMac ? 'cmd+' : 'alt+') + n)})` : ''}`)}">
-        ${numGlyph(t, n)}<span class="nm">${esc(tabLabel(t))}</span>${gitChip(t)}${t.host !== this.hostName ? `<span class="where">${esc(t.host)}</span>` : ''}
+      <div class="tab ${t.id === act ? 'cur' : ''} ${t.exited ? 'gone' : ''} ${t.attention ? 'bell' : ''}" data-tab="${esc(t.id)}" data-drag="tab" data-key="${esc(t.id)}" role="tab" aria-selected="${t.id === act}" title="${esc(`${tabLabel(t)} - ${t.host}${t.cwd ? ' · ' + t.cwd : ''}${n <= 9 ? ` (${prettyCombo((isMac ? 'cmd+' : 'alt+') + n)})` : ''}`)}">
+        ${numGlyph(t, n, true)}<span class="nm">${agentMark(t)}${esc(tabLabel(t))}</span>${t.repo && t.repo !== tabLabel(t) ? `<span class="git"><span class="repo-name">${esc(t.repo)}</span></span>` : ''}${t.host !== this.hostName ? `<span class="where">${esc(t.host)}</span>` : ''}
         <button class="x" data-close="${esc(t.id)}" aria-label="Close tab">×</button>
       </div>`;
     }).join('');
@@ -2361,7 +3070,7 @@ class App {
       this.fitRequest = null;
       requestAnimationFrame(() => this.fitWindow(cols, rows));
     }
-    const hosts = this.hosts.length ? this.hosts : [{ name: this.hostName || 'this machine', local: true, status: 'connected' }];
+    const hosts = this.hosts.length ? this.sortedHosts() : [{ name: this.hostName || 'this machine', local: true, status: 'connected' }];
     const offline = this.conn.status !== 'online';
     el.innerHTML = offline
       ? `<div class="hello"><h1>${this.conn.status === 'unauthorized' ? 'Gecko needs your access link' : 'Connecting to Gecko…'}</h1>
@@ -2389,12 +3098,18 @@ class App {
     dock.innerHTML = agents.map((a) => {
       const s = a.session;
       const where = tabLabel(s) === a.state.name ? s.workspace : tabLabel(s);
-      const replies = a.state.status === 'needs-input'
-        ? `<span class="replies">${['1', '2', '3', 'y', 'n'].map((k) => `<button data-reply="${k}" data-id="${esc(s.id)}">${k}</button>`).join('')}<button data-reply="esc" data-id="${esc(s.id)}" aria-label="Escape">esc</button><button data-reply="enter" data-id="${esc(s.id)}" aria-label="Enter">⏎</button></span>`
-        : '';
+      // Waiting on a question: the answers it offers on screen (read by the
+      // service) and Esc to back out. Otherwise, at its prompt: next steps.
+      const choices = a.state.status === 'needs-input' ? a.state.choices || [] : [];
+      const button = (attrs, label, title) => `<button ${attrs} data-id="${esc(s.id)}" title="${esc(title)}">${label}</button>`;
+      const replies = choices.length
+        ? `<span class="replies">${choices.map((c) => button(`data-reply="${esc(c.key)}"`, `${/^\d$/.test(c.key) ? `<b>${esc(c.key)}</b>` : ''}<span>${esc(c.label)}</span>`, c.label)).join('')}${button('class="esc" data-reply="esc"', 'Esc', 'Cancel (Esc)')}</span>`
+        : a.state.status !== 'working'
+          ? `<span class="replies">${parseQuickReplies(this.settings.quickReplies).map((q) => button(`data-prompt="${esc(q.text)}"`, `<span>${esc(q.label)}</span>`, `Send “${q.text}”`)).join('')}</span>`
+          : '';
       return `<div class="agent s-${esc(a.state.status)} ${s && s.id === act ? 'cur' : ''}" data-agent="${esc(a.key)}" role="button" tabindex="0"
           title="${esc(`${a.state.name} on ${a.host}: ${STATUS_TEXT[a.state.status] || a.state.status}${a.state.detail ? ' - ' + a.state.detail : ''}`)}">
-        <i class="dot s-${esc(a.state.status)}"></i>
+        ${agentMark({ agent: a.state })}
         <span class="who"><b>${esc(a.state.name)}</b> ${esc(where)}${a.host !== this.hostName ? ` <span class="where">${esc(a.host)}</span>` : ''}</span>
         <span class="what">${esc(a.state.detail || STATUS_TEXT[a.state.status] || '')}</span>
         <span class="since">${esc(ago(a.state.since))}</span>
@@ -2449,7 +3164,7 @@ class App {
   updateTitle() {
     const need = this.allAgents().filter((a) => a.state.status === 'needs-input').length;
     const s = this.activeSession();
-    document.title = `${need ? `(${need}) ` : ''}${s ? tabLabel(s) + ' - ' : ''}Gecko`;
+    document.title = `${s ? tabLabel(s) + ' - ' : ''}Gecko`;
     const icon = document.querySelector('link[rel=icon]');
     const want = need ? '/icon-alert.svg' : '/icon.svg';
     if (icon && icon.getAttribute('href') !== want) icon.setAttribute('href', want);

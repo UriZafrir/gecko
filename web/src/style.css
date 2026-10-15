@@ -109,7 +109,7 @@ code { font: 0.92em var(--mono); }
   flex: none; width: 22px; height: 22px; margin-left: auto; border-radius: 5px;
   color: var(--faint); font-size: 16px; line-height: 1; opacity: 0;
 }
-.ws-row .hosts + .x, .ws-row .pill + .x { margin-left: 4px; }
+.ws-row .hosts + .x, .ws-row .agents + .x { margin-left: 4px; }
 .ws-row:hover .x { opacity: 1; }
 .ws-row .x:hover { background: var(--line); color: var(--text); }
 .fold { display: inline-block; width: 18px; color: var(--faint); font-size: 10px; text-align: center; }
@@ -120,9 +120,11 @@ code { font: 0.92em var(--mono); }
 .ws.cur .ws-name { color: var(--accent); }
 .ws.template .ws-name { color: var(--muted); font-weight: 500; padding-left: 26px; }
 .hosts { color: var(--faint); font-size: 12px; font-weight: 400; margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pill { font-size: 11px; font-weight: 700; border-radius: 9px; padding: 0 6px; line-height: 17px; }
-.pill.need { background: var(--need); color: var(--on-accent); }
-.pill.work { color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.agents { display: inline-flex; align-items: center; gap: 2px; font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.agents.need { color: var(--need); }
+.agents.work { color: var(--accent); }
+.agi { width: 13px; height: 13px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; }
+.agi .f { fill: currentColor; stroke: none; }
 
 .ws ul, .hostlist { list-style: none; margin: 0; padding: 0; }
 .tab-row {
@@ -141,21 +143,55 @@ code { font: 0.92em var(--mono); }
 .tab-row.gone { opacity: 0.5; }
 .where { color: var(--faint); font-size: 12px; white-space: nowrap; }
 
-.host-row { display: flex; align-items: center; padding-right: 8px; }
+.host-row { display: flex; align-items: center; padding-right: 8px; border-left: 2px solid transparent; }
 .host-row:hover { background: var(--surface-raise); }
 .host-main {
   display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;
-  padding: 5px 6px 5px 14px; text-align: left;
+  padding: 5px 6px 5px 12px; text-align: left;
 }
 .host .plus { margin-left: auto; color: var(--faint); opacity: 0; font-size: 12px; }
 .host-row:hover .plus { opacity: 1; }
 .st-error .plus { opacity: 1; color: var(--red); }
 .host .plus.upd { opacity: 1; color: var(--accent); }
+/* The machine a new tab opens on (the current tab's). */
+.host.next .host-row { border-left-color: var(--accent); }
+#new-tab:has(.where) { display: flex; align-items: center; width: auto; padding: 0 12px; }
+#new-tab .where { margin-left: 5px; font-size: 12px; }
 .host-row .x {
   width: 22px; height: 22px; border-radius: 5px; color: var(--faint); font-size: 16px; line-height: 1; opacity: 0;
 }
 .host-row:hover .x, .host-row .x:focus-visible { opacity: 1; }
 .host-row .x:hover { background: var(--line); color: var(--text); }
+/* Right-click menu. */
+#ctxmenu {
+  position: fixed; z-index: 60; min-width: 200px; max-width: 320px; padding: 4px;
+  background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.3); font-size: 13px;
+}
+#ctxmenu button { display: flex; align-items: center; gap: 16px; width: 100%; padding: 5px 10px; border-radius: 5px; text-align: left; }
+#ctxmenu button.on { background: var(--raise); }
+#ctxmenu button.danger { color: var(--red); }
+#ctxmenu kbd { margin-left: auto; color: var(--faint); font: 12px var(--ui); background: none; box-shadow: none; padding: 0; }
+#ctxmenu .note { margin: 4px 10px 2px; color: var(--faint); font-size: 12px; }
+#ctxmenu hr { border: 0; border-top: 1px solid var(--line); margin: 4px 6px; }
+
+/* Dragging to reorder. The item's place in the list is an empty slot;
+   a lifted, translucent copy follows the pointer. Where the spot can't be
+   shown in place, a line marks it. */
+body.reordering, body.reordering * { cursor: grabbing !important; }
+.dragging { background: var(--surface-raise) !important; border-color: transparent !important; box-shadow: inset 0 0 0 1px var(--line); border-radius: 6px; }
+.dragging > *, .dragging::before, .dragging::after { visibility: hidden; }
+.drag-ghost {
+  position: fixed; z-index: 40; margin: 0; padding: 0; list-style: none; pointer-events: none;
+  background: var(--raise); border-radius: 6px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.28);
+  opacity: 0.85; transform: scale(1.03);
+}
+.drag-ghost .tab { height: 100%; }
+.drop-before { box-shadow: inset 0 2px 0 var(--accent); }
+.drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
+.tab.drop-before { box-shadow: inset 2px 0 0 var(--accent); }
+.tab.drop-after { box-shadow: inset -2px 0 0 var(--accent); }
+.drop-into { box-shadow: inset 0 0 0 1px var(--accent); }
 .hdot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); flex: none; }
 .st-connected .hdot { background: var(--accent); }
 .st-connecting .hdot { background: var(--need); }
@@ -179,6 +215,35 @@ code { font: 0.92em var(--mono); }
 }
 .cur > .num, .tab.cur .num { color: var(--text); box-shadow: inset 0 0 0 1px var(--faint); }
 .num.s-busy { background: var(--raise); }
+.alogo { width: 13px; height: 13px; margin-right: 5px; vertical-align: -2px; fill: var(--muted); }
+/* Only a working agent moves. Its cycle is also in agentMark (main.js). */
+.alogo.s-working { fill: var(--accent); animation: logo-fade 2s ease-in-out infinite; }
+.alogo.s-needs-input { fill: var(--need); }
+.alogo.s-idle { fill: var(--idle); }
+.agent .alogo { width: 15px; height: 15px; margin: 0; flex: none; }
+@keyframes logo-fade { 50% { opacity: 0.2; } }
+@media (prefers-reduced-motion: reduce) { .alogo.s-working { animation: none; } }
+/* In the sidebar and the tab bar the tab number is a small plain figure
+   (in the sidebar, under the workspace's fold arrow); its color carries
+   the tab's state. */
+#side .tab-row { grid-template-columns: 14px 1fr auto 22px; column-gap: 4px; padding-left: 8px; }
+#side .tab-row .num, #tabs .tab .num {
+  width: auto; height: auto; background: none; box-shadow: none; border-radius: 0;
+  font-size: 10px; color: var(--faint); animation: none;
+  position: relative; top: 1px; /* centered, the small digits would sit above the name's baseline */
+}
+/* Shown only while dragging or holding the go-to-tab modifier (and when
+   it carries a bell). */
+/* In the sidebar a hidden number keeps its column; in the tab bar it
+   takes no room. */
+#side .tab-row .num { opacity: 0; }
+#tabs .tab .num { display: none; }
+body.show-nums #side .tab-row .num, body.reordering #side .tab-row .num, #side .tab-row .num.s-bell { opacity: 1; }
+body.show-nums #tabs .tab .num, body.reordering #tabs .tab .num, #tabs .tab .num.s-bell { display: inline-grid; }
+#side .tab-row .num.s-busy, #tabs .tab .num.s-busy { color: var(--muted); }
+#side .tab-row .num.s-bell, #tabs .tab .num.s-bell { color: var(--need); }
+#side .tab-row.cur .num, #tabs .tab.cur .num { color: var(--text); }
+#tabs .tab { gap: 6px; }
 .num.s-idle { color: var(--idle); box-shadow: inset 0 0 0 1.5px var(--idle); }
 .num.s-bell { color: var(--need); box-shadow: inset 0 0 0 1.5px var(--need); }
 .num.s-needs-input { background: var(--need); color: var(--on-accent); box-shadow: none; }
@@ -251,7 +316,7 @@ body.side-hidden #ws-title {
 .git .br { overflow: hidden; text-overflow: ellipsis; max-width: 120px; }
 .git .repo-name { color: var(--muted); margin-right: 4px; }
 .git b { font-weight: 600; margin-left: 3px; }
-.git .dirty { color: var(--need); }
+.git .dirty { color: var(--muted); } /* orange is for "needs you" */
 .git .untracked { color: var(--muted); }
 .git .ab { color: var(--accent); }
 .tab .x {
@@ -292,9 +357,13 @@ button:disabled { opacity: 0.45; cursor: default; }
   display: flex; align-items: center; gap: 4px; padding: 4px;
   background: var(--panel); border-radius: 8px; box-shadow: 0 0 0 1px var(--line), 0 8px 24px rgb(0 0 0 / 0.25);
 }
-#find input { width: 220px; }
+#find { flex-wrap: wrap; max-width: 380px; }
+#find input { width: 200px; }
 #find.miss input { color: var(--need); }
-#find button { width: 26px; height: 26px; color: var(--muted); }
+#find button { width: 26px; height: 26px; color: var(--muted); border-radius: 5px; }
+#find button:hover { background: var(--raise); color: var(--text); }
+#find .count { min-width: 64px; color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; padding-right: 2px; }
+#find .note { flex-basis: 100%; margin: 2px 6px 4px; color: var(--muted); font-size: 12px; line-height: 1.4; }
 
 input[type=text], input[type=search], textarea {
   font: 14px var(--ui); color: var(--text); background: var(--bg);
@@ -315,7 +384,7 @@ input[type=text], input[type=search], textarea {
   border-top: 1px solid var(--line); background: var(--surface-panel);
 }
 .agent {
-  display: grid; grid-template-columns: 10px auto auto; grid-template-rows: auto auto;
+  display: grid; grid-template-columns: 15px auto auto; grid-template-rows: auto auto;
   column-gap: 8px; align-items: center; flex: none;
   min-width: 190px; max-width: 360px; padding: 7px 14px 7px 12px; cursor: pointer;
   border-right: 1px solid var(--line); border-top: 2px solid transparent;
@@ -326,7 +395,7 @@ input[type=text], input[type=search], textarea {
 .agent.s-working { border-top-color: color-mix(in srgb, var(--accent) 55%, transparent); }
 .agent .who { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }
 .agent .who b { font-weight: 650; }
-.agent .dot { grid-column: 1; grid-row: 1; }
+.agent .dot, .agent .alogo { grid-column: 1; grid-row: 1; }
 .agent .who { grid-column: 2; grid-row: 1; }
 .agent .since { grid-column: 3; grid-row: 1; font-size: 12px; color: var(--faint); justify-self: end; }
 .agent .what {
@@ -334,11 +403,14 @@ input[type=text], input[type=search], textarea {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--mono);
 }
 .agent.s-needs-input .what { color: var(--text); }
-.replies { grid-column: 2 / 4; grid-row: 3; display: flex; gap: 4px; margin-top: 5px; }
+.replies { grid-column: 2 / 4; grid-row: 3; display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
 .replies button {
-  min-width: 26px; height: 24px; padding: 0 6px; border-radius: 5px;
-  font: 12px var(--mono); background: var(--bg); box-shadow: inset 0 0 0 1px var(--line), 0 1px 0 var(--line);
+  display: inline-flex; align-items: center; gap: 5px; min-width: 26px; max-width: 100%; height: 24px; padding: 0 8px; border-radius: 5px;
+  font: 12px var(--ui); background: var(--bg); box-shadow: inset 0 0 0 1px var(--line), 0 1px 0 var(--line);
 }
+.replies button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.replies button b { font: 600 11px var(--mono); color: var(--faint); }
+.replies button.esc { color: var(--muted); }
 .replies button:hover { box-shadow: inset 0 0 0 1px var(--need); color: var(--need); }
 
 /* ------------------------------------------------------------ status line */
@@ -414,6 +486,9 @@ input[type=text], input[type=search], textarea {
   width: min(460px, 100%); background: var(--panel); border-radius: 12px; padding: 18px 20px;
   box-shadow: 0 0 0 1px var(--line), 0 24px 64px rgb(0 0 0 / 0.4);
 }
+.card.quick textarea { width: 100%; margin: 8px 0 12px; font: 13px var(--mono); resize: vertical; }
+.card.quick .row span { flex: 1; }
+.card.quick code { white-space: nowrap; }
 .card p { margin: 0 0 14px; line-height: 1.55; }
 .card h2 { margin: 0 0 10px; font-size: 18px; }
 .card .row { display: flex; justify-content: flex-end; gap: 8px; }
@@ -664,7 +739,7 @@ html.skin-mission button, html.skin-mission input, html.skin-mission textarea,
 html.skin-mission .card, html.skin-mission #palette .box, html.skin-mission #palette li,
 html.skin-mission .num, html.skin-mission .ctag, html.skin-mission .toast, html.skin-mission kbd,
 html.skin-mission .keychip, html.skin-mission #find, html.skin-mission .setup-log,
-html.skin-mission .pill, html.skin-mission .replies button, html.skin-mission #keybar button { border-radius: 0 !important; }
+html.skin-mission .replies button, html.skin-mission #keybar button { border-radius: 0 !important; }
 /* flat: hairlines instead of soft shadows */
 html.skin-mission #palette .box, html.skin-mission .card, html.skin-mission #find { box-shadow: 0 0 0 1px var(--line) !important; }
 html.skin-mission .toast { box-shadow: none; }

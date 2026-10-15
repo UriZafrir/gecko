@@ -8,7 +8,9 @@
   last byte they saw.
 - **Workspaces and tabs.** Group tabs by project. A workspace can span machines.
   Switch from the keyboard, the sidebar, or a fuzzy palette that searches
-  everything.
+  everything. Drag workspaces, tabs and machines to reorder them, or drop a
+  tab on another workspace to move it there. Right-click a tab, workspace,
+  machine or tmux session for what you can do with it.
 - **Aware of what is running.** Shell integration (bash, zsh, fish) reports the
   cwd, the command, and exit codes. Tabs are named after the git repo they're
   in, with the branch, however deep in it you are. The process table shows when a tab is in

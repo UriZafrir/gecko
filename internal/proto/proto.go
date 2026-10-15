@@ -218,8 +218,18 @@ type SessionInfo struct {
 type AgentState struct {
 	Name   string `json:"name"`             // claude, codex, aider, ...
 	Status string `json:"status"`           // working | needs-input | idle
-	Detail string `json:"detail,omitempty"` // most recent meaningful screen line
+	Detail string `json:"detail,omitempty"` // most recent meaningful screen line (the question, when it asks one)
 	Since  int64  `json:"since"`            // unix ms of last status change
+	// The answers an agent waiting for input offers on screen, e.g. a
+	// numbered menu or (y/n); empty when none can be read.
+	Choices []Choice `json:"choices,omitempty"`
+}
+
+// Choice is one answer to an agent's question: the key that picks it
+// ("1", "y", or "enter") and what it says.
+type Choice struct {
+	Key   string `json:"key"`
+	Label string `json:"label"`
 }
 
 // TmuxSession is a tmux session on some host.

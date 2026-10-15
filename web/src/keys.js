@@ -5,7 +5,7 @@ import { isMac } from './util.js';
 
 const MAC = {
   palette: ['cmd+k', 'cmd+shift+p'],
-  toggleSidebar: ['cmd+b'],
+  toggleSidebar: ['cmd+b', 'cmd+`'],
   fullscreen: ['ctrl+cmd+f'],
   newTab: ['cmd+t'],
   closeTab: ['cmd+w'],
@@ -26,7 +26,7 @@ const MAC = {
 
 const OTHER = {
   palette: ['ctrl+k', 'ctrl+shift+k', 'ctrl+shift+p'],
-  toggleSidebar: ['ctrl+shift+b'],
+  toggleSidebar: ['ctrl+shift+b', 'ctrl+`'],
   fullscreen: ['f11'],
   newTab: ['ctrl+t', 'ctrl+shift+t'],
   closeTab: ['ctrl+w', 'ctrl+shift+w'],

@@ -78,7 +78,7 @@ window.__splash = (function () {
     <div id="stage">
       <div id="panes"></div>
       <div id="empty"></div>
-      <div id="find" hidden><input type="search" placeholder="Find" aria-label="Find in terminal"><button data-close aria-label="Close find">×</button></div>
+      <div id="find" hidden><input type="search" placeholder="Find" aria-label="Find in terminal"><span class="count" aria-live="polite"></span><button data-prev aria-label="Previous match" title="Previous match (Shift+Enter)">↑</button><button data-next aria-label="Next match" title="Next match (Enter)">↓</button><button data-close aria-label="Close find">×</button><p class="note" hidden></p></div>
     </div>
     <div id="compose" hidden>
       <textarea rows="1" placeholder="Message for this tab. Enter sends, Shift+Enter for a new line" aria-label="Compose"></textarea>
