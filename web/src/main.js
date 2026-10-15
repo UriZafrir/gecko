@@ -123,11 +123,25 @@ const OUTDATED = 'The Gecko background service is older than this window, so som
 // Next steps offered on an idle agent's card; each sends its text as the
 // agent's next prompt. Editable (setting "quickReplies"), one per line:
 // "Label | text to send", or just the text.
-const QUICK_REPLIES = ['Go | go', 'Commit + push | commit and push', 'Try harder | try harder', 'Dig deeper | dig deeper'];
+// The everyday nudges as typed; the rest short names for full prompts.
+// One line each, since a newline would send early.
+const QUICK_REPLIES = [
+  'Go | go',
+  'Commit + push | commit and push',
+  'Try harder | try harder',
+  'Dig deeper | dig deeper',
+  'Review | Review everything you changed in this session as a strict senior reviewer: correctness bugs, edge cases, error handling, security, performance, and anything left half done. List the findings most severe first with file and line references, then fix the ones that are clearly worth fixing.',
+  'Test | Test what you built end to end, the way a user would, not only with unit tests: run it, try the main paths and the edge cases, and tell me exactly what you ran and what happened. Fix whatever fails and test again.',
+  'Explain | Explain what you just did in plain language for someone new to this code: the problem, your approach, how the pieces fit together, and anything surprising. Keep it short and concrete, with file references.',
+  'Summarize | Summarize this session in well structured Markdown: the goal, what was done and why, the key decisions, the files changed, how it was tested, and open issues or next steps. Save it as SUMMARY.md, convert it to a nicely styled PDF (with pandoc or another tool you have), and tell me where both files are.',
+];
 
 function parseQuickReplies(lines) {
   return (Array.isArray(lines) ? lines : QUICK_REPLIES).map((l) => {
-    const [a, b] = String(l).split('|').map((x) => x.trim());
+    // "Label | text": only the first | separates; the text may have more.
+    l = String(l);
+    const cut = l.indexOf('|');
+    const a = (cut < 0 ? l : l.slice(0, cut)).trim(), b = cut < 0 ? '' : l.slice(cut + 1).trim();
     const text = b || a;
     return text ? { label: b ? a || text : text[0].toUpperCase() + text.slice(1), text } : null;
   }).filter(Boolean).slice(0, 8);
@@ -225,7 +239,7 @@ function agentMark(s) {
   // The working fade keeps time with the clock, so the frequent re-renders
   // of the sidebar and tab bar don't restart it (cycle as in style.css).
   const phase = st === 'working' ? ` style="animation-delay:-${Date.now() % 2000}ms"` : '';
-  return `<svg class="alogo s-${esc(st)}"${phase} viewBox="0 0 24 24" aria-hidden="true"><title>${esc(`${s.agent.name}: ${STATUS_TEXT[st] || st}`)}</title><path d="${AGENT_LOGOS[s.agent.name] || AGENT_PROMPT}"/></svg>`;
+  return `<svg class="alogo s-${esc(st)} a-${esc(s.agent.name)}"${phase} viewBox="0 0 24 24" aria-hidden="true"><title>${esc(`${s.agent.name}: ${STATUS_TEXT[st] || st}`)}</title><path d="${AGENT_LOGOS[s.agent.name] || AGENT_PROMPT}"/></svg>`;
 }
 
 function numGlyph(s, n, plain = false) {
@@ -1532,9 +1546,11 @@ class App {
     $('#dock').addEventListener('click', (ev) => {
       const prompt = ev.target.closest('[data-prompt]');
       if (prompt) {
-        // Typed, then Enter on its own, as if typed by hand.
-        this.conn.input(prompt.dataset.id, prompt.dataset.prompt);
-        setTimeout(() => this.conn.input(prompt.dataset.id, '\r'), 50);
+        // Typed, then Enter on its own, as if typed by hand; a long prompt
+        // gets a moment to land first.
+        const text = prompt.dataset.prompt;
+        this.conn.input(prompt.dataset.id, text);
+        setTimeout(() => this.conn.input(prompt.dataset.id, '\r'), Math.min(400, 50 + text.length));
         return;
       }
       const reply = ev.target.closest('[data-reply]');
@@ -2701,28 +2717,94 @@ class App {
     this.closePalette(v.trim());
   }
 
-  // The quick replies on an idle agent's card, one per line.
+  // The quick replies on an idle agent's card: a button label and the
+  // text it sends, per row; drag the handle to reorder.
   editQuickReplies() {
     const m = $('#modal');
-    const cur = Array.isArray(this.settings.quickReplies) ? this.settings.quickReplies : QUICK_REPLIES;
+    const MAX = 8;
+    let rows = parseQuickReplies(this.settings.quickReplies).map((q) => ({ label: q.label, text: q.text }));
     m.innerHTML = `<div class="card quick" role="dialog" aria-modal="true" aria-labelledby="qr-title">
       <h2 id="qr-title">Quick replies</h2>
-      <p>Offered on an agent's card when it's idle. One per line: <code>Label | text to send</code>, or just the text. Up to 8.</p>
-      <textarea rows="7" spellcheck="false">${esc(cur.join('\n'))}</textarea>
-      <div class="row"><button data-reset>Reset</button><span></span><button data-no>Cancel</button><button class="primary" data-yes>Save</button></div></div>`;
+      <p>Buttons on an idle agent's card. Each one sends its text as the agent's next message.</p>
+      <div class="qr-head" aria-hidden="true"><span></span><span>Button</span><span>Sends</span><span></span></div>
+      <ol class="qr-list"></ol>
+      <button class="qr-add" data-add>+ Add reply</button>
+      <div class="qr-preview" aria-label="Preview"></div>
+      <div class="row"><button data-reset>Reset to defaults</button><span></span><button data-no>Cancel</button><button class="primary" data-yes>Save</button></div></div>`;
     m.hidden = false;
-    const ta = m.querySelector('textarea');
+    const list = m.querySelector('.qr-list');
+    const auto = (t) => (t ? t[0].toUpperCase() + t.slice(1) : '');
+    // The prompt box fits its text (a prompt is one line when sent).
+    const grow = (ta) => { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 2 + 'px'; };
+    const preview = () => {
+      const shown = rows.filter((r) => r.text.trim());
+      m.querySelector('.qr-preview').innerHTML = shown.length
+        ? `<span class="replies">${shown.map((r) => `<button tabindex="-1"><span>${esc(r.label.trim() || auto(r.text.trim()))}</span></button>`).join('')}</span>`
+        : '<em>No quick replies: idle agents get no buttons.</em>';
+      m.querySelector('[data-add]').disabled = rows.length >= MAX;
+    };
+    const draw = (focus) => {
+      list.innerHTML = rows.map((r, i) => `<li data-i="${i}">
+        <span class="grip" title="Drag to reorder" aria-hidden="true">⠿</span>
+        <input type="text" data-f="label" value="${esc(r.label)}" placeholder="${esc(auto(r.text) || 'Label')}" aria-label="Button label ${i + 1}" maxlength="30">
+        <textarea data-f="text" rows="1" placeholder="text to send" aria-label="Text sent ${i + 1}">${esc(r.text)}</textarea>
+        <button class="x" data-del="${i}" aria-label="Remove reply ${i + 1}" title="Remove">×</button></li>`).join('');
+      list.querySelectorAll('textarea').forEach(grow);
+      preview();
+      if (focus != null) list.querySelector(`li[data-i="${focus}"] [data-f="text"]`)?.focus();
+    };
+    list.addEventListener('input', (ev) => {
+      const li = ev.target.closest('li');
+      if (ev.target.tagName === 'TEXTAREA') {
+        if (/\n/.test(ev.target.value)) ev.target.value = ev.target.value.replace(/\s*\n\s*/g, ' ');
+        grow(ev.target);
+      }
+      rows[+li.dataset.i][ev.target.dataset.f] = ev.target.value;
+      if (ev.target.dataset.f === 'text') li.querySelector('[data-f="label"]').placeholder = auto(ev.target.value) || 'Label';
+      preview();
+    });
+    list.addEventListener('click', (ev) => {
+      const del = ev.target.closest('[data-del]');
+      if (del) { rows.splice(+del.dataset.del, 1); draw(); }
+    });
+    // Reorder by dragging a row's handle.
+    let from = null;
+    list.addEventListener('pointerdown', (ev) => { const li = ev.target.closest('.grip')?.closest('li'); if (li) li.draggable = true; });
+    list.addEventListener('dragstart', (ev) => { from = +ev.target.dataset.i; ev.target.classList.add('dragging-row'); ev.dataTransfer.effectAllowed = 'move'; });
+    list.addEventListener('dragover', (ev) => {
+      const li = ev.target.closest('li');
+      if (from == null || !li) return;
+      ev.preventDefault();
+      const to = +li.dataset.i;
+      if (to === from) return;
+      rows.splice(to, 0, rows.splice(from, 1)[0]);
+      from = to;
+      draw();
+      list.querySelector(`li[data-i="${to}"]`).classList.add('dragging-row');
+    });
+    list.addEventListener('dragend', () => { from = null; draw(); });
+    m.querySelector('[data-add]').onclick = () => { if (rows.length < MAX) { rows.push({ label: '', text: '' }); draw(rows.length - 1); } };
+    m.querySelector('[data-reset]').onclick = () => { rows = parseQuickReplies(null).map((q) => ({ label: q.label, text: q.text })); draw(); };
     const done = () => { m.hidden = true; m.innerHTML = ''; this.activePane()?.focus(); };
-    m.querySelector('[data-yes]').onclick = () => {
-      const lines = ta.value.split('\n').map((l) => l.trim()).filter(Boolean);
-      this.setSetting('quickReplies', lines.join('\n') === QUICK_REPLIES.join('\n') ? null : lines);
+    const save = () => {
+      const lines = rows.map((r) => ({ label: r.label.trim(), text: r.text.trim() })).filter((r) => r.text)
+        // Just the text when the label is the automatic one (and the text has no
+        // | that would read as one).
+        .map((r) => (r.label && r.label !== auto(r.text)) || r.text.includes('|') ? `${(r.label || auto(r.text)).replace(/\|/g, '/')} | ${r.text}` : r.text);
+      const defaults = parseQuickReplies(null).map((q) => `${q.label} | ${q.text}`);
+      const same = lines.length === defaults.length && parseQuickReplies(lines).every((q, i) => `${q.label} | ${q.text}` === defaults[i]);
+      this.setSetting('quickReplies', same ? null : lines);
       this.renderDock();
       done();
     };
+    m.querySelector('[data-yes]').onclick = save;
     m.querySelector('[data-no]').onclick = done;
-    m.querySelector('[data-reset]').onclick = () => { ta.value = QUICK_REPLIES.join('\n'); ta.focus(); };
-    m.onkeydown = (ev) => { if (ev.key === 'Escape') done(); };
-    ta.focus();
+    m.onkeydown = (ev) => {
+      if (ev.key === 'Escape') done();
+      if (ev.key === 'Enter' && ev.target.matches('input, textarea')) { ev.preventDefault(); save(); }
+    };
+    draw();
+    (list.querySelector('input[data-f="label"]') || m.querySelector('[data-add]')).focus();
   }
 
   confirm(text, verb) {

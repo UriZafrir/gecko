@@ -46,6 +46,10 @@ html.desktop .tab:hover, html.desktop .tab.cur, html.desktop #dock, html.desktop
 /* macOS desktop app: room for the traffic lights, and drag the window by
    the sidebar header or the empty part of the tab bar. */
 html.desktop-darwin .brand { padding-left: 80px; min-height: 38px; }
+/* Without the sidebar beside it (hidden, or a drawer in a narrow window)
+   the tab bar starts under the traffic lights; start it after them. */
+html.desktop-darwin body.side-hidden #tabbar { padding-left: 78px; }
+@media (max-width: 760px) { html.desktop-darwin #tabbar { padding-left: 78px; } }
 html.desktop-darwin .brand, html.desktop-darwin #tabbar { -webkit-app-region: drag; }
 html.desktop-darwin .brand *, html.desktop-darwin #tabbar button, html.desktop-darwin .tab { -webkit-app-region: no-drag; }
 body {
@@ -220,6 +224,7 @@ body.reordering, body.reordering * { cursor: grabbing !important; }
 .alogo.s-working { fill: var(--accent); animation: logo-fade 2s ease-in-out infinite; }
 .alogo.s-needs-input { fill: var(--need); }
 .alogo.s-idle { fill: var(--idle); }
+.alogo.s-idle.a-claude { fill: #d97757; } /* Claude's own orange */
 .agent .alogo { width: 15px; height: 15px; margin: 0; flex: none; }
 @keyframes logo-fade { 50% { opacity: 0.2; } }
 @media (prefers-reduced-motion: reduce) { .alogo.s-working { animation: none; } }
@@ -486,9 +491,26 @@ input[type=text], input[type=search], textarea {
   width: min(460px, 100%); background: var(--panel); border-radius: 12px; padding: 18px 20px;
   box-shadow: 0 0 0 1px var(--line), 0 24px 64px rgb(0 0 0 / 0.4);
 }
-.card.quick textarea { width: 100%; margin: 8px 0 12px; font: 13px var(--mono); resize: vertical; }
+.card.quick { width: min(680px, 100%); }
 .card.quick .row span { flex: 1; }
-.card.quick code { white-space: nowrap; }
+.qr-head, .qr-list li { display: grid; grid-template-columns: 18px minmax(0, 1fr) minmax(0, 3fr) 26px; gap: 6px; align-items: start; }
+.qr-head { font-size: 12px; color: var(--faint); margin-bottom: 4px; }
+.qr-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.qr-list li { border-radius: 6px; }
+.qr-list li.dragging-row { opacity: 0.5; }
+.qr-list input, .qr-list textarea { width: 100%; min-width: 0; }
+.qr-list textarea { resize: none; overflow: hidden; line-height: 1.4; font: inherit; }
+.qr-list .grip, .qr-list .x { margin-top: 6px; }
+.qr-list { max-height: 52vh; overflow-y: auto; padding-right: 2px; }
+.qr-list .grip { color: var(--faint); cursor: grab; text-align: center; user-select: none; }
+.qr-list .x { width: 26px; height: 26px; border-radius: 5px; color: var(--faint); font-size: 16px; }
+.qr-list .x:hover { background: var(--line); color: var(--text); }
+.qr-add { margin: 8px 0 0 24px; color: var(--accent); font-size: 13px; padding: 4px 6px; border-radius: 5px; }
+.qr-add:hover { background: var(--raise); }
+.qr-add:disabled { color: var(--faint); }
+.qr-preview { margin: 14px 0 16px; padding: 10px 12px; border-radius: 8px; background: var(--surface-raise); min-height: 44px; display: flex; align-items: center; }
+.qr-preview .replies { margin: 0; }
+.qr-preview em { color: var(--faint); font-size: 12px; font-style: normal; }
 .card p { margin: 0 0 14px; line-height: 1.55; }
 .card h2 { margin: 0 0 10px; font-size: 18px; }
 .card .row { display: flex; justify-content: flex-end; gap: 8px; }
