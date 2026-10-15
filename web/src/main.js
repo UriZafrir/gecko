@@ -1168,14 +1168,34 @@ class App {
     this.conn.send({ t: 'patch', id, patch: { name } });
   }
 
-  async moveTab(id = this.activeId()) {
+  // Pick the workspace to move a tab to: the others, filtered as you type,
+  // and "Create workspace …" for a name that isn't one yet.
+  moveTab(id = this.activeId()) {
     const s = this.sessions.get(id);
     if (!s) return;
-    const ws = await this.prompt('Move tab to workspace', '', `Existing: ${this.workspaces().join(', ')}`);
-    if (!ws) return;
-    this.conn.send({ t: 'patch', id, patch: { workspace: ws } });
-    this.activeByWs[ws] = id;
-    this.switchWorkspace(ws);
+    const move = (ws) => {
+      this.conn.send({ t: 'patch', id, patch: { workspace: ws } });
+      this.activeByWs[ws] = id;
+      this.switchWorkspace(ws);
+    };
+    const count = (n) => `${n} ${n === 1 ? 'tab' : 'tabs'}`;
+    this.openPalette('', {
+      placeholder: `Move “${tabLabel(s)}” to a workspace, or type a new name`,
+      items: (q) => {
+        let list = this.workspaces().filter((w) => w !== s.workspace)
+          .map((w) => ({ kind: 'Workspace', label: w, hint: count(this.tabsOf(w).length), run: () => move(w) }));
+        if (q) {
+          list = list.map((i) => ({ i, sc: fuzzy(q, i.label) })).filter((x) => x.sc >= 0)
+            .sort((a, b) => b.sc - a.sc).map((x) => x.i);
+        }
+        if (q && !this.workspaces().includes(q)) {
+          list.push({ kind: 'New', label: `Create workspace “${q}”`, hint: 'and move the tab there', run: () => move(q) });
+        } else if (q === s.workspace) {
+          list.push({ kind: 'Workspace', label: q, hint: 'Already here', run: () => {} });
+        }
+        return list;
+      },
+    });
   }
 
   async newWorkspace() {
