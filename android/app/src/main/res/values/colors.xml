@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="gecko_green">#7CCB3A</color>
+    <color name="gecko_green_dark">#3D8C1C</color>
+    <color name="gecko_bg">#19211A</color>
+    <color name="gecko_panel">#1E2620</color>
+    <color name="gecko_text">#D8E0D2</color>
+    <color name="ic_launcher_background">#19211A</color>
+</resources>
