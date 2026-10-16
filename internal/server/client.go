@@ -37,6 +37,8 @@ type client struct {
 	hub   *hub.Hub
 	conn  proto.Conn
 	scope string
+	local bool   // on the daemon's own socket (the CLI, the Android app), not the web
+	kind  string // what it said it is in hello: web, cli, hub (another Gecko, through a bridge)
 
 	out   chan outMsg
 	done  chan struct{}
@@ -47,9 +49,15 @@ type client struct {
 }
 
 // Serve runs the protocol on conn until it closes.
-func Serve(h *hub.Hub, conn proto.Conn) {
+func Serve(h *hub.Hub, conn proto.Conn) { serve(h, conn, false) }
+
+// ServeLocal is Serve for a client on the daemon's own socket, which only
+// this user can open; a few requests are accepted only there.
+func ServeLocal(h *hub.Hub, conn proto.Conn) { serve(h, conn, true) }
+
+func serve(h *hub.Hub, conn proto.Conn, local bool) {
 	c := &client{hub: h, conn: conn, scope: hub.ScopeAll, out: make(chan outMsg, 8192),
-		done: make(chan struct{}), subs: map[string]func(){}}
+		done: make(chan struct{}), subs: map[string]func(){}, local: local}
 	go c.writer()
 	defer c.close()
 	for {
@@ -170,6 +178,7 @@ func (c *client) handle(m *proto.Msg) {
 	h := c.hub
 	switch m.T {
 	case proto.THello:
+		c.kind = m.Client
 		if m.Scope == hub.ScopeLocal {
 			c.scope = hub.ScopeLocal
 		}
@@ -347,6 +356,22 @@ func (c *client) handle(m *proto.Msg) {
 				log.Printf("upgrade failed: %v", err)
 			}
 		}()
+	case proto.TShare:
+		if !c.local || c.kind == "hub" {
+			c.reply(m, nil, errors.New("sharing can only be changed on the device itself"))
+			return
+		}
+		if h.Share == nil {
+			c.reply(m, nil, errors.New("this Gecko can't share itself with other devices"))
+			return
+		}
+		st, err := h.Share(m.Text, m.Target)
+		if err != nil {
+			c.reply(m, nil, err)
+			return
+		}
+		b, _ := json.Marshal(st)
+		c.reply(m, &proto.Msg{Text: string(b)}, nil)
 	case proto.TOpenWS:
 		ss, err := h.OpenWorkspace(m.Name, m.Cols, m.Rows)
 		c.reply(m, &proto.Msg{Sessions: ss}, err)

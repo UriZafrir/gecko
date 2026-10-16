@@ -110,7 +110,7 @@ func Run(cfg *config.Config, listen string) error {
 			if err != nil {
 				return
 			}
-			go server.Serve(h, proto.NewStreamConn(c, c, c))
+			go server.ServeLocal(h, proto.NewStreamConn(c, c, c))
 		}
 	}
 	go accept(ln)
@@ -141,6 +141,10 @@ func Run(cfg *config.Config, listen string) error {
 
 	// `gecko upgrade`: replace this process with the (new) binary on disk,
 	// keeping every session and both listening sockets.
+	share := &sharer{hub: h}
+	defer share.stop()
+	h.Share = share.set
+
 	h.Upgrade = func() error {
 		if extra != nil {
 			return upgrade(m, h, extra, hl) // the one at the current path

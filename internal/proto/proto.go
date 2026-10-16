@@ -123,6 +123,7 @@ const (
 	TSetSettings = "setsettings" // text = the whole settings object to save (and broadcast)
 	TTmux        = "tmux"        // host, name (action), target, data (arg), id (tab, for switch-client) -> reply
 	TRmHost      = "rmhost"      // name
+	TShare       = "share"       // text: "on", "off" or "" (status), target: address to listen on -> reply{text: JSON ShareState}; local socket only
 	TReset       = "reset"       // push: sub, offset, prefix
 	TExit        = "exit"        // push: sub - session ended, no more data
 	TSession     = "session"     // push: session changed
@@ -130,6 +131,16 @@ const (
 	TState       = "state"       // push: hosts, tmux, templates
 	TSessions    = "sessions"    // push: full session list (on connect/reconnect of a host)
 )
+
+// ShareState is the listener for other devices that the Android app turns
+// on ("Allow other devices"): where it listens and its own token, which is
+// new every time it is turned on.
+type ShareState struct {
+	On     bool     `json:"on"`
+	Listen string   `json:"listen,omitempty"`
+	Token  string   `json:"token,omitempty"`
+	URLs   []string `json:"urls,omitempty"`
+}
 
 // GitStatus is a repository's working-tree state (what a powerline prompt shows).
 type GitStatus struct {

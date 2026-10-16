@@ -48,6 +48,8 @@ Usage:
   gecko ws open <name>       open a workspace template from the config
   gecko host ls|add|rm|install   manage remote machines (ssh)
   gecko daemon [--listen a]  run the daemon in the foreground
+  gecko share [on [addr]|off] [--json]   let other devices on this network open Gecko,
+                             with a link of its own (new each time; off makes it invalid)
   gecko upgrade              restart the daemon with this binary, keeping every session
   gecko stop                 stop the daemon (ends all local sessions)
   gecko service install|uninstall   start the daemon at login (done on first run)
@@ -110,6 +112,8 @@ func main() {
 		err = cmdBridge()
 	case "stop":
 		err = cmdStop()
+	case "share":
+		err = cmdShare(args)
 	case "upgrade", "restart":
 		err = cmdUpgrade(args)
 	case "service":
@@ -750,4 +754,51 @@ func cmdStop() error {
 		return p.Kill()
 	}
 	return p.Signal(os.Interrupt)
+}
+
+// cmdShare turns the listener for other devices on or off (the Android
+// app's "Allow other devices"), or shows it.
+func cmdShare(args []string) error {
+	fs := flag.NewFlagSet("share", flag.ExitOnError)
+	asJSON := fs.Bool("json", false, "print the state as JSON")
+	_ = fs.Parse(args)
+	action, addr := "", ""
+	switch fs.NArg() {
+	case 0:
+	case 1, 2:
+		action = fs.Arg(0)
+		if action != "on" && action != "off" {
+			return fmt.Errorf("usage: gecko share [on [addr]|off]")
+		}
+		addr = fs.Arg(1)
+	default:
+		return fmt.Errorf("usage: gecko share [on [addr]|off]")
+	}
+	c, err := client.Connect(false)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	r, err := c.Call(&proto.Msg{T: proto.TShare, Text: action, Target: addr})
+	if err != nil {
+		return err
+	}
+	if *asJSON {
+		fmt.Println(r.Text)
+		return nil
+	}
+	var st proto.ShareState
+	if err := json.Unmarshal([]byte(r.Text), &st); err != nil {
+		return err
+	}
+	if !st.On {
+		fmt.Println("Not shared with other devices.")
+		return nil
+	}
+	fmt.Printf("Other devices on this network can open Gecko (listening on %s):\n", st.Listen)
+	for _, u := range st.URLs {
+		fmt.Println("  " + u)
+	}
+	fmt.Println("Anyone with the link gets this terminal. `gecko share off` ends it.")
+	return nil
 }
