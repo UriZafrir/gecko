@@ -23,7 +23,8 @@ import (
 //	4: listdir
 //	5: updatehost, settings sync
 //	6: tmux windows and actions
-const Version = 6
+//	7: cloud (account, devices, approvals); host kind, machine id and path
+const Version = 7
 
 // Data frame kinds.
 const (
@@ -66,6 +67,7 @@ type Msg struct {
 	Host    string `json:"host,omitempty"`
 	Version int    `json:"version,omitempty"`
 	OS      string `json:"os,omitempty"`
+	Machine string `json:"machine,omitempty"` // hello reply: this machine's id in its account, if signed in
 
 	// session addressing
 	ID     string `json:"id,omitempty"`
@@ -94,6 +96,7 @@ type Msg struct {
 	Entries   []DirEntry    `json:"entries,omitempty"`
 	Text      string        `json:"text,omitempty"`
 	Prefix    string        `json:"prefix,omitempty"` // terminal modes to replay before data on reset
+	Cloud     *CloudState   `json:"cloud,omitempty"`
 }
 
 // Message types.
@@ -123,6 +126,7 @@ const (
 	TSetSettings = "setsettings" // text = the whole settings object to save (and broadcast)
 	TTmux        = "tmux"        // host, name (action), target, data (arg), id (tab, for switch-client) -> reply
 	TRmHost      = "rmhost"      // name
+	TCloud       = "cloud"       // name (status|approve|deny|revoke|reload|logout), data (code, device) -> reply{cloud}; also a push of {cloud}
 	TReset       = "reset"       // push: sub, offset, prefix
 	TExit        = "exit"        // push: sub - session ended, no more data
 	TSession     = "session"     // push: session changed
@@ -261,6 +265,49 @@ type HostInfo struct {
 	Version int    `json:"version,omitempty"`
 	Error   string `json:"error,omitempty"`
 	OS      string `json:"os,omitempty"`
+	// Kind is how Gecko reaches it: local, ssh or cloud (through the relay).
+	Kind    string `json:"kind,omitempty"`
+	Machine string `json:"machine,omitempty"` // id in the account, when signed in
+	Via     string `json:"via,omitempty"`     // path of the live link: ssh or relay
+	// LastSeen is when the relay last saw it connected (unix ms; cloud).
+	LastSeen int64 `json:"lastSeen,omitempty"`
+}
+
+// CloudState is this machine's account as the interface shows it.
+type CloudState struct {
+	SignedIn    bool           `json:"signedIn"`
+	Account     string         `json:"account,omitempty"`
+	Fingerprint string         `json:"fingerprint,omitempty"`
+	Relay       string         `json:"relay,omitempty"`
+	Self        string         `json:"self,omitempty"`      // this machine's device id
+	Connected   bool           `json:"connected,omitempty"` // to the relay
+	Error       string         `json:"error,omitempty"`
+	Notice      string         `json:"notice,omitempty"` // e.g. this machine was removed from the account
+	Devices     []CloudDevice  `json:"devices,omitempty"`
+	Pending     []CloudPending `json:"pending,omitempty"`
+}
+
+// CloudDevice is a trusted device of the account.
+type CloudDevice struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	OS       string `json:"os,omitempty"`
+	Kind     string `json:"kind"` // machine | recovery
+	Online   bool   `json:"online,omitempty"`
+	LastSeen int64  `json:"lastSeen,omitempty"`
+	IP       string `json:"ip,omitempty"`
+	Added    int64  `json:"added,omitempty"`
+	By       string `json:"by,omitempty"` // name of the device that approved it
+	Self     bool   `json:"self,omitempty"`
+}
+
+// CloudPending is a machine waiting for approval.
+type CloudPending struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	OS      string `json:"os,omitempty"`
+	IP      string `json:"ip,omitempty"`
+	Expires int64  `json:"expires"`
 }
 
 // Workspace is a saved project layout: a set of tabs on a host.

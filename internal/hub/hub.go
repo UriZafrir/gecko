@@ -69,6 +69,9 @@ type Hub struct {
 	stateDue    *time.Timer
 	settingsMod time.Time
 	notified    map[string]bool
+
+	cloud         Cloud
+	cloudMachines []CloudMachine
 }
 
 // New creates a hub around the local session manager.
@@ -96,7 +99,8 @@ func (h *Hub) addRemote(host config.Host) {
 	if host.Name == "" || host.Name == h.name {
 		return
 	}
-	r := NewRemote(host.Name, host.BridgeCommand(), host.SSH, h)
+	r := NewRemote(host.Name, host.SSH, KindSSH, SSHDial(host.Name, host.BridgeCommand()), h)
+	r.machine = host.Machine
 	h.mu.Lock()
 	if old := h.backends[host.Name]; old != nil {
 		old.Close()
@@ -106,6 +110,9 @@ func (h *Hub) addRemote(host config.Host) {
 	h.backends[host.Name] = r
 	h.mu.Unlock()
 	go r.Run()
+	if r.machine != "" {
+		h.reconcileCloud()
+	}
 }
 
 // Subscribe registers fn for pushes (session changes, state). It returns an
@@ -231,6 +238,9 @@ func (h *Hub) State(scope string) *proto.Msg {
 		}
 		info := b.Info()
 		info.Name = name
+		if info.Local {
+			info.Kind, info.Machine = KindLocal, h.MachineID()
+		}
 		m.Hosts = append(m.Hosts, info)
 		tm := b.Tmux()
 		for _, t := range tm {
@@ -432,6 +442,10 @@ func (h *Hub) RemoveHost(name string) error {
 		h.mu.Unlock()
 		return errors.New("unknown host: " + name)
 	}
+	if r, ok := b.(*Remote); ok && r.kind == KindCloud {
+		h.mu.Unlock()
+		return errors.New(name + " is in your account; revoke it to remove it")
+	}
 	delete(h.backends, name)
 	for i, n := range h.order {
 		if n == name {
@@ -498,8 +512,8 @@ func (h *Hub) Children() []int {
 	for _, b := range h.backends {
 		if r, ok := b.(*Remote); ok {
 			r.mu.Lock()
-			if r.cmd != nil && r.cmd.Process != nil {
-				pids = append(pids, r.cmd.Process.Pid)
+			if r.pid != 0 {
+				pids = append(pids, r.pid)
 			}
 			r.mu.Unlock()
 		}
