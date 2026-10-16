@@ -7,7 +7,7 @@ export GOTOOLCHAIN ?= local
 
 PREFIX ?= $(HOME)/.local
 DESKTOP_DIR := $(PREFIX)/share/gecko/desktop
-.PHONY: all web build test dist packages install install-desktop desktop clean dev android android-test
+.PHONY: all web build test dist packages install install-desktop desktop clean dev android android-gecko android-test
 
 all: web build
 
@@ -53,9 +53,18 @@ install-desktop:
 
 # Android app (android/): a debug APK at android/app/build/outputs/apk/debug.
 # Needs JDK 17 and the Android SDK (ANDROID_HOME); see docs/android.md.
-android:
+# The APK carries Gecko itself (the daemon and web UI) for the phone's own
+# terminal, as lib/<abi>/libgecko.so: a static linux build runs on Android.
+android: android-gecko
 	cd android && ./gradlew --no-daemon assembleDebug
 	@ls -l android/app/build/outputs/apk/debug/app-debug.apk
+
+ANDROID_JNI := android/app/src/main/jniLibs
+android-gecko: web
+	@for t in arm64-v8a/arm64 x86_64/amd64; do \
+		abi=$${t%/*}; arch=$${t#*/}; mkdir -p $(ANDROID_JNI)/$$abi; \
+		CGO_ENABLED=0 GOOS=linux GOARCH=$$arch $(GO) build -trimpath -ldflags "$(LDFLAGS)" -o $(ANDROID_JNI)/$$abi/libgecko.so ./cmd/gecko || exit 1; \
+	done
 
 # Its unit tests; `./gradlew connectedDebugAndroidTest` runs the device tests.
 android-test:

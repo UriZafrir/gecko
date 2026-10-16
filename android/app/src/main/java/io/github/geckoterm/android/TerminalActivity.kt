@@ -41,7 +41,7 @@ class TerminalActivity : AppCompatActivity() {
     lateinit var keys: ExtraKeys
         private set
     private lateinit var errorView: View
-    private var machine: Machine? = null
+    @Volatile private var machine: Machine? = null
     private var origin: String? = null
     private var dark = true
 
@@ -157,6 +157,7 @@ class TerminalActivity : AppCompatActivity() {
         val shared = if (intent.action == Intent.ACTION_SEND) intent.getStringExtra(Intent.EXTRA_TEXT) else null
         val wantId = intent.getStringExtra(EXTRA_MACHINE)
         val target = when {
+            wantId == LocalGecko.ID -> localPlaceholder()
             wantId != null -> store.get(wantId)
             shared != null -> machine ?: pickForShare(store, shared).let { return true }
             else -> machine ?: store.recent() ?: store.list().firstOrNull()
@@ -168,8 +169,9 @@ class TerminalActivity : AppCompatActivity() {
             return false
         }
         val switching = machine?.id != target.id
-        machine = target
-        store.touch(target.id)
+        // This phone, already loaded: keep its address and token.
+        if (switching || target.id != LocalGecko.ID) machine = target
+        if (target.id != LocalGecko.ID) store.touch(target.id)
         Gecko.foregroundMachine = target.id
         title = target.name
         if (switching || (fresh && web.url == null)) load()
@@ -209,8 +211,31 @@ class TerminalActivity : AppCompatActivity() {
         whenReady("g.activePane()", "g.activePane().term.paste(${js(text)}); g.activePane().focus()")
     }
 
+    /** This phone before its daemon has told us its address and token. */
+    private fun localPlaceholder() = Machine(id = LocalGecko.ID, name = getString(R.string.this_phone), url = "http://127.0.0.1/", token = "")
+
+    val onThisPhone: Boolean get() = machine?.id == LocalGecko.ID
+
+    /** Starts Gecko on this phone (in its service, so it keeps running), then shows it. */
+    private fun loadLocal() {
+        errorView.visibility = View.GONE
+        PhoneService.start(this)
+        Thread {
+            val ok = LocalGecko.start(this)
+            val m = if (ok) LocalGecko.machine(this) else null
+            runOnUiThread {
+                if (isDestroyed || !onThisPhone) return@runOnUiThread
+                if (m == null) return@runOnUiThread showError(getString(R.string.phone_failed))
+                machine = m
+                origin = LinkParser.origin(m.url)
+                web.loadUrl(LinkParser.withToken(m.url, m.token))
+            }
+        }.start()
+    }
+
     private fun load() {
         val m = machine ?: return
+        if (m.id == LocalGecko.ID) return loadLocal()
         errorView.visibility = View.GONE
         if (m.token.isEmpty()) return showError(getString(R.string.err_no_token))
         val link = try { LinkParser.parse(m.url) } catch (e: LinkException) { return showError(e.message ?: "") }
@@ -267,8 +292,20 @@ class TerminalActivity : AppCompatActivity() {
             menuInflater.inflate(R.menu.terminal, menu)
             menu.findItem(R.id.keep_screen_on).isChecked = p.getBoolean(Gecko.KEEP_SCREEN_ON, false)
             menu.findItem(R.id.background).isChecked = p.getBoolean(Gecko.BACKGROUND, false)
+            if (onThisPhone) {
+                menu.add(0, MENU_ALLOW, 10, R.string.share_toggle).isCheckable = true
+                menu.findItem(MENU_ALLOW).isChecked = ShareUi.allowed(this@TerminalActivity)
+                if (ShareUi.allowed(this@TerminalActivity)) menu.add(0, MENU_LINKS, 11, R.string.share_links_title)
+                menu.add(0, MENU_STOP, 12, R.string.phone_stop_long)
+            }
             setOnMenuItemClickListener { item ->
                 when (item.itemId) {
+                    MENU_ALLOW -> if (item.isChecked) ShareUi.turnOff(this@TerminalActivity) else ShareUi.turnOn(this@TerminalActivity)
+                    MENU_LINKS -> ShareUi.showLinks(this@TerminalActivity)
+                    MENU_STOP -> {
+                        PhoneService.stop(this@TerminalActivity)
+                        leave()
+                    }
                     R.id.keep_screen_on -> {
                         p.edit().putBoolean(Gecko.KEEP_SCREEN_ON, !item.isChecked).apply()
                         applyKeepScreenOn()
@@ -402,6 +439,9 @@ class TerminalActivity : AppCompatActivity() {
         private const val TAG = "Gecko"
         const val EXTRA_MACHINE = "machine"
         const val EXTRA_SESSION = "session"
+        private const val MENU_ALLOW = 101
+        private const val MENU_LINKS = 102
+        private const val MENU_STOP = 103
 
         /** Closes what's open in the web UI (gecko.back in main.js), or says there was nothing. */
         private const val BACK_JS = """(function(){var g=window.gecko;if(!g)return false;

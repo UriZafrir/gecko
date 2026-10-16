@@ -62,6 +62,18 @@ class Bridge(private val activity: TerminalActivity) {
         main.post { activity.keys.setMods(ctrl, alt) }
     }
 
+    /**
+     * "Open on another device" in the web UI. On this phone's own Gecko the
+     * app shows its link and QR code (or offers to allow other devices);
+     * false lets the web UI show its own dialog.
+     */
+    @JavascriptInterface
+    fun shareDevice(): Boolean {
+        if (!trusted() || !activity.onThisPhone) return false
+        main.post { if (ShareUi.allowed(activity)) ShareUi.showLinks(activity) else ShareUi.turnOn(activity) }
+        return true
+    }
+
     @JavascriptInterface
     fun theme(json: String) {
         if (!trusted()) return

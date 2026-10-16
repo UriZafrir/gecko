@@ -31,6 +31,14 @@ android {
     buildFeatures {
         buildConfig = true
     }
+    packaging {
+        // Gecko's daemon ships as lib/<abi>/libgecko.so: native libraries are
+        // the only files Android lets an app execute, and only when they are
+        // extracted on install.
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
     testOptions {
         unitTests.isReturnDefaultValues = true
     }
@@ -60,4 +68,15 @@ dependencies {
     androidTestImplementation(libs.espresso.core)
     androidTestImplementation(libs.espresso.web)
     androidTestImplementation(libs.uiautomator)
+}
+
+// libgecko.so is Gecko itself, cross-compiled by `make android-gecko`.
+val geckoLibs = listOf("arm64-v8a", "x86_64").map { file("src/main/jniLibs/$it/libgecko.so") }
+tasks.named("preBuild") {
+    doFirst {
+        val missing = geckoLibs.filter { !it.exists() }
+        if (missing.isNotEmpty()) {
+            throw GradleException("Gecko for Android is missing (${missing.joinToString()}). Run `make android` (or `make android-gecko`) in the repository root.")
+        }
+    }
 }

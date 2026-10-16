@@ -100,11 +100,24 @@ class ConnectActivity : AppCompatActivity() {
         return true
     }
 
+    /** Whether Gecko runs on this phone right now (checked off the main thread). */
+    private var localRunning = false
+
     private fun render() {
-        val machines = store.list().sortedByDescending { it.lastUsed }
-        empty.visibility = if (machines.isEmpty()) View.VISIBLE else View.GONE
+        val saved = store.list().sortedByDescending { it.lastUsed }
+        val local = LocalGecko.available(this)
+        // This phone comes first; with no computers yet, how to add one follows.
+        val machines = (if (local) listOf(Machine(id = LocalGecko.ID, name = getString(R.string.this_phone), url = "http://127.0.0.1/", token = "")) else emptyList()) + saved
+        empty.visibility = if (saved.isEmpty()) View.VISIBLE else View.GONE
         list.visibility = if (machines.isEmpty()) View.GONE else View.VISIBLE
+        list.layoutParams = (list.layoutParams as android.widget.LinearLayout.LayoutParams).apply {
+            if (saved.isEmpty()) { height = ViewGroup.LayoutParams.WRAP_CONTENT; weight = 0f } else { height = 0; weight = 1f }
+        }
         list.adapter = Adapter(machines)
+        if (local) Thread {
+            val running = LocalGecko.running(this)
+            runOnUiThread { if (running != localRunning) { localRunning = running; list.adapter?.notifyItemChanged(0) } }
+        }.start()
     }
 
     private fun startScan() {
@@ -249,6 +262,44 @@ class ConnectActivity : AppCompatActivity() {
             val name: TextView = v.findViewById(R.id.name)
             val addr: TextView = v.findViewById(R.id.addr)
             val more: ImageButton = v.findViewById(R.id.more)
+            val icon: android.widget.ImageView = v.findViewById(R.id.icon)
+        }
+
+        private fun bindLocal(h: Row) {
+            val a = this@ConnectActivity
+            h.icon.setImageResource(R.drawable.ic_phone)
+            h.name.text = getString(R.string.this_phone)
+            h.addr.text = getString(
+                when {
+                    !localRunning -> R.string.phone_tap_to_start
+                    ShareUi.allowed(a) -> R.string.phone_running_shared
+                    else -> R.string.phone_running
+                },
+            )
+            h.itemView.setOnClickListener {
+                startActivity(Intent(a, TerminalActivity::class.java).putExtra(TerminalActivity.EXTRA_MACHINE, LocalGecko.ID))
+            }
+            h.more.setOnClickListener { anchor ->
+                PopupMenu(a, anchor).apply {
+                    val allowed = ShareUi.allowed(a)
+                    menu.add(0, 1, 0, R.string.share_toggle).apply { isCheckable = true; isChecked = allowed }
+                    if (allowed) menu.add(0, 2, 1, R.string.share_links_title)
+                    if (localRunning) menu.add(0, 3, 2, R.string.phone_stop_long)
+                    setOnMenuItemClickListener {
+                        when (it.itemId) {
+                            1 -> if (allowed) ShareUi.turnOff(a) { render() } else ShareUi.turnOn(a) { render() }
+                            2 -> ShareUi.showLinks(a)
+                            3 -> {
+                                PhoneService.stop(a)
+                                localRunning = false
+                                list.postDelayed({ render() }, 1500)
+                            }
+                        }
+                        true
+                    }
+                    show()
+                }
+            }
         }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
@@ -258,6 +309,8 @@ class ConnectActivity : AppCompatActivity() {
 
         override fun onBindViewHolder(h: Row, i: Int) {
             val m = items[i]
+            if (m.id == LocalGecko.ID) return bindLocal(h)
+            h.icon.setImageResource(R.drawable.ic_machine)
             h.name.text = m.name
             h.addr.text = if (m.token.isEmpty()) getString(R.string.needs_link, m.url) else m.url.removeSuffix("/")
             h.itemView.setOnClickListener {

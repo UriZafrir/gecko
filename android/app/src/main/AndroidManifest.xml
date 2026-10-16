@@ -54,6 +54,15 @@
             android:exported="false" />
 
         <service
+            android:name=".PhoneService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Runs the user's terminal (Gecko's daemon and its shells) on the device while they switch apps, like a terminal emulator. Started by the user, with a Stop action." />
+        </service>
+
+        <service
             android:name=".WatchService"
             android:exported="false"
             android:foregroundServiceType="specialUse">

@@ -2875,6 +2875,8 @@ class App {
   }
 
   async openShare() {
+    // The Android app running Gecko on the phone shows its own link and QR code.
+    try { if (android?.shareDevice?.()) return; } catch {}
     const m = $('#modal');
     let urls = [];
     try {

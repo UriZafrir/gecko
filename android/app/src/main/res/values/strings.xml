@@ -65,4 +65,30 @@
     <string name="background_text">Android stops apps it doesn\'t see on screen. To notify you while Gecko is closed, it keeps a small connection to your machines open and shows a notification that it does.</string>
     <string name="background_yes">Stay connected</string>
     <string name="background_no">Only while open</string>
+
+    <string name="this_phone">This phone</string>
+    <string name="phone_tap_to_start">A terminal on this phone. Tap to start it.</string>
+    <string name="phone_running">Running on this phone</string>
+    <string name="phone_running_shared">Running on this phone, open to other devices</string>
+    <string name="phone_starting">Starting…</string>
+    <string name="phone_failed">Gecko couldn\'t start on this phone. Its log is in the app\'s files (gecko/state/daemon.log).</string>
+    <string name="phone_title">Gecko on this phone</string>
+    <string name="phone_stop">Stop</string>
+    <string name="phone_stop_long">Stop Gecko on this phone</string>
+
+    <string name="share_toggle">Allow other devices</string>
+    <string name="share_title">Allow other devices?</string>
+    <string name="share_warning">Computers and phones on the same Wi-Fi or tailnet can then open this phone\'s terminal with a link that carries its own access token.\n\nAnyone who has the link can run commands here as the Gecko app: read and change its files and use the network. Not other apps\' data, not your photos and documents (Gecko has no storage permission), and nothing that needs root.\n\nGecko only answers private addresses (Wi-Fi, Ethernet, Tailscale), and only with the link. Turn it off when you\'re done: the link stops working, and the next one is new.</string>
+    <string name="share_allow">Allow</string>
+    <string name="share_failed">Couldn\'t open this phone to other devices: %1$s</string>
+    <string name="share_off">Other devices can no longer connect. The old link stopped working.</string>
+    <string name="share_links_title">Link for other devices</string>
+    <string name="share_scan">Open this on your computer, or scan it, on the same network or tailnet. Treat it like a password.</string>
+    <string name="share_no_network">This phone isn\'t on Wi-Fi or Tailscale right now, so other devices can\'t reach it.</string>
+    <string name="share_not_on">Other devices aren\'t allowed. Turn on Allow other devices first.</string>
+    <string name="share_footer">Turn it off when you\'re done; that makes this link useless.</string>
+    <string name="share_turn_off">Turn off</string>
+    <string name="share_copy">Copy link</string>
+    <string name="copied">Copied</string>
+    <string name="done">Done</string>
 </resources>
