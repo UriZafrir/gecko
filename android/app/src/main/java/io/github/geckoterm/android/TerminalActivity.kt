@@ -296,12 +296,14 @@ class TerminalActivity : AppCompatActivity() {
                 menu.add(0, MENU_ALLOW, 10, R.string.share_toggle).isCheckable = true
                 menu.findItem(MENU_ALLOW).isChecked = ShareUi.allowed(this@TerminalActivity)
                 if (ShareUi.allowed(this@TerminalActivity)) menu.add(0, MENU_LINKS, 11, R.string.share_links_title)
-                menu.add(0, MENU_STOP, 12, R.string.phone_stop_long)
+                menu.add(0, MENU_SSH_KEY, 12, R.string.ssh_key_title)
+                menu.add(0, MENU_STOP, 13, R.string.phone_stop_long)
             }
             setOnMenuItemClickListener { item ->
                 when (item.itemId) {
                     MENU_ALLOW -> if (item.isChecked) ShareUi.turnOff(this@TerminalActivity) else ShareUi.turnOn(this@TerminalActivity)
                     MENU_LINKS -> ShareUi.showLinks(this@TerminalActivity)
+                    MENU_SSH_KEY -> SshKeyUi.show(this@TerminalActivity)
                     MENU_STOP -> {
                         PhoneService.stop(this@TerminalActivity)
                         leave()
@@ -442,6 +444,7 @@ class TerminalActivity : AppCompatActivity() {
         private const val MENU_ALLOW = 101
         private const val MENU_LINKS = 102
         private const val MENU_STOP = 103
+        private const val MENU_SSH_KEY = 104
 
         /** Closes what's open in the web UI (gecko.back in main.js), or says there was nothing. */
         private const val BACK_JS = """(function(){var g=window.gecko;if(!g)return false;

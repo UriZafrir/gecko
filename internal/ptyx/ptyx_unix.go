@@ -4,6 +4,7 @@ package ptyx
 
 import (
 	"errors"
+	"github.com/gecko-term/gecko/internal/execx"
 	"os"
 	"os/exec"
 	"sync"
@@ -28,7 +29,11 @@ func Start(opts Options) (Pty, error) {
 	if len(opts.Argv) == 0 {
 		return nil, errors.New("empty argv")
 	}
-	cmd := exec.Command(opts.Argv[0], opts.Argv[1:]...)
+	name := opts.Argv[0]
+	if p, err := execx.LookPath(name); err == nil {
+		name = p // not exec's own lookup: it can crash on Android (see execx.LookPath)
+	}
+	cmd := exec.Command(name, opts.Argv[1:]...)
 	cmd.Dir = opts.Dir
 	cmd.Env = opts.Env
 	ptmx, tty, err := pty.Open()

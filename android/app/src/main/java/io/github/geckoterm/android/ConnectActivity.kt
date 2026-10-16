@@ -88,6 +88,7 @@ class ConnectActivity : AppCompatActivity() {
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
             R.id.scan_image -> pickImage.launch("image/*")
+            R.id.ssh_key -> SshKeyUi.show(this)
             R.id.background -> {
                 if (item.isChecked) WatchService.stop(this)
                 else if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {

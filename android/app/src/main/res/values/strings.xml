@@ -91,4 +91,10 @@
     <string name="share_copy">Copy link</string>
     <string name="copied">Copied</string>
     <string name="done">Done</string>
+
+    <string name="ssh_key_title">SSH key</string>
+    <string name="ssh_key_text">This phone\'s public key. Add it to ~/.ssh/authorized_keys on a machine to log in there without a password, from the terminal on this phone (ssh) and when you add the machine to Gecko. Its private key stays in the app.</string>
+    <string name="ssh_key_failed">Couldn\'t make this phone\'s SSH key: %1$s</string>
+    <string name="share_copy_key">Copy</string>
+    <string name="ssh_key_share">Share</string>
 </resources>

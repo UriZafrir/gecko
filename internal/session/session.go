@@ -7,9 +7,9 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"github.com/gecko-term/gecko/internal/execx"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -211,7 +211,7 @@ func (m *Manager) Create(req proto.CreateReq) (*Session, error) {
 	shell := m.opts.Shell
 	if len(req.Argv) > 0 {
 		argv = append([]string{}, req.Argv...)
-		if p, err := exec.LookPath(argv[0]); err == nil {
+		if p, err := execx.LookPath(argv[0]); err == nil {
 			argv[0] = p
 		}
 		shell = ""

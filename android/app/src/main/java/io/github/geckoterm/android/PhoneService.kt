@@ -29,6 +29,7 @@ class PhoneService : Service() {
         Notifier.channels(this)
         val type = if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0
         ServiceCompat.startForeground(this, NOTE, notification(getString(R.string.phone_starting)), type)
+        watchNetwork()
         Thread {
             val ok = LocalGecko.start(this)
             var shared = false
@@ -48,6 +49,29 @@ class PhoneService : Service() {
             if (!ok) stopSelf()
         }.start()
         return START_STICKY
+    }
+
+    private var netCallback: android.net.ConnectivityManager.NetworkCallback? = null
+
+    /** Keeps the DNS file for ssh current as the phone changes networks. */
+    private fun watchNetwork() {
+        if (netCallback != null) return
+        val cm = getSystemService(android.net.ConnectivityManager::class.java)
+        val cb = object : android.net.ConnectivityManager.NetworkCallback() {
+            override fun onLinkPropertiesChanged(network: android.net.Network, lp: android.net.LinkProperties) = LocalGecko.writeResolvConf(this@PhoneService)
+            override fun onAvailable(network: android.net.Network) = LocalGecko.writeResolvConf(this@PhoneService)
+        }
+        try {
+            cm.registerDefaultNetworkCallback(cb)
+            netCallback = cb
+        } catch (e: Exception) {
+            Log.w(TAG, "network callback: ${e.message}")
+        }
+    }
+
+    override fun onDestroy() {
+        netCallback?.let { runCatching { getSystemService(android.net.ConnectivityManager::class.java).unregisterNetworkCallback(it) } }
+        super.onDestroy()
     }
 
     private fun stopEverything() {

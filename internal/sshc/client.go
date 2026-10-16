@@ -253,6 +253,7 @@ func Session(c *ssh.Client, r *Resolved, o *Options, s *IO) int {
 	outFile, _ := s.Out.(*os.File)
 	stdinTTY := inFile != nil && term.IsTerminal(int(inFile.Fd()))
 	wantTTY := false
+	restore := func() {}
 	switch {
 	case o.TTY < 0 || r.RequestTTY == "no":
 		wantTTY = false
@@ -291,7 +292,8 @@ func Session(c *ssh.Client, r *Resolved, o *Options, s *IO) int {
 			s.errf("PTY allocation request failed\n")
 		} else if stdinTTY {
 			if old, err := term.MakeRaw(int(inFile.Fd())); err == nil {
-				defer term.Restore(int(inFile.Fd()), old)
+				restore = func() { term.Restore(int(inFile.Fd()), old) }
+				defer restore()
 			}
 			stop := watchResize(func() {
 				fd := int(inFile.Fd())
@@ -339,11 +341,8 @@ func Session(c *ssh.Client, r *Resolved, o *Options, s *IO) int {
 	default:
 		code = 255
 	}
+	restore() // before the message, so it ends with a proper newline
 	if wantTTY && !o.Quiet {
-		if stdinTTY && inFile != nil {
-			// the deferred restore runs after this message otherwise
-			s.errf("\r")
-		}
 		s.errf("Connection to %s closed.\n", r.HostName)
 	}
 	return code

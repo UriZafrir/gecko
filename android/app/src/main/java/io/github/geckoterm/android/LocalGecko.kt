@@ -40,15 +40,21 @@ object LocalGecko {
     /** The environment shells get: Android's usual PATH, a home and a temp dir the app owns. */
     fun environment(ctx: Context): Map<String, String> {
         val tmp = File(ctx.cacheDir.canonicalFile, "tmp").apply { mkdirs() }
+        // Android's name for the app's user: u<user>_a<app> (what `id -un` says)
+        val uid = android.os.Process.myUid()
+        val user = "u${uid / 100000}_a${uid % 100000 - 10000}"
         return mapOf(
             "ENV" to rcFile(ctx).path,
+            "USER" to user,
+            "LOGNAME" to user,
+            "GECKO_RESOLV_CONF" to resolvConf(ctx).path,
             "HOME" to home(ctx).path,
             "TMPDIR" to tmp.path,
             "GECKO_HOME" to geckoHome(ctx).path,
             "SHELL" to "/system/bin/sh",
             "TERM" to "xterm-256color",
             "LANG" to "en_US.UTF-8",
-            "PATH" to (System.getenv("PATH")?.takeIf { it.isNotEmpty() }
+            "PATH" to bin(ctx).path + ":" + (System.getenv("PATH")?.takeIf { it.isNotEmpty() }
                 ?: "/product/bin:/apex/com.android.runtime/bin:/apex/com.android.art/bin:/system_ext/bin:/system/bin:/system/xbin:/odm/bin:/vendor/bin:/vendor/xbin"),
         )
     }
@@ -71,9 +77,63 @@ object LocalGecko {
         return f
     }
 
+    /** ssh, ssh-keygen and scp for the shell (and for Gecko's own ssh to other machines): links to gecko, which acts as each. */
+    fun bin(ctx: Context) = File(ctx.filesDir.canonicalFile, "bin")
+
+    private fun linkTools(ctx: Context) {
+        val dir = bin(ctx).apply { mkdirs() }
+        val target = binary(ctx).path
+        for (name in listOf("ssh", "ssh-keygen", "scp", "gecko")) {
+            val link = File(dir, name)
+            try {
+                val current = try { android.system.Os.readlink(link.path) } catch (e: Exception) { null }
+                if (current == target) continue
+                link.delete()
+                android.system.Os.symlink(target, link.path)
+            } catch (e: Exception) {
+                Log.w(TAG, "link $name: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * The phone's DNS servers and search domains, for gecko's ssh (a static
+     * build has no resolver of its own on Android). Rewritten when the
+     * network changes (see PhoneService).
+     */
+    fun resolvConf(ctx: Context) = File(geckoHome(ctx), "resolv.conf")
+
+    fun writeResolvConf(ctx: Context) {
+        try {
+            val cm = ctx.getSystemService(android.net.ConnectivityManager::class.java)
+            val lp = cm.getLinkProperties(cm.activeNetwork) ?: return
+            val sb = StringBuilder("# Written by the Gecko app: this phone's DNS, for ssh\n")
+            for (a in lp.dnsServers) sb.append("nameserver ").append(a.hostAddress?.substringBefore('%')).append('\n')
+            lp.domains?.split(',', ' ')?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() }?.let { sb.append("search ").append(it.joinToString(" ")).append('\n') }
+            geckoHome(ctx).mkdirs()
+            resolvConf(ctx).writeText(sb.toString())
+        } catch (e: Exception) {
+            Log.w(TAG, "resolv.conf: ${e.message}")
+        }
+    }
+
+    /** This phone's SSH public key, made on first use (~/.ssh/id_ed25519). Blocking. */
+    fun sshPublicKey(ctx: Context): String {
+        val key = File(home(ctx), ".ssh/id_ed25519")
+        if (!key.exists()) {
+            val p = command(ctx, "ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "gecko@" + Build.MODEL.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-'), "-f", key.path)
+                .redirectErrorStream(true).start()
+            val out = p.inputStream.bufferedReader().readText()
+            p.waitFor(20, TimeUnit.SECONDS)
+            if (p.exitValue() != 0) throw IllegalStateException(out.trim().ifEmpty { "ssh-keygen failed" })
+        }
+        return File(key.path + ".pub").readText().trim()
+    }
+
     private fun command(ctx: Context, vararg args: String): ProcessBuilder {
         home(ctx).mkdirs()
         geckoHome(ctx).mkdirs()
+        linkTools(ctx)
         val pb = ProcessBuilder(listOf(binary(ctx).path) + args).directory(home(ctx))
         pb.environment().putAll(environment(ctx))
         return pb
@@ -109,6 +169,7 @@ object LocalGecko {
             return false
         }
         File(state(ctx), "web").delete()
+        writeResolvConf(ctx)
         ctx.getExternalFilesDir(null) // /sdcard/Android/data/<app>/files: shared storage the shell may use
         // 7681 like on a computer, so the web UI's saved state (per address)
         // stays; another port if something else has it.

@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -57,7 +56,7 @@ func format(vars ...string) string { return strings.Join(vars, sep) }
 
 // Available reports whether tmux is installed.
 func Available() bool {
-	_, err := exec.LookPath("tmux")
+	_, err := execx.LookPath("tmux")
 	return err == nil
 }
 
