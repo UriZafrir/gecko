@@ -66,6 +66,8 @@ android-gecko: web
 		abi=$${t%/*}; arch=$${t#*/}; mkdir -p $(ANDROID_JNI)/$$abi; \
 		CGO_ENABLED=0 GOOS=linux GOARCH=$$arch $(GO) build -trimpath -ldflags "$(LDFLAGS)" -o $(ANDROID_JNI)/$$abi/libgecko.so ./cmd/gecko || exit 1; \
 	done
+	@# The web UI, which the app serves for every machine (BundledUi.kt).
+	@rm -rf android/app/src/main/assets/web && mkdir -p android/app/src/main/assets && cp -r web/dist android/app/src/main/assets/web && rm -f android/app/src/main/assets/web/.keep
 
 # Its unit tests; `./gradlew connectedDebugAndroidTest` runs the device tests.
 android-test:

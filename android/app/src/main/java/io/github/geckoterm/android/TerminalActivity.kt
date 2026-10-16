@@ -49,6 +49,9 @@ class TerminalActivity : AppCompatActivity() {
     @Volatile var pageTrusted = false
         private set
 
+    /** Gecko's web UI from this APK, served for every machine (see [BundledUi]). */
+    val bundled by lazy { BundledUi(this) }
+
     private var startBackgroundAfterGrant = false
 
     private val askNotifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -98,6 +101,15 @@ class TerminalActivity : AppCompatActivity() {
         }
         web.addJavascriptInterface(Bridge(this), "GeckoAndroid")
         web.webViewClient = Client()
+        // The page on this phone's own Gecko registers a service worker
+        // (a secure context); requests it passes on are served the same way.
+        try {
+            androidx.webkit.ServiceWorkerControllerCompat.getInstance().setServiceWorkerClient(object : androidx.webkit.ServiceWorkerClientCompat() {
+                override fun shouldInterceptRequest(request: WebResourceRequest): WebResourceResponse? = intercept(request)
+            })
+        } catch (e: Exception) {
+            Log.w(TAG, "service worker client: ${e.message}")
+        }
         web.webChromeClient = object : WebChromeClient() {
             override fun onConsoleMessage(m: ConsoleMessage): Boolean {
                 Log.d(TAG, "${m.messageLevel()}: ${m.message()} (${m.sourceId()}:${m.lineNumber()})")
@@ -242,7 +254,8 @@ class TerminalActivity : AppCompatActivity() {
                 if (m == null) return@runOnUiThread showError(getString(R.string.phone_failed))
                 machine = m
                 origin = LinkParser.origin(m.url)
-                web.loadUrl(LinkParser.withToken(m.url, m.token))
+                currentOrigin = origin
+                openPage(m)
             }
         }.start()
     }
@@ -254,15 +267,56 @@ class TerminalActivity : AppCompatActivity() {
         if (m.token.isEmpty()) return showError(getString(R.string.err_no_token))
         val link = try { LinkParser.parse(m.url) } catch (e: LinkException) { return showError(e.message ?: "") }
         origin = LinkParser.origin(m.url)
+        currentOrigin = origin
         Thread {
             // The token must not travel in cleartext outside a private network.
             val ok = link.https || NetPolicy.cleartextAllowedResolving(link.host)
+            // With the bundled UI the page itself never asks the machine
+            // with the token in the link, so check the token here: a wrong
+            // one gets the same screen as before.
+            val refused: Boolean? = if (ok && bundled.available) tokenRefused(m) else false
             runOnUiThread {
                 if (isDestroyed) return@runOnUiThread
-                if (!ok) showError(getString(R.string.err_cleartext, link.host))
-                else web.loadUrl(LinkParser.withToken(m.url, m.token))
+                when {
+                    !ok -> showError(getString(R.string.err_cleartext, link.host))
+                    refused == null -> showError(getString(R.string.err_unreachable, m.name, ""))
+                    refused -> showError(getString(R.string.err_token))
+                    else -> openPage(m)
+                }
             }
         }.start()
+    }
+
+    /** Whether the machine refuses m's token: null when it can't be reached. Blocking. */
+    private fun tokenRefused(m: Machine): Boolean? = try {
+        val client = okhttp3.OkHttpClient.Builder().callTimeout(10, java.util.concurrent.TimeUnit.SECONDS).build()
+        val req = okhttp3.Request.Builder().url(m.url + "api/info").header("Authorization", "Bearer " + m.token).build()
+        client.newCall(req).execute().use { it.code == 401 || it.code == 403 }
+    } catch (e: Exception) {
+        Log.w(TAG, "check token: ${e.message}")
+        null
+    }
+
+    /**
+     * Shows the machine's Gecko. With the bundled UI the token goes in as
+     * the daemon's own cookie (what its ?token= link would set) and the page
+     * loads without it: that link is answered by a redirect, which a web
+     * view doesn't let the app serve, so the machine's own UI would show.
+     */
+    private fun openPage(m: Machine) {
+        if (!bundled.available) return web.loadUrl(LinkParser.withToken(m.url, m.token))
+        val cm = android.webkit.CookieManager.getInstance()
+        cm.setCookie(m.url, "gecko_token=${m.token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=34560000") {
+            cm.flush()
+            if (!isDestroyed) web.loadUrl(m.url)
+        }
+    }
+
+    /** A request from the page: the machine's own UI files come from the APK instead. */
+    private fun intercept(request: WebResourceRequest): WebResourceResponse? {
+        val o = currentOrigin ?: return null
+        if (LinkParser.origin(request.url.toString()) != o) return null
+        return bundled.respond(request.method, request.url)
     }
 
     private fun showError(text: String) {
@@ -313,11 +367,13 @@ class TerminalActivity : AppCompatActivity() {
                 menu.add(0, MENU_SSH_KEY, 12, R.string.ssh_key_title)
                 menu.add(0, MENU_STOP, 13, R.string.phone_stop_long)
             }
+            menu.add(0, MENU_TOUCH, 90, R.string.touch_diagnostics)
             setOnMenuItemClickListener { item ->
                 when (item.itemId) {
                     MENU_ALLOW -> if (item.isChecked) ShareUi.turnOff(this@TerminalActivity) else ShareUi.turnOn(this@TerminalActivity)
                     MENU_LINKS -> ShareUi.showLinks(this@TerminalActivity)
                     MENU_SSH_KEY -> SshKeyUi.show(this@TerminalActivity)
+                    MENU_TOUCH -> showTouchDiagnostics()
                     MENU_STOP -> {
                         PhoneService.stop(this@TerminalActivity)
                         leave()
@@ -334,6 +390,25 @@ class TerminalActivity : AppCompatActivity() {
                 true
             }
             show()
+        }
+    }
+
+    /** What the last gesture on a terminal looked like (gecko.touchReport), and this device's screen and web view. */
+    private fun showTouchDiagnostics() {
+        web.evaluateJavascript("window.gecko&&gecko.touchReport?gecko.touchReport():'The page has no touch report.'") { v ->
+            val page = try { org.json.JSONTokener(v).nextValue() as? String } catch (e: Exception) { null } ?: "The page isn't loaded."
+            @Suppress("DEPRECATION")
+            val hz = windowManager.defaultDisplay.refreshRate
+            val wv = androidx.webkit.WebViewCompat.getCurrentWebViewPackage(this)?.versionName ?: "?"
+            val text = page + "\nDisplay: %.0f Hz; WebView %s; Android %s (%s)".format(hz, wv, Build.VERSION.RELEASE, Build.MODEL)
+            AlertDialog.Builder(this)
+                .setTitle(R.string.touch_diagnostics)
+                .setMessage(text)
+                .setPositiveButton(android.R.string.ok, null)
+                .setNeutralButton(R.string.copy) { _, _ ->
+                    (getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("Gecko", text))
+                }
+                .show()
         }
     }
 
@@ -418,6 +493,8 @@ class TerminalActivity : AppCompatActivity() {
     }
 
     private inner class Client : WebViewClient() {
+        override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? = intercept(request)
+
         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
             val u = request.url
             if (LinkParser.origin(u.toString()) == origin) return false
@@ -459,6 +536,10 @@ class TerminalActivity : AppCompatActivity() {
         private const val MENU_LINKS = 102
         private const val MENU_STOP = 103
         private const val MENU_SSH_KEY = 104
+        private const val MENU_TOUCH = 105
+
+        /** The origin of the machine on show, for requests on web view threads. */
+        @Volatile var currentOrigin: String? = null
 
         /** Closes what's open in the web UI (gecko.back in main.js), or says there was nothing. */
         private const val BACK_JS = """(function(){var g=window.gecko;if(!g)return false;

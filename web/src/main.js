@@ -284,6 +284,8 @@ class App {
     this.exited = new Map(); // id -> info of sessions that failed while shown
     this.closing = new Set(); // ids the user closed
     this.touch = isTouch;
+    // The Android app serves this UI from the APK for every machine.
+    this.bundled = (() => { try { return !!android?.bundled?.(); } catch { return false; } })();
     // Running inside the Gecko desktop app (Electron) rather than a browser.
     this.desktop = window.geckoDesktop || null;
     this.settings = {
@@ -346,7 +348,16 @@ class App {
         // "Restart Gecko" by reloading this window into the new version.
         if (this.restarting && m.text && m.text !== this.startId) location.reload();
         this.startId = m.text;
-        this.outdated = (m.version || 1) < PROTOCOL;
+        this.daemonVersion = m.version || 1;
+        this.outdated = this.daemonVersion < PROTOCOL;
+        // In the Android app this UI comes with the app, whatever Gecko the
+        // machine runs: an older one there is fine (its tabs work, newer
+        // features wait for an update), and restarting it wouldn't help.
+        if (this.outdated && this.bundled) {
+          this.outdated = false;
+          if (!this.olderNoted) this.toast(`Gecko on ${m.host} is an older version: tabs work, and updating it there brings the newest features.`);
+          this.olderNoted = true;
+        }
         if (this.outdated) this.toast(OUTDATED);
         break;
       case 'sessions': {
@@ -3126,6 +3137,25 @@ class App {
   }
 
   // ---------------------------------------------------------------- render
+
+  // ⋮ > Touch diagnostics in the Android app: what the last gesture on a
+  // terminal looked like, to tell what a real phone sends.
+  touchReport() {
+    const t = this.touchStats;
+    const lines = [
+      `UI: ${this.bundled ? 'from the app' : 'from the machine'}, protocol ${PROTOCOL}; Gecko there: ${this.daemonVersion || '?'}`,
+      `Screen: ${innerWidth}x${innerHeight} CSS px at ${devicePixelRatio}x; touch: ${this.touch}`,
+    ];
+    if (!t) lines.push('No gesture yet: scroll, flick or swipe on a terminal, then look again.');
+    else {
+      lines.push(`Last gesture (${t.at}): ${t.kind || 'tap'}`);
+      lines.push(`Samples: ${t.n} over ${Math.round(t.span)} ms, steps ${t.dtMin.toFixed(1)} to ${t.dtMax.toFixed(1)} ms`);
+      lines.push(`Moves: ${t.moves}, taken over by the browser: ${t.late}`);
+      lines.push(`Speed at release: ${t.v} px/ms; fling distance: ${t.fling} px${t.boosted ? ` (boosted from ${t.boosted})` : ''}`);
+      if (t.keys !== undefined) lines.push(`Cursor: ${t.keys} steps dragged, ${t.flingKeys} flung`);
+    }
+    return lines.join('\n');
+  }
 
   toast(text, onClick) {
     const t = document.createElement('div');

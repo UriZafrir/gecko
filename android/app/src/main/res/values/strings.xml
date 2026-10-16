@@ -47,6 +47,8 @@
     <string name="menu_keep_screen_on">Keep screen on</string>
     <string name="menu_background">Notify in background</string>
     <string name="menu_reload">Reload</string>
+    <string name="touch_diagnostics">Touch diagnostics</string>
+    <string name="copy">Copy</string>
 
     <string name="channel_agents">Agents that need you</string>
     <string name="channel_agents_desc">A coding agent in a Gecko tab is waiting for your answer, or finished.</string>

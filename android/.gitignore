@@ -6,3 +6,5 @@ local.properties
 .kotlin/
 # Gecko itself, built by `make android-gecko`
 app/src/main/jniLibs/
+# The web UI, copied from web/dist by `make android-gecko`
+app/src/main/assets/web/

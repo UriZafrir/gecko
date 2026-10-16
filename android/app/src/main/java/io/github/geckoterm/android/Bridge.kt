@@ -74,6 +74,10 @@ class Bridge(private val activity: TerminalActivity) {
         return true
     }
 
+    /** Whether this UI is the one shipped in the app (see BundledUi). */
+    @JavascriptInterface
+    fun bundled(): Boolean = trusted() && activity.bundled.available
+
     @JavascriptInterface
     fun theme(json: String) {
         if (!trusted()) return
