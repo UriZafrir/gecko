@@ -125,3 +125,22 @@ func TestHubGetsStateOnConnect(t *testing.T) {
 		t.Fatalf("got %v, want hello and state", got)
 	}
 }
+
+func TestPing(t *testing.T) {
+	h := hub.New(&config.Config{Name: "test"}, session.NewManager(session.Options{Host: "test", Shell: "/bin/sh", ScriptsDir: t.TempDir()}))
+	a, b := net.Pipe()
+	go Serve(h, proto.NewStreamConn(a, a, a))
+	c := proto.NewStreamConn(b, b, b)
+	defer c.Close()
+	_ = proto.WriteJSON(c, &proto.Msg{T: proto.TPing, Rid: 42})
+	_ = b.SetReadDeadline(time.Now().Add(5 * time.Second))
+	_, raw, err := c.Read()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m proto.Msg
+	_ = json.Unmarshal(raw, &m)
+	if m.T != proto.TReply || m.Rid != 42 || !m.OK || m.Error != "" {
+		t.Fatalf("ping reply: %s", raw)
+	}
+}

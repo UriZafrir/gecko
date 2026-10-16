@@ -188,6 +188,8 @@ func (c *client) handle(m *proto.Msg) {
 			// right away; otherwise it only arrives when something changes.
 			c.send(h.State(c.scope))
 		}
+	case proto.TPing:
+		c.reply(m, nil, nil)
 	case proto.TList:
 		c.reply(m, &proto.Msg{Sessions: h.Sessions(c.scope)}, nil)
 	case proto.TCreate:

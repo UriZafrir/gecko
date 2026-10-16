@@ -40,7 +40,20 @@ type Remote struct {
 	subN     int
 	closed   bool
 	stop     chan struct{}
+
+	rtt     time.Duration // last ping round trip; 0 = unknown
+	rttSent time.Duration // the value last broadcast in host state
+	rttAt   time.Time     // when it was broadcast
 }
+
+// Pinging a link: how often, how long one ping may take, and how long the
+// link may go without any answer before it counts as dead and is redialed
+// (an SSH connection can hang for minutes when the network goes away).
+const (
+	pingEvery   = 2 * time.Second
+	pingTimeout = 5 * time.Second
+	linkDead    = 15 * time.Second
+)
 
 type rsub struct {
 	id     string
@@ -67,6 +80,7 @@ func (r *Remote) Run() {
 			return
 		}
 		r.conn = nil
+		r.rtt, r.rttSent = 0, 0
 		r.status, r.errMsg = "error", err.Error()
 		for rid, ch := range r.pending {
 			close(ch)
@@ -168,6 +182,9 @@ func (r *Remote) serve() error {
 	r.hub.stateChanged()
 
 	go r.resync()
+	done := make(chan struct{})
+	defer close(done)
+	go r.pinger(conn, done)
 	for {
 		bin, b, err := conn.Read()
 		if err != nil {
@@ -182,6 +199,54 @@ func (r *Remote) serve() error {
 			continue
 		}
 		r.onMsg(&m)
+	}
+}
+
+// pinger measures the link's round trip with app-level pings (the same
+// ones browsers send), reports it in host state, and closes a link that
+// stopped answering so Run dials it again.
+func (r *Remote) pinger(conn proto.Conn, done chan struct{}) {
+	t := time.NewTicker(pingEvery)
+	defer t.Stop()
+	last := time.Now()
+	for {
+		select {
+		case <-done:
+			return
+		case <-t.C:
+		}
+		start := time.Now()
+		// Gecko before protocol 7 answers "ping" with an error reply,
+		// which is just as good a pong.
+		_, err := r.requestTimeout(&proto.Msg{T: proto.TPing}, pingTimeout)
+		if err != nil && !errors.Is(err, errRemote) {
+			if time.Since(last) > linkDead {
+				conn.Close()
+				return
+			}
+			continue
+		}
+		last = time.Now()
+		r.setRTT(time.Since(start))
+	}
+}
+
+// setRTT records a measurement and broadcasts host state when it changed
+// enough to matter on screen (every 2 s for every client would be noise).
+func (r *Remote) setRTT(d time.Duration) {
+	r.mu.Lock()
+	r.rtt = d
+	diff := d - r.rttSent
+	if diff < 0 {
+		diff = -diff
+	}
+	changed := r.rttSent == 0 || diff > 5*time.Millisecond && diff > r.rttSent/4 || diff > time.Millisecond && time.Since(r.rttAt) > 30*time.Second
+	if changed {
+		r.rttSent, r.rttAt = d, time.Now()
+	}
+	r.mu.Unlock()
+	if changed {
+		r.hub.stateChanged()
 	}
 }
 
@@ -299,7 +364,20 @@ func (r *Remote) send(m *proto.Msg) error {
 	return proto.WriteJSON(conn, m)
 }
 
+// errRemote wraps an error the remote reported in its reply (as opposed
+// to the link failing or timing out).
+var errRemote = errors.New("remote error")
+
+type remoteErr struct{ msg string }
+
+func (e remoteErr) Error() string        { return e.msg }
+func (e remoteErr) Is(target error) bool { return target == errRemote }
+
 func (r *Remote) request(m *proto.Msg) (*proto.Msg, error) {
+	return r.requestTimeout(m, 20*time.Second)
+}
+
+func (r *Remote) requestTimeout(m *proto.Msg, timeout time.Duration) (*proto.Msg, error) {
 	ch := make(chan *proto.Msg, 1)
 	r.mu.Lock()
 	conn := r.conn
@@ -320,10 +398,10 @@ func (r *Remote) request(m *proto.Msg) (*proto.Msg, error) {
 			return nil, fmt.Errorf("host %s disconnected", r.name)
 		}
 		if reply.Error != "" {
-			return nil, errors.New(reply.Error)
+			return nil, remoteErr{reply.Error}
 		}
 		return reply, nil
-	case <-time.After(20 * time.Second):
+	case <-time.After(timeout):
 		r.mu.Lock()
 		delete(r.pending, m.Rid)
 		r.mu.Unlock()
@@ -334,7 +412,11 @@ func (r *Remote) request(m *proto.Msg) (*proto.Msg, error) {
 func (r *Remote) Info() proto.HostInfo {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return proto.HostInfo{Name: r.name, Target: r.target, Status: r.status, Error: r.errMsg, OS: r.os, Version: r.version}
+	ms := 0
+	if r.rtt > 0 {
+		ms = max(1, int((r.rtt+time.Millisecond/2)/time.Millisecond))
+	}
+	return proto.HostInfo{Name: r.name, Target: r.target, Status: r.status, Error: r.errMsg, OS: r.os, Version: r.version, RTT: ms}
 }
 
 func (r *Remote) Sessions() []proto.SessionInfo {
