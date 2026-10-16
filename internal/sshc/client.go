@@ -65,7 +65,7 @@ func Dial(r *Resolved, s *IO) (*ssh.Client, error) {
 		User:              r.User,
 		Auth:              authMethods(r, s),
 		HostKeyCallback:   hostKey,
-		HostKeyAlgorithms: knownKeyTypes(r.KnownHosts, knownName(r.HostName, r.Port)),
+		HostKeyAlgorithms: hostKeyOrder(knownKeyTypes(r.KnownHosts, knownName(r.HostName, r.Port))),
 		ClientVersion:     "SSH-2.0-OpenSSH_9.6 gecko",
 		Timeout:           time.Duration(r.Timeout) * time.Second,
 	}
@@ -346,4 +346,14 @@ func Session(c *ssh.Client, r *Resolved, o *Options, s *IO) int {
 		s.errf("Connection to %s closed.\n", r.HostName)
 	}
 	return code
+}
+
+// hostKeyOrder: the types known_hosts has for the host, or OpenSSH's
+// preference (ed25519 first), so a new host shows the fingerprint `ssh`
+// on a computer would.
+func hostKeyOrder(known []string) []string {
+	if len(known) > 0 {
+		return known
+	}
+	return []string{ssh.KeyAlgoED25519, ssh.KeyAlgoECDSA256, ssh.KeyAlgoECDSA384, ssh.KeyAlgoECDSA521, ssh.KeyAlgoRSASHA512, ssh.KeyAlgoRSASHA256}
 }

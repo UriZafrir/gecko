@@ -122,6 +122,8 @@ ssh -p 2222 me@10.0.0.5 uptime  # a command, with its exit code
 scp notes.txt me@devbox.lan:    # and back: scp me@devbox.lan:file .
 ```
 
+- Names resolve with the phone's own DNS, search domains included, so
+  Tailscale short names (`ssh me@devbox`) work like on a computer.
 - Logins: keys (`~/.ssh/id_ed25519`, `id_ecdsa`, `id_rsa`, or `-i`;
   passphrase-protected ones ask), keyboard-interactive and password.
 - Host keys: `~/.ssh/known_hosts`, with OpenSSH's questions and wording on
