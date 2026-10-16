@@ -109,6 +109,7 @@ object LocalGecko {
             return false
         }
         File(state(ctx), "web").delete()
+        ctx.getExternalFilesDir(null) // /sdcard/Android/data/<app>/files: shared storage the shell may use
         // 7681 like on a computer, so the web UI's saved state (per address)
         // stays; another port if something else has it.
         val port = if (free(PORT)) PORT else 0
