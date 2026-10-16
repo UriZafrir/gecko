@@ -117,6 +117,10 @@ const SYNCED = ['theme', 'opacity', 'fontSize', 'mobileFontSize', 'copyOnSelect'
 
 // Protocol version this client speaks; see internal/proto.
 const PROTOCOL = 7;
+
+// Round trips that feel slow at the keyboard (ms): echo starts to lag
+// noticeably past ~100 ms and gets hard to type against past ~300 ms.
+const latencyClass = (ms) => (ms == null ? '' : ms >= 300 ? 'bad' : ms >= 100 ? 'slow' : '');
 const WATCH_MIN_COLS = 20, WATCH_MIN_ROWS = 3; // the Digital Watch LCD
 const OUTDATED = 'The Gecko background service is older than this window, so some features are missing. Click to restart it.';
 
@@ -310,6 +314,7 @@ class App {
         if (a) a.sendSize(true);
       },
       onStatus: () => this.renderSoon(),
+      onRTT: () => this.renderNet(),
       onMessage: (m) => this.onMessage(m),
       onData: (sub, off, data) => this.panes.get(sub)?.write(off, data),
     });
@@ -3117,7 +3122,7 @@ class App {
       parts.push(`<li class="host st-${esc(h.status)}${h.name === next ? ' next' : ''}" data-host="${esc(h.name)}">
         <div class="host-row" data-drag="host" data-key="${esc(h.name)}">
           <button class="host-main" data-act="${broken ? 'host-fix' : outdated ? 'host-update' : 'host-new'}" data-host="${esc(h.name)}" title="${esc(broken ? 'Fix the connection to ' + h.name : outdated ? h.name + ' runs an older Gecko; click to update it (its tabs keep running)' : 'New tab on ' + h.name + (h.name === next ? `. New tabs (${prettyCombo(this.keys.first('newTab'))}) open here, on the current tab's machine` : ''))}">
-            <i class="hdot"></i><span class="nm">${esc(h.name)}</span><span class="where">${esc(h.local ? 'this machine' : h.status === 'connected' ? h.os || '' : h.status)}</span><span class="plus${outdated ? ' upd' : ''}">${broken ? 'fix' : outdated ? 'update' : '+'}</span>
+            <i class="hdot"></i><span class="nm">${esc(h.name)}</span><span class="where">${esc(h.local ? 'this machine' : h.status === 'connected' ? h.os || '' : h.status)}</span>${!h.local && h.status === 'connected' && h.rtt ? `<span class="rtt ${latencyClass(h.rtt)}" title="${esc(`Round trip from this Gecko to ${h.name}: ${h.rtt} ms`)}">${h.rtt} ms</span>` : ''}<span class="plus${outdated ? ' upd' : ''}">${broken ? 'fix' : outdated ? 'update' : '+'}</span>
           </button>
           ${h.local ? '' : `<button class="x" data-act="host-rm" data-host="${esc(h.name)}" aria-label="Remove ${esc(h.name)}" title="Remove ${esc(h.name)}">×</button>`}
         </div>
@@ -3259,8 +3264,32 @@ class App {
     const right = [];
     if (s.notice) right.push(`<span class="notice" title="${esc(s.notice)}">${esc(s.notice)}</span>`);
     if (p) right.push(`<span>${p.term.cols}×${p.term.rows}</span>`);
-    right.push(`<span class="conn-dot ${this.conn.status}" title="Connection: ${this.conn.status}"></span>`);
+    right.push(`<span id="sl-net" class="net">${this.netHTML()}</span>`);
     el.innerHTML = `<div class="l">${bits.join('')}</div><div class="r">${right.join('')}</div>`;
+  }
+
+  // The connection in the status line: transport and round trip, or
+  // "reconnecting". Updated in place on every ping (every 2 s).
+  netHTML() {
+    const c = this.conn;
+    const st = c.status;
+    let text, title, cls = '';
+    if (st === 'online') {
+      const quic = c.transport === 'quic';
+      text = `<span class="via">${quic ? 'QUIC' : 'WS'}</span>${c.rtt != null ? `${c.rtt} ms` : ''}`;
+      title = `Connected over ${quic ? 'QUIC (WebTransport, UDP)' : 'a WebSocket (TCP)'}${c.rtt != null ? `. Round trip to the Gecko service: ${c.rtt} ms` : ''}`;
+      cls = latencyClass(c.rtt);
+    } else {
+      text = st === 'unauthorized' ? 'not signed in' : st === 'offline' ? 'reconnecting' : 'connecting';
+      title = st === 'offline' ? 'The connection stopped answering; reconnecting (tabs keep running and pick up where they were)' : '';
+      cls = st === 'unauthorized' ? 'bad' : 'slow';
+    }
+    return `<span class="conn-dot ${st}"></span><span class="ms ${cls}" title="${esc(title)}">${text}</span>`;
+  }
+
+  renderNet() {
+    const el = document.getElementById('sl-net');
+    if (el) el.innerHTML = this.netHTML();
   }
 
   updateTitle() {
