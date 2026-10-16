@@ -34,8 +34,9 @@ class ScrollDemo {
         val intent = Intent(ctx, TerminalActivity::class.java).putExtra(TerminalActivity.EXTRA_MACHINE, m.id)
         ActivityScenario.launch<TerminalActivity>(intent).use { sc ->
             waitFor(sc, "window.gecko&&gecko.conn.status==='online'&&gecko.firstSync===true", 60)
+            val before = js(sc, "gecko.activeId()")
             js(sc, "gecko.newTab()")
-            waitFor(sc, "gecko.activePane()&&gecko.activePane().term.buffer.active.getLine(0).translateToString(true).trim().length>0")
+            waitFor(sc, "gecko.activeId()!==$before&&gecko.activePane()&&gecko.activePane().term.buffer.active.getLine(0).translateToString(true).trim().length>0")
             val id = js(sc, "gecko.activeId()")
             Thread.sleep(1500)
             waitFor(sc, "(gecko.focusSession($id), gecko.activeId()===$id)")

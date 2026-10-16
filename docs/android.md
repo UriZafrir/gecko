@@ -101,6 +101,19 @@ rule itself before it connects (`NetPolicy.kt`).
   Android's back gesture is kept off a 200dp strip in the middle of the left
   edge (the most Android allows), so the swipe works there; the rest of the
   edge still goes back.
+- **One finger sideways moves the cursor**: an arrow key for each character
+  cell the finger moves, and a flick adds more (up to 80), in the shell and
+  in full-screen programs alike. Up and down still scroll; which one a drag
+  is gets decided after its first 10 px.
+- **The app's own web UI on every machine.** The app ships Gecko's web UI
+  and shows it for every machine, so gestures, scrolling and the agent
+  animations work even where the machine runs an older Gecko (its tabs work;
+  newer features that need the machine wait for an update there). See
+  [Security](security.md).
+- **⋮ > Touch diagnostics** shows what the last gesture on a terminal looked
+  like (how many touch samples, their time steps, the speed at release, the
+  fling it made) with the screen's refresh rate and the WebView version, to
+  copy into a bug report.
 - **Back** closes what is open, innermost first: a menu, a dialog, the
   palette, the text view, find, the drawer, compose. With nothing open it goes
   back to the machine list.

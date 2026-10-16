@@ -97,8 +97,9 @@ class GesturesTest {
         val intent = Intent(ctx, TerminalActivity::class.java).putExtra(TerminalActivity.EXTRA_MACHINE, m.id)
         ActivityScenario.launch<TerminalActivity>(intent).use { sc ->
             waitFor(sc, "window.gecko&&gecko.conn.status==='online'&&gecko.firstSync===true", 60)
+            val before = js(sc, "gecko.activeId()")
             js(sc, "gecko.newTab()")
-            waitFor(sc, "gecko.activePane()&&gecko.activePane().term.buffer.active.getLine(0).translateToString(true).trim().length>0")
+            waitFor(sc, "gecko.activeId()!==$before&&gecko.activePane()&&gecko.activePane().term.buffer.active.getLine(0).translateToString(true).trim().length>0")
             val id = js(sc, "gecko.activeId()")
             js(sc, "gecko.sendInput($id, 'seq 1 3000\\r')")
             waitFor(sc, "gecko.panes.get($id).term.buffer.active.baseY>2900")
@@ -151,6 +152,25 @@ class GesturesTest {
             val state = js(sc, "JSON.stringify([gecko.textViewOpen,gecko.paletteOpen,$y,$p.term.buffer.active.baseY,document.activeElement.className])")
             assertTrue("fast fling $fast lines, slow $slow; $state", fast > slow * 3 && slow > 0)
 
+            // A flick the way a finger makes one on a real phone: 120 Hz
+            // events, a slow start of a few px each (inside the touch slop),
+            // then quick. It still flings far (Chrome must not take it over
+            // as a page scroll: that sends moves late and uncancelable).
+            js(sc, "$p.term.scrollToBottom()")
+            Thread.sleep(400)
+            fingerFlick(cx, cy - 300, 700, 10)
+            var last = -1
+            for (i in 0 until 40) {
+                Thread.sleep(400)
+                val now = js(sc, y).toInt()
+                if (now == last) break
+                last = now
+            }
+            val real = base - last
+            val diag = js(sc, "JSON.stringify(gecko.touchStats||null)")
+            android.util.Log.i("GesturesTest", "finger flick: $real lines; $diag")
+            assertTrue("a finger-like flick flings: $real lines; $diag", real > 60)
+
             // Past the top: it stretches, then springs back.
             js(sc, "$p.term.scrollToTop()")
             Thread.sleep(300)
@@ -190,6 +210,108 @@ class GesturesTest {
             val q = js(sc, y).toInt()
             assertTrue("tap a quarter down: line $q of $base", q > base * 0.1 && q < base * 0.4)
         }
+    }
+
+    // A finger flick down by dist px: 120 Hz events stamped with their own
+    // times (not waiting on a slow emulator), starting with small steps
+    // inside the touch slop, then accelerating; lifted while moving.
+    private fun fingerFlick(x: Int, fromY: Int, dist: Int, slowSteps: Int) {
+        val t0 = SystemClock.uptimeMillis()
+        injectAt(MotionEvent.ACTION_DOWN, t0, t0, x, fromY)
+        var t = t0
+        var yy = fromY.toFloat()
+        val path = ArrayList<Float>()
+        repeat(slowSteps) { yy += 3f; path += yy }
+        val fast = 12
+        val start = yy
+        for (i in 1..fast) path += start + (dist - (start - fromY)) * (i * i).toFloat() / (fast * fast)
+        for (py in path) {
+            t += 8
+            while (SystemClock.uptimeMillis() < t) Thread.sleep(1)
+            injectAt(MotionEvent.ACTION_MOVE, t0, t, x, py.toInt())
+        }
+        injectAt(MotionEvent.ACTION_UP, t0, t + 4, x, path.last().toInt())
+    }
+
+    private fun injectAt(action: Int, downTime: Long, at: Long, x: Int, y: Int) {
+        val ev = MotionEvent.obtain(downTime, at, action, x.toFloat(), y.toFloat(), 0)
+        ev.source = InputDevice.SOURCE_TOUCHSCREEN
+        InstrumentationRegistry.getInstrumentation().uiAutomation.injectInputEvent(ev, false)
+        ev.recycle()
+    }
+
+    // One finger sideways moves the cursor: an arrow key per cell, more for a flick.
+    @Test fun swipeMovesTheCursor() {
+        val url = InstrumentationRegistry.getArguments().getString("geckoUrl")
+        assumeTrue("no geckoUrl argument", !url.isNullOrEmpty())
+        val link = LinkParser.parse(url!!)
+        val m = Machine(name = "cursor", url = link.baseUrl, token = link.token!!)
+        Gecko.machines(ctx).save(m)
+        val intent = Intent(ctx, TerminalActivity::class.java).putExtra(TerminalActivity.EXTRA_MACHINE, m.id)
+        ActivityScenario.launch<TerminalActivity>(intent).use { sc ->
+            waitFor(sc, "window.gecko&&gecko.conn.status==='online'&&gecko.firstSync===true", 60)
+            assertEquals("the app's own UI", "true", js(sc, "gecko.bundled"))
+            val before = js(sc, "gecko.activeId()")
+            js(sc, "gecko.newTab()")
+            waitFor(sc, "gecko.activeId()!==$before&&gecko.activePane()&&gecko.activePane().term.buffer.active.getLine(0).translateToString(true).trim().length>0")
+            val id = js(sc, "gecko.activeId()")
+            Thread.sleep(1500)
+            waitFor(sc, "(gecko.focusSession($id), gecko.activeId()===$id)")
+            val p = "gecko.panes.get($id)"
+            js(sc, "gecko.sendInput($id, 'clear\\r')")
+            Thread.sleep(800)
+            js(sc, "gecko.sendInput($id, ': ' + 'abcdefghij'.repeat(2))")
+            waitFor(sc, "$p.term.buffer.active.cursorX>25")
+            js(sc, "document.activeElement.blur()")
+            Thread.sleep(500)
+            val x = "$p.term.buffer.active.cursorX"
+            val web = device.findObject(UiSelector().className("android.webkit.WebView")).bounds
+            val cy = web.centerY()
+            val cw = js(sc, "$p.term._core._renderService.dimensions.css.cell.width*devicePixelRatio").toDouble()
+
+            // A slow drag left by 10 cells: 10 steps left (give or take one).
+            val x0 = js(sc, x).toInt()
+            val t0 = SystemClock.uptimeMillis()
+            inject(MotionEvent.ACTION_DOWN, t0, web.centerX() + 200, cy)
+            val dist = (cw * 10.5 + 26).toInt() // and the slop before it counts
+            for (i in 1..40) { inject(MotionEvent.ACTION_MOVE, t0, web.centerX() + 200 - dist * i / 40, cy); Thread.sleep(25) }
+            Thread.sleep(200)
+            inject(MotionEvent.ACTION_UP, t0, web.centerX() + 200 - dist, cy)
+            Thread.sleep(1000)
+            val x1 = js(sc, x).toInt()
+            assertTrue("dragged from $x0 to $x1", x0 - x1 in 9..12)
+
+            // A drag right brings it back.
+            device.swipe(web.centerX() - 200, cy, web.centerX() - 200 + dist, cy, 80)
+            Thread.sleep(1000)
+            val x2 = js(sc, x).toInt()
+            assertTrue("back from $x1 to $x2", x2 - x1 in 8..13)
+
+            // A flick left goes further than the drag (capped).
+            sideFlick(web.centerX() + 250, cy, -400)
+            Thread.sleep(2000)
+            val x3 = js(sc, x).toInt()
+            val stats = js(sc, "JSON.stringify(gecko.touchStats)")
+            assertTrue("flicked from $x2 to $x3; $stats", x2 - x3 > 15)
+            assertTrue("stats name the gesture: $stats", stats.contains("cursor"))
+            // Vertical still scrolls (not a cursor move).
+            val x4 = js(sc, x).toInt()
+            device.swipe(web.centerX(), cy - 200, web.centerX(), cy + 200, 40)
+            Thread.sleep(1000)
+            assertEquals("a vertical drag leaves the cursor", x4, js(sc, x).toInt())
+        }
+    }
+
+    private fun sideFlick(fromX: Int, y: Int, dx: Int) {
+        val t0 = SystemClock.uptimeMillis()
+        injectAt(MotionEvent.ACTION_DOWN, t0, t0, fromX, y)
+        var t = t0
+        for (i in 1..8) {
+            t += 8
+            while (SystemClock.uptimeMillis() < t) Thread.sleep(1)
+            injectAt(MotionEvent.ACTION_MOVE, t0, t, fromX + dx * i / 8, y)
+        }
+        injectAt(MotionEvent.ACTION_UP, t0, t + 4, fromX + dx, y)
     }
 
     private fun dragTo(x: Int, fromY: Int, toY: Int) {
