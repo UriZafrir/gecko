@@ -83,8 +83,8 @@ class ExtraKeys @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = n
             isFocusableInTouchMode = false
             typeface = if (k.label.length > 1 && k.label[0].isLetter()) Typeface.DEFAULT else Typeface.MONOSPACE
             setTextSize(TypedValue.COMPLEX_UNIT_SP, if (k.label.length > 2) 13f else 16f)
-            minWidth = dp(if (k.wide) 52 else 40)
-            setPadding(dp(8), 0, dp(8), 0)
+            minWidth = dp(if (k.wide) 46 else 38)
+            setPadding(dp(6), 0, dp(6), 0)
             tag = k.name
         }
         v.layoutParams = LayoutParams(LayoutParams.WRAP_CONTENT, dp(38)).apply { marginEnd = dp(4) }

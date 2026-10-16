@@ -7,7 +7,7 @@ export GOTOOLCHAIN ?= local
 
 PREFIX ?= $(HOME)/.local
 DESKTOP_DIR := $(PREFIX)/share/gecko/desktop
-.PHONY: all web build test dist packages install install-desktop desktop clean dev
+.PHONY: all web build test dist packages install install-desktop desktop clean dev android android-test
 
 all: web build
 
@@ -50,6 +50,16 @@ install-desktop:
 	@# GNOME reads icons through this cache; a stale one hides new or changed icons.
 	@if [ -f $(PREFIX)/share/icons/hicolor/icon-theme.cache ] || command -v gtk-update-icon-cache >/dev/null; then \
 		gtk-update-icon-cache -f -t -q $(PREFIX)/share/icons/hicolor 2>/dev/null || true; fi
+
+# Android app (android/): a debug APK at android/app/build/outputs/apk/debug.
+# Needs JDK 17 and the Android SDK (ANDROID_HOME); see docs/android.md.
+android:
+	cd android && ./gradlew --no-daemon assembleDebug
+	@ls -l android/app/build/outputs/apk/debug/app-debug.apk
+
+# Its unit tests; `./gradlew connectedDebugAndroidTest` runs the device tests.
+android-test:
+	cd android && ./gradlew --no-daemon testDebugUnitTest
 
 # Native desktop app (Electron): see-through window with blur on macOS and
 # Windows. `gecko open` uses it automatically once installed.

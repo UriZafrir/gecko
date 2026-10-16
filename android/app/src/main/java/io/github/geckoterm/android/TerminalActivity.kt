@@ -156,7 +156,7 @@ class TerminalActivity : AppCompatActivity() {
         val target = when {
             wantId != null -> store.get(wantId)
             shared != null -> machine ?: pickForShare(store, shared).let { return true }
-            else -> machine
+            else -> machine ?: store.recent() ?: store.list().firstOrNull()
         }
         if (target == null) {
             Toast.makeText(this, R.string.no_machine, Toast.LENGTH_LONG).show()

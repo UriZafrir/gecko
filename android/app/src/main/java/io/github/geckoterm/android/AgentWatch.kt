@@ -3,7 +3,14 @@ package io.github.geckoterm.android
 import org.json.JSONObject
 
 /** Something worth a notification: an agent waiting for you, or done. */
-data class AgentEvent(val sessionId: String, val title: String, val body: String, val needsInput: Boolean)
+data class AgentEvent(
+    val sessionId: String,
+    val title: String,
+    val body: String,
+    val needsInput: Boolean,
+    /** The answers on screen: key to press ("1", "y", "enter") and what it says. */
+    val choices: List<Pair<String, String>> = emptyList(),
+)
 
 /**
  * Follows Gecko's session list (the "sessions", "session" and "closed"
@@ -65,7 +72,15 @@ class AgentWatch {
         if (now != "needs-input" && !finished) return emptyList()
         val name = agent.optString("name").ifEmpty { "agent" }
         val title = "$name ${if (finished) "finished" else "needs you"} · ${tabLabel(s)}"
-        return listOf(AgentEvent(id, title, agent.optString("detail"), !finished))
+        val choices = ArrayList<Pair<String, String>>()
+        agent.optJSONArray("choices")?.let { arr ->
+            for (i in 0 until arr.length()) {
+                val c = arr.optJSONObject(i) ?: continue
+                val key = c.optString("key")
+                if (key.isNotEmpty()) choices += key to c.optString("label").ifEmpty { key }
+            }
+        }
+        return listOf(AgentEvent(id, title, agent.optString("detail"), !finished, if (finished) emptyList() else choices))
     }
 
     companion object {

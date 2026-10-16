@@ -7,7 +7,7 @@
     </style>
 
     <!-- The web UI paints itself; dark until its theme arrives. -->
-    <style name="Theme.Gecko.Terminal" parent="Theme.Material3.Dark.NoActionBar">
+    <style name="Theme.Gecko.Terminal" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/gecko_green</item>
         <item name="colorOnPrimary">@color/gecko_bg</item>
         <item name="android:windowBackground">@color/gecko_bg</item>

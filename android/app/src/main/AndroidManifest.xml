@@ -49,6 +49,10 @@
             android:screenOrientation="fullSensor"
             tools:replace="screenOrientation" />
 
+        <receiver
+            android:name=".AnswerReceiver"
+            android:exported="false" />
+
         <service
             android:name=".WatchService"
             android:exported="false"

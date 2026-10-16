@@ -16,7 +16,8 @@ import androidx.core.content.ContextCompat
 object Notifier {
     const val AGENTS = "agents"
     const val SERVICE = "service"
-    private val recent = HashMap<String, Pair<String, Long>>()
+    private data class Posted(val title: String, val at: Long, val answers: Boolean)
+    private val recent = HashMap<String, Posted>()
 
     fun channels(ctx: Context) {
         if (Build.VERSION.SDK_INT < 26) return
@@ -38,14 +39,15 @@ object Notifier {
     private fun id(machineId: String, sessionId: String) = key(machineId, sessionId).hashCode()
 
     /** Posts (or replaces) the notification for one tab. The web view and the background connection can both report the same moment; once is enough. */
-    fun agent(ctx: Context, machine: Machine, sessionId: String, title: String, body: String) {
+    fun agent(ctx: Context, machine: Machine, sessionId: String, title: String, body: String, choices: List<Pair<String, String>> = emptyList()) {
         if (!allowed(ctx)) return
         val k = key(machine.id, sessionId)
         val now = System.currentTimeMillis()
         synchronized(recent) {
             val last = recent[k]
-            if (last != null && last.first == title && now - last.second < 20_000) return
-            recent[k] = title to now
+            // The same moment again, unless this time it comes with answer buttons.
+            if (last != null && last.title == title && now - last.at < 20_000 && (last.answers || choices.isEmpty())) return
+            recent[k] = Posted(title, now, choices.isNotEmpty())
         }
         val open = Intent(ctx, TerminalActivity::class.java)
             .setAction("open:$k")
@@ -64,9 +66,20 @@ object Notifier {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .setContentIntent(pi)
-            .build()
+            .setGroup(AGENTS)
+        // Answer from the notification: up to three of the choices on screen.
+        for ((i, c) in choices.take(3).withIndex()) {
+            val answer = Intent(ctx, AnswerReceiver::class.java)
+                .setAction("answer:$k:${c.first}")
+                .putExtra(TerminalActivity.EXTRA_MACHINE, machine.id)
+                .putExtra(TerminalActivity.EXTRA_SESSION, sessionId)
+                .putExtra(AnswerReceiver.EXTRA_KEY, c.first)
+            val api = PendingIntent.getBroadcast(ctx, (k + i).hashCode(), answer, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            n.addAction(0, c.second.take(24), api)
+        }
+        val built = n.build()
         try {
-            NotificationManagerCompat.from(ctx).notify(id(machine.id, sessionId), n)
+            NotificationManagerCompat.from(ctx).notify(id(machine.id, sessionId), built)
         } catch (e: SecurityException) {
             // Permission taken away meanwhile.
         }

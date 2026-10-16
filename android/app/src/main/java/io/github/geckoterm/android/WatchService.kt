@@ -66,7 +66,7 @@ class WatchService : Service() {
     }
 
     private fun status(n: Int): android.app.Notification {
-        val open = PendingIntent.getActivity(this, 0, Intent(this, ConnectActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
+        val open = PendingIntent.getActivity(this, 0, Intent(this, TerminalActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
         val stop = PendingIntent.getService(this, 1, Intent(this, WatchService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE)
         return NotificationCompat.Builder(this, Notifier.SERVICE)
             .setSmallIcon(R.drawable.ic_notify)
@@ -76,6 +76,7 @@ class WatchService : Service() {
             .setContentIntent(open)
             .addAction(0, getString(R.string.service_stop), stop)
             .setPriority(NotificationCompat.PRIORITY_MIN)
+            .setGroup(Notifier.SERVICE)
             .build()
     }
 
@@ -126,7 +127,7 @@ class WatchService : Service() {
                     for (id in gone) Notifier.cancel(this@WatchService, machine.id, id)
                     // The app in front, on this machine: the web UI shows it itself.
                     if (Gecko.foregroundMachine == machine.id) return@post
-                    for (e in events) Notifier.agent(this@WatchService, machine, e.sessionId, e.title, e.body)
+                    for (e in events) Notifier.agent(this@WatchService, machine, e.sessionId, e.title, e.body, e.choices)
                 }
             }
 
