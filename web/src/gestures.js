@@ -150,6 +150,47 @@ export function lines(px, lineHeight) {
   return { n, rest: px - n * lineHeight };
 }
 
+// Add a touch sample (time t in ms, position) for velocity(): times only
+// go forward, and a sample at the same time as the last replaces it (some
+// devices report coalesced moves with one time stamp), so a zero time step
+// never skews the speed. Keeps the last max samples.
+export function addSample(samples, t, x, y, max = 30) {
+  const last = samples[samples.length - 1];
+  if (last && t <= last.t) {
+    if (t < last.t - 1000) samples.length = 0; // a clock jump: start over
+    else { last.x = x; last.y = y; return samples; }
+  }
+  samples.push({ t, x, y });
+  if (samples.length > max) samples.shift();
+  return samples;
+}
+
+// What a gesture's samples look like, for the touch diagnostics: how many,
+// the smallest and largest time step between them (ms) and their span.
+export function sampleStats(samples) {
+  let lo = Infinity, hi = 0;
+  for (let i = 1; i < samples.length; i++) {
+    const dt = samples[i].t - samples[i - 1].t;
+    lo = Math.min(lo, dt);
+    hi = Math.max(hi, dt);
+  }
+  const span = samples.length > 1 ? samples[samples.length - 1].t - samples[0].t : 0;
+  return { n: samples.length, dtMin: lo === Infinity ? 0 : lo, dtMax: hi, span };
+}
+
+// A sideways drag moves the cursor: one arrow key per character cell the
+// finger moved (the rest carries over, like lines()).
+export const cells = lines;
+
+// The extra arrow keys a sideways flick at v (px/ms) adds, as far as it
+// would coast, at most cap of them.
+export const MAX_CURSOR_FLING = 80;
+export function cursorFling(v, cellWidth, cap = MAX_CURSOR_FLING) {
+  if (!(cellWidth > 0)) return 0;
+  const n = Math.round(Math.abs(flingDistance(v)) / cellWidth);
+  return Math.sign(v) * Math.min(cap, n);
+}
+
 export function distance(a, b) {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }

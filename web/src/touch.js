@@ -9,13 +9,19 @@
 //   - two fingers sideways, or a swipe on the tab bar, change tabs;
 //   - a swipe in from the left edge opens the workspaces drawer, a swipe
 //     left on it closes it;
+//   - one finger sideways moves the cursor (arrow keys, one per character
+//     cell; a flick adds more);
 //   - a tap focuses the terminal (keyboard up), a long-press opens the
 //     selectable text view.
+// Every one-finger move on a terminal is ours from the first pixel (and
+// touch-action: none in style.css): if the browser got one first it would
+// take the drag over as a page scroll, and the moves it still sent would
+// come late and couldn't be stopped, which kills flings on real phones.
 // The math is in gestures.js.
 import {
   SLOP, classify, velocity, STOP, lines, distance, midpoint, pinchFont, twoFinger, swipeDone,
-  MIN_FLING, flingTau, flingStep, boost, place, stretch, squeeze, spring, springDone, absorb,
-  thumbSize, thumbTop, thumbLine,
+  MIN_FLING, flingTau, flingStep, flingDistance, boost, place, stretch, squeeze, spring, springDone, absorb,
+  thumbSize, thumbTop, thumbLine, addSample, sampleStats, cells, cursorFling,
 } from './gestures.js';
 
 const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -55,6 +61,15 @@ function wheeler(p) {
 }
 
 const wheelMode = (t) => t.buffer.active.type !== 'normal' || t.modes.mouseTrackingMode !== 'none';
+
+function cellWidth(p) {
+  const w = p.term._core?._renderService?.dimensions?.css?.cell?.width;
+  return w > 0 ? w : p.el.clientWidth / Math.max(1, p.term.cols);
+}
+
+// The arrow key for one cursor step (dir > 0: right), as the terminal's
+// cursor key mode wants it.
+const arrow = (t, dir) => (t.modes.applicationCursorKeysMode ? '\x1bO' : '\x1b[') + (dir > 0 ? 'C' : 'D');
 
 function cellHeight(p) {
   const h = p.term._core?._renderService?.dimensions?.css?.cell?.height;
@@ -269,6 +284,18 @@ export function attachPane(app, p) {
   let wheelVel = 0;
   let longPress = 0;
   const stopCoast = () => { cancelAnimationFrame(coast); coast = 0; wheelVel = 0; };
+  const keys = (n) => {
+    if (!n) return;
+    app.conn.input(p.id, arrow(p.term, n).repeat(Math.abs(n)));
+  };
+  // What the last gesture looked like (⋮ > Touch diagnostics).
+  const note = (g, v, extra = {}) => {
+    app.touchStats = {
+      kind: g.kind, ...sampleStats(g.samples), moves: g.moves, late: g.late,
+      v: +v.toFixed(3), fling: Math.round(flingDistance(v)), ...extra,
+      at: new Date().toLocaleTimeString(),
+    };
+  };
   const end = () => {
     clearTimeout(longPress);
     g = null;
@@ -293,7 +320,7 @@ export function attachPane(app, p) {
         return claim(ev);
       }
       if (spot === 'edge') sv.show(); // a touch near the edge brings the thumb up
-      g = { kind: '', start: at, last: at, acc: 0, flingV, stopped: wasMoving, samples: [{ t: ev.timeStamp, ...at }] };
+      g = { kind: '', start: at, last: at, acc: 0, flingV, stopped: wasMoving, moves: 0, late: 0, samples: addSample([], ev.timeStamp, at.x, at.y) };
       if (!wasMoving) {
         longPress = setTimeout(() => {
           if (g && g.kind === '') {
@@ -341,18 +368,30 @@ export function attachPane(app, p) {
     }
     if (g.kind === 'done') return claim(ev);
     const at = point(ev.touches[0]);
+    g.moves++;
+    if (!ev.cancelable) g.late++; // the browser had taken it over
     if (g.kind === '') {
+      addSample(g.samples, ev.timeStamp, at.x, at.y);
       const c = classify(at.x - g.start.x, at.y - g.start.y, SLOP);
-      if (!c) return;
+      if (!c) return claim(ev); // not decided yet, but ours already
       clearTimeout(longPress);
-      g.kind = c !== 'v' ? 'done' : wheelMode(p.term) ? 'wheel' : 'scroll';
+      g.kind = c === 'h' ? 'cursor' : wheelMode(p.term) ? 'wheel' : 'scroll';
       g.last = at; // start counting from here: no jump by the slop
+    }
+    if (g.kind === 'cursor') {
+      g.acc += at.x - g.last.x;
+      g.last = at;
+      addSample(g.samples, ev.timeStamp, at.x, at.y);
+      const { n, rest } = cells(g.acc, cellWidth(p));
+      g.acc = rest;
+      g.keys = (g.keys || 0) + n;
+      keys(n);
+      return claim(ev);
     }
     if (g.kind === 'scroll' || g.kind === 'wheel') {
       const dy = at.y - g.last.y;
       g.last = at;
-      g.samples.push({ t: ev.timeStamp, ...at });
-      if (g.samples.length > 30) g.samples.shift();
+      addSample(g.samples, ev.timeStamp, at.x, at.y);
       if (g.kind === 'scroll') {
         sv.move(dy); // by the pixel: the content stays under the finger
       } else {
@@ -388,8 +427,36 @@ export function attachPane(app, p) {
       end();
       return claim(ev);
     }
+    if (g.kind === 'cursor') {
+      const v = velocity(g.samples, 'x', 100, ev.timeStamp);
+      const extra = reduceMotion() ? 0 : cursorFling(v, cellWidth(p));
+      note(g, v, { keys: g.keys || 0, flingKeys: extra });
+      end();
+      if (extra) {
+        // The flick's extra steps, sent as it would coast.
+        const tau = flingTau(v), cw = cellWidth(p);
+        let vel = v, acc = 0, left = Math.abs(extra);
+        let t0 = performance.now();
+        const step = (now) => {
+          const dt = Math.min(48, now - t0);
+          t0 = now;
+          const s = flingStep(vel, dt, tau);
+          vel = s.v;
+          acc += s.dx;
+          let { n, rest } = cells(acc, cw);
+          acc = rest;
+          n = Math.sign(n) * Math.min(Math.abs(n), left);
+          left -= Math.abs(n);
+          keys(n);
+          coast = left > 0 && Math.abs(vel) >= STOP ? requestAnimationFrame(step) : 0;
+        };
+        coast = requestAnimationFrame(step);
+      }
+      return claim(ev);
+    }
     if (g.kind === 'scroll' || g.kind === 'wheel') {
       const v = boost(g.flingV, velocity(g.samples, 'y', 100, ev.timeStamp));
+      note(g, v, { boosted: g.flingV ? +g.flingV.toFixed(3) : 0 });
       const kind = g.kind, at = g.last;
       let acc = g.acc;
       end();
@@ -419,6 +486,7 @@ export function attachPane(app, p) {
       }
       return claim(ev);
     }
+    if (g.kind === '' && g.moves) note(g, 0);
     const tapped = g.kind === '' && !g.stopped;
     end();
     // A tap: xterm focuses itself (keyboard up), as it always has. A tap

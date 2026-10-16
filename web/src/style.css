@@ -357,7 +357,7 @@ body.side-hidden #ws-title {
 /* Phones and tablets (touch.js): the scrollback moves by the pixel and
    stretches past the ends, so the pane clips it; the fast-scroll thumb
    replaces xterm's scrollbar. */
-.pane.touchpane { overflow: hidden; }
+.pane.touchpane { overflow: hidden; touch-action: none; } /* every touch is ours (touch.js) */
 .pane.touchpane .xterm-scrollable-element > .scrollbar { display: none !important; }
 .pane.touchpane .xterm-screen { will-change: transform; }
 .fastscroll {

@@ -1,7 +1,7 @@
 // node --test web/src/gestures.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { classify, velocity, decay, coastDistance, lines, pinchFont, twoFinger, swipeDone, STOP, flingDistance, flingTau, flingStep, boost, place, rubber, stretch, squeeze, spring, springDone, absorb, SPRING, thumbSize, thumbTop, thumbLine, MIN_THUMB, MAX_FLING } from './gestures.js';
+import { classify, velocity, decay, coastDistance, lines, pinchFont, twoFinger, swipeDone, STOP, flingDistance, flingTau, flingStep, boost, place, rubber, stretch, squeeze, spring, springDone, absorb, SPRING, thumbSize, thumbTop, thumbLine, MIN_THUMB, MAX_FLING, addSample, sampleStats, cells, cursorFling, MAX_CURSOR_FLING } from './gestures.js';
 
 test('classify', () => {
   assert.equal(classify(3, 4), '');
@@ -158,4 +158,39 @@ test('fast-scroll thumb', () => {
   assert.equal(thumbLine(900, 600, 100, 1000), 1000);
   assert.equal(thumbLine(10, 600, 600, 1000), 0);
   for (const top of [0, 137, 999]) assert.equal(thumbLine(thumbTop(600, 80, top, 999), 600, 80, 999), top);
+});
+
+test('samples: same time stamps replace, time never goes back', () => {
+  const s = [];
+  addSample(s, 10, 0, 0);
+  addSample(s, 18, 0, 20);
+  addSample(s, 18, 0, 24); // coalesced: same time, the newer place
+  addSample(s, 17, 0, 30); // earlier than the last: also folded in
+  addSample(s, 26, 0, 44);
+  assert.deepEqual(s.map((q) => q.t), [10, 18, 26]);
+  assert.equal(s[1].y, 30);
+  assert.ok(Math.abs(velocity(s) - 44 / 16) < 0.3);
+  for (let i = 0; i < 50; i++) addSample(s, 30 + i, 0, i);
+  assert.equal(s.length, 30);
+  addSample(s, -5000, 0, 0); // a clock jump back: start over
+  assert.equal(s.length, 1);
+  // 120 Hz with duplicates still gives the speed.
+  const r = [];
+  for (let i = 0; i <= 12; i++) { addSample(r, i * 8.33, 0, i * 25); addSample(r, i * 8.33, 0, i * 25); }
+  assert.ok(Math.abs(velocity(r) - 3) < 0.05, `v ${velocity(r)}`);
+});
+
+test('sample stats for the diagnostics', () => {
+  assert.deepEqual(sampleStats([]), { n: 0, dtMin: 0, dtMax: 0, span: 0 });
+  assert.deepEqual(sampleStats([{ t: 0 }, { t: 8 }, { t: 24 }]), { n: 3, dtMin: 8, dtMax: 16, span: 24 });
+});
+
+test('a sideways drag moves the cursor by cells; a flick adds some, capped', () => {
+  assert.deepEqual(cells(25, 8), { n: 3, rest: 1 });
+  assert.deepEqual(cells(-17, 8), { n: -2, rest: -1 });
+  assert.equal(cursorFling(0.01, 8), 0);
+  assert.ok(cursorFling(1, 8) > 10 && cursorFling(1, 8) < 40);
+  assert.equal(cursorFling(-1, 8), -cursorFling(1, 8));
+  assert.equal(cursorFling(8, 8), MAX_CURSOR_FLING);
+  assert.equal(cursorFling(3, 0), 0);
 });
