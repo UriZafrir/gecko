@@ -104,6 +104,16 @@ func (c *ctrlConn) send(m *cloud.CtrlMsg) {
 	}
 }
 
+// finish sends m, then closes the socket.
+func (c *ctrlConn) finish(m *cloud.CtrlMsg) {
+	c.send(m)
+	select {
+	case c.out <- nil:
+	default:
+		c.close()
+	}
+}
+
 func (c *ctrlConn) close() {
 	c.once.Do(func() { close(c.done) })
 	c.ws.Close()
@@ -116,6 +126,11 @@ func (c *ctrlConn) writer() {
 		var err error
 		select {
 		case b := <-c.out:
+			if b == nil {
+				_ = c.ws.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "removed from the account"), time.Now().Add(time.Second))
+				c.close()
+				return
+			}
 			_ = c.ws.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			err = c.ws.WriteMessage(websocket.TextMessage, b)
 		case <-t.C:
@@ -481,6 +496,12 @@ func (s *Server) postList(w http.ResponseWriter, r *http.Request) {
 	}
 	s.save()
 	for _, id := range removed {
+		// Tell the removed machine first (the signed list proves it), so it
+		// signs itself out instead of retrying forever.
+		if c := s.ctrl[id]; c != nil && !s.NoKick {
+			c.finish(&cloud.CtrlMsg{T: "list", Lists: []cloud.List{*l}})
+			delete(s.ctrl, id)
+		}
 		s.kick(id)
 	}
 	for _, d := range l.Devices {

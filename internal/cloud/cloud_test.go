@@ -207,6 +207,16 @@ func TestRelaySession(t *testing.T) {
 	if !st.SignedIn || len(st.Devices) != 3 || st.Fingerprint != gpu.agent.State().Fingerprint {
 		t.Fatalf("account state: %+v", st)
 	}
+
+	// Revoked, gpu-box drops off the laptop and signs itself out.
+	if err := laptop.agent.Do("revoke", "gpu-box"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "gpu-box gone from the laptop", func() bool { return laptop.hub.Backend("gpu-box") == nil })
+	waitFor(t, "gpu-box signed out", func() bool { st := gpu.agent.State(); return !st.SignedIn && st.Notice != "" })
+	if cloud.SignedIn(gpu.dir) {
+		t.Fatal("gpu-box kept its account file")
+	}
 }
 
 // TestEnrollNeedsApproval: a machine that asks to join gets nothing until a
