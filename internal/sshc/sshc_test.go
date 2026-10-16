@@ -510,3 +510,15 @@ Host *
 		}
 	}
 }
+
+func TestResolvConf(t *testing.T) {
+	f := filepath.Join(t.TempDir(), "resolv.conf")
+	os.WriteFile(f, []byte("# from the app\nnameserver 192.168.1.1\nnameserver 100.100.100.100\nsearch tail1234.ts.net lan\n"), 0o600)
+	rc := readResolvConf(f)
+	if rc == nil || strings.Join(rc.servers, ",") != "192.168.1.1,100.100.100.100" || strings.Join(rc.search, ",") != "tail1234.ts.net,lan" {
+		t.Errorf("%+v", rc)
+	}
+	if readResolvConf(filepath.Join(t.TempDir(), "none")) != nil {
+		t.Error("missing file")
+	}
+}

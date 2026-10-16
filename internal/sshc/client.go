@@ -69,9 +69,12 @@ func Dial(r *Resolved, s *IO) (*ssh.Client, error) {
 		ClientVersion:     "SSH-2.0-OpenSSH_9.6 gecko",
 		Timeout:           time.Duration(r.Timeout) * time.Second,
 	}
-	d := net.Dialer{Timeout: cfg.Timeout}
-	conn, err := d.Dial("tcp", addr)
+	conn, err := dialTCP(r.HostName, strconv.Itoa(r.Port), cfg.Timeout)
 	if err != nil {
+		var dns *net.DNSError
+		if errors.As(err, &dns) {
+			return nil, fmt.Errorf("ssh: Could not resolve hostname %s: Name or service not known", r.HostName)
+		}
 		return nil, fmt.Errorf("ssh: connect to host %s port %d: %s", r.HostName, r.Port, plainNetError(err))
 	}
 	cc, chans, reqs, err := ssh.NewClientConn(conn, addr, cfg)

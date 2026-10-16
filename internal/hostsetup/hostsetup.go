@@ -193,6 +193,8 @@ func Explain(msg, host string) string {
 	switch {
 	case msg == "":
 		return "the connection failed without saying why"
+	case strings.Contains(msg, "Permission denied") && config.IsAndroid():
+		return msg + ". Gecko connects without a password prompt: add this phone's key (in the Gecko app, ⋮ then SSH key) to ~/.ssh/authorized_keys there"
 	case strings.Contains(msg, "Permission denied"):
 		return msg + ". Gecko connects without a password prompt; set up key login (ssh-copy-id) for this machine"
 	case strings.Contains(msg, "gecko: not found"), strings.Contains(msg, "gecko: command not found"), strings.Contains(msg, "exec: gecko"):
