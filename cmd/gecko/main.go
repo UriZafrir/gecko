@@ -29,6 +29,7 @@ import (
 	"github.com/gecko-term/gecko/internal/proto"
 	"github.com/gecko-term/gecko/internal/server"
 	"github.com/gecko-term/gecko/internal/session"
+	"github.com/gecko-term/gecko/internal/sshc"
 )
 
 var version = "dev"
@@ -50,6 +51,8 @@ Usage:
   gecko daemon [--listen a]  run the daemon in the foreground
   gecko share [on [addr]|off] [--json]   let other devices on this network open Gecko,
                              with a link of its own (new each time; off makes it invalid)
+  gecko ssh | ssh-keygen | scp   a built-in ssh client, for machines without one (Android);
+                             also runs as ssh, ssh-keygen or scp when linked under those names
   gecko upgrade              restart the daemon with this binary, keeping every session
   gecko stop                 stop the daemon (ends all local sessions)
   gecko service install|uninstall   start the daemon at login (done on first run)
@@ -62,6 +65,16 @@ Config: ` + "%s" + `
 
 func main() {
 	session.Version = version
+	// Linked as ssh, ssh-keygen or scp (the Android app does, since Android
+	// has none): behave as that program.
+	switch strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe") {
+	case "ssh":
+		os.Exit(sshc.Main(os.Args[1:], sshc.StdIO()))
+	case "ssh-keygen":
+		os.Exit(sshc.KeygenMain(os.Args[1:], sshc.StdIO()))
+	case "scp":
+		os.Exit(sshc.ScpMain(os.Args[1:], sshc.StdIO()))
+	}
 	args := os.Args[1:]
 	cmd := ""
 	if len(args) > 0 {
@@ -112,6 +125,12 @@ func main() {
 		err = cmdBridge()
 	case "stop":
 		err = cmdStop()
+	case "ssh":
+		os.Exit(sshc.Main(args, sshc.StdIO()))
+	case "ssh-keygen":
+		os.Exit(sshc.KeygenMain(args, sshc.StdIO()))
+	case "scp":
+		os.Exit(sshc.ScpMain(args, sshc.StdIO()))
 	case "share":
 		err = cmdShare(args)
 	case "upgrade", "restart":
