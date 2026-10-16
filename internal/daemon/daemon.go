@@ -18,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gecko-term/gecko/internal/cloud"
 	"github.com/gecko-term/gecko/internal/config"
 	"github.com/gecko-term/gecko/internal/hub"
 	"github.com/gecko-term/gecko/internal/inspect"
@@ -103,6 +104,12 @@ func Run(cfg *config.Config, listen string) error {
 	}
 	h := hub.New(cfg, m)
 	defer h.Close()
+	// Account features: nothing happens here unless this machine is signed
+	// in (gecko login). Machines of the account connect through the relay
+	// and get the same protocol a bridge gets.
+	acct := cloud.NewAgent(h, cfg.CloudEnabled(), func(c proto.Conn) { server.Serve(h, c) })
+	h.SetCloud(acct)
+	acct.Start()
 
 	accept := func(l net.Listener) {
 		for {
