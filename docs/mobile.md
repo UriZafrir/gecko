@@ -19,8 +19,10 @@ a password.
 On Android there is also a native app with notifications that reach you
 when it's closed: see [Android app](android.md).
 
-Touch works like a native terminal app: drag to scroll (or to scroll tmux,
-vim and less when they use the mouse), pinch to zoom the text, swipe with two
+Touch works like a native terminal app: drag to scroll by the pixel, flick
+to coast like a web page, and pull past either end for a stretch that springs
+back (tmux, vim and less scroll too when they use the mouse); drag the thumb
+on the right to jump through the scrollback; pinch to zoom the text, swipe with two
 fingers or on the tab bar to change tabs, and swipe in from the left edge for
 the drawer.
 

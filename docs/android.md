@@ -85,9 +85,16 @@ rule itself before it connects (`NetPolicy.kt`).
   at its end has search, **Keep screen on**, **Notify in background**, reload,
   and the machine list.
 - **Touch gestures** (in the Android app and any phone browser): one finger
-  up or down scrolls the scrollback, and a flick coasts; in programs that use
-  the mouse or the full screen (tmux, vim, less, Claude Code) it scrolls them
-  the way a mouse wheel does. Pinch to change the font size (kept per
+  up or down scrolls the scrollback by the pixel, the text staying under the
+  finger. A flick coasts and slows like a web page in Chrome (a fast flick
+  goes much further than a slow one, and flicks in a row add up). Past the top
+  or bottom the terminal stretches, and the scrollbar squeezes, then both
+  spring back; a fling that runs into the end bounces the same way. A
+  fast-scroll thumb shows on the right while scrolling (or when you touch near
+  the right edge): drag it to jump through the scrollback, or tap the strip to
+  jump there. In programs that use the mouse or the full screen (tmux, vim,
+  less, Claude Code) a drag or flick scrolls them the way a mouse wheel does,
+  line by line. With reduced motion on there is no coasting or stretch. Pinch to change the font size (kept per
   device). Two fingers sideways, or a swipe on the tab bar when its tabs fit,
   change tabs. A swipe in from the left edge opens the drawer, a swipe left
   closes it. Tap for the keyboard, long-press for the selectable text view.

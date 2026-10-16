@@ -96,15 +96,6 @@ class GestureDemo {
         }
     }
 
-    private val TOUCH_DOTS = """(function(){var s=document.createElement('style');
-        s.textContent='.tdot{position:fixed;z-index:99;width:46px;height:46px;margin:-23px 0 0 -23px;border-radius:50%;background:rgba(255,255,255,.45);border:3px solid rgba(40,40,40,.55);pointer-events:none}';
-        document.head.appendChild(s);var dots={};
-        function draw(e){var seen={};for(var i=0;i<e.touches.length;i++){var t=e.touches[i];var d=dots[t.identifier];
-          if(!d){d=dots[t.identifier]=document.createElement('div');d.className='tdot';document.body.appendChild(d);}
-          d.style.left=t.clientX+'px';d.style.top=t.clientY+'px';seen[t.identifier]=1;}
-          for(var k in dots){if(!seen[k]){dots[k].remove();delete dots[k];}}}
-        ['touchstart','touchmove','touchend','touchcancel'].forEach(function(n){window.addEventListener(n,draw,{capture:true,passive:true});});})()"""
-
     private fun twoFingerSwipe(web: androidx.test.uiautomator.UiObject, fromX: Int, toX: Int, y: Int) {
         val steps = 30
         fun pts(dy: Int) = Array(steps + 1) { i ->
@@ -128,5 +119,17 @@ class GestureDemo {
             Thread.sleep(250)
         }
         throw AssertionError("timed out waiting for $cond")
+    }
+
+    companion object {
+        // Android's Show taps doesn't draw injected touches: the page draws them.
+        val TOUCH_DOTS = """(function(){var s=document.createElement('style');
+            s.textContent='.tdot{position:fixed;z-index:99;width:46px;height:46px;margin:-23px 0 0 -23px;border-radius:50%;background:rgba(255,255,255,.45);border:3px solid rgba(40,40,40,.55);pointer-events:none}';
+            document.head.appendChild(s);var dots={};
+            function draw(e){var seen={};for(var i=0;i<e.touches.length;i++){var t=e.touches[i];var d=dots[t.identifier];
+              if(!d){d=dots[t.identifier]=document.createElement('div');d.className='tdot';document.body.appendChild(d);}
+              d.style.left=t.clientX+'px';d.style.top=t.clientY+'px';seen[t.identifier]=1;}
+              for(var k in dots){if(!seen[k]){dots[k].remove();delete dots[k];}}}
+            ['touchstart','touchmove','touchend','touchcancel'].forEach(function(n){window.addEventListener(n,draw,{capture:true,passive:true});});})()"""
     }
 }
