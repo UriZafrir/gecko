@@ -242,6 +242,16 @@ function agentMark(s) {
   return `<svg class="alogo s-${esc(st)} a-${esc(s.agent.name)}"${phase} viewBox="0 0 24 24" aria-hidden="true"><title>${esc(`${s.agent.name}: ${STATUS_TEXT[st] || st}`)}</title><path d="${AGENT_LOGOS[s.agent.name] || AGENT_PROMPT}"/></svg>`;
 }
 
+// The icon of a workspace's agents in one state: their logo when they are
+// all the same agent, else the robot face; it moves like a tab's logo
+// while they work (same cycle and phase as agentMark).
+function groupAgentMark(agents, status) {
+  const names = [...new Set(agents.map((t) => t.agent.name))];
+  const phase = status === 'working' ? ` style="animation-delay:-${Date.now() % 2000}ms"` : '';
+  if (names.length !== 1) return AGENTS_ICON.replace('class="agi"', `class="agi s-${esc(status)}"${phase}`);
+  return `<svg class="alogo s-${esc(status)} a-${esc(names[0])}"${phase} viewBox="0 0 24 24" aria-hidden="true"><path d="${AGENT_LOGOS[names[0]] || AGENT_PROMPT}"/></svg>`;
+}
+
 // The logo of the agent in a tmux window (its status isn't tracked there).
 function windowAgentMark(w) {
   if (!w.agent) return '';
@@ -3084,15 +3094,16 @@ class App {
     for (const ws of this.workspaces()) {
       const tabs = this.tabsOf(ws);
       const agents = tabs.filter((t) => t.agent);
-      const need = agents.filter((t) => t.agent.status === 'needs-input').length;
-      const working = agents.filter((t) => t.agent.status === 'working').length;
+      const needing = agents.filter((t) => t.agent.status === 'needs-input');
+      const workers = agents.filter((t) => t.agent.status === 'working');
+      const need = needing.length, working = workers.length;
       const hosts = [...new Set(tabs.map((t) => t.host))].filter((h) => h && h !== this.hostName);
       const folded = this.collapsed[ws];
       parts.push(`<div class="ws ${ws === this.ws ? 'cur' : ''}" data-ws="${esc(ws)}">
         <div class="ws-row" data-drag="ws" data-key="${esc(ws)}">
           <button class="ws-name" data-act="ws" data-ws="${esc(ws)}" aria-expanded="${!folded}" title="Click to ${folded ? 'expand' : 'collapse'}, double-click to rename"><span class="fold" aria-hidden="true">${folded ? '▸' : '▾'}</span>${esc(ws)}</button>
-          ${need ? `<span class="agents need" title="Agents waiting for you">${AGENTS_ICON}${need}</span>` : ''}
-          ${working ? `<span class="agents work" title="Agents working">${AGENTS_ICON}${working}</span>` : ''}
+          ${need ? `<span class="agents need" title="Agents waiting for you">${groupAgentMark(needing, 'needs-input')}${need}</span>` : ''}
+          ${working ? `<span class="agents work" title="Agents working">${groupAgentMark(workers, 'working')}${working}</span>` : ''}
           ${hosts.length ? `<span class="hosts">${esc(hosts.join(', '))}</span>` : ''}
           <button class="x" data-act="ws-close" data-ws="${esc(ws)}" aria-label="Close workspace ${esc(ws)}" title="Close workspace and its tabs">×</button>
         </div>`);
