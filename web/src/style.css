@@ -797,9 +797,15 @@ html.skin-mission .logo { filter: grayscale(1) brightness(1.7) contrast(1.1); }
 html.has-image:not(.desktop), html.has-image:not(.desktop) body { background: var(--bg); }
 html.has-image.desktop body { background: transparent; }
 html.has-image #side, html.has-image #main {
-  position: relative; isolation: isolate; overflow: hidden; background: transparent !important;
+  isolation: isolate; overflow: hidden; background: transparent !important;
   -webkit-backdrop-filter: none; backdrop-filter: none;
 }
+/* The photo layers (::before) are positioned in these. Only beside the
+   terminal, though: on phones the sidebar is a fixed drawer (see "phones"),
+   and making it relative put it back in the grid as a row of its own above
+   the terminal, splitting the screen in two. */
+html.has-image #main { position: relative; }
+@media (min-width: 761px) { html.has-image #side { position: relative; } }
 html.has-image #side::before, html.has-image #main::before {
   content: ""; position: absolute; z-index: -1; pointer-events: none;
   opacity: var(--win-opacity, 1);
