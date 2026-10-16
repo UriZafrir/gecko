@@ -1,5 +1,5 @@
 // The math of touch gestures, kept free of the DOM so it can be tested
-// (touch.test.mjs): which way a drag goes, how fast it was going, how a
+// (gestures.test.mjs): which way a drag goes, how fast it was going, how a
 // flick slows down, and when a pinch or a swipe counts.
 
 // A drag counts once it has moved this far (CSS px); before that it may
@@ -13,17 +13,22 @@ export function classify(dx, dy, slop = SLOP) {
   return ay >= ax ? 'v' : 'h';
 }
 
-// Velocity (px/ms) over the last ~100 ms of samples [{t, y}] (or x).
-export function velocity(samples, key = 'y', window = 100) {
+// Velocity (px/ms) of the last ~100 ms of samples [{t, y}] (or x): a least
+// squares line through them, the way Android's VelocityTracker does it. A
+// finger that stopped (nothing for 40 ms before now) has no velocity.
+export function velocity(samples, key = 'y', window = 100, now) {
   if (samples.length < 2) return 0;
   const last = samples[samples.length - 1];
-  let first = samples[0];
-  for (let i = samples.length - 2; i >= 0; i--) {
-    if (last.t - samples[i].t > window) break;
-    first = samples[i];
-  }
-  const dt = last.t - first.t;
-  return dt > 0 ? (last[key] - first[key]) / dt : 0;
+  if (now !== undefined && now - last.t > 40) return 0;
+  const pts = [];
+  for (let i = samples.length - 1; i >= 0 && last.t - samples[i].t <= window; i--) pts.push(samples[i]);
+  if (pts.length < 2) return 0;
+  let st = 0, sv = 0;
+  for (const q of pts) { st += q.t; sv += q[key]; }
+  st /= pts.length; sv /= pts.length;
+  let num = 0, den = 0;
+  for (const q of pts) { num += (q.t - st) * (q[key] - sv); den += (q.t - st) * (q.t - st); }
+  return den > 0 ? num / den : 0;
 }
 
 // A flick's speed after dt ms: exponential friction, the way native lists
@@ -41,7 +46,104 @@ export function coastDistance(v, friction = FRICTION) {
   return Math.abs(v) < STOP ? 0 : v / -Math.log(friction);
 }
 
-// Whole lines in an accumulated drag of px, and what is left over.
+// Flings of the scrollback, tuned like Chrome on Android. Speeds are CSS
+// px/ms (a CSS px is a dp in the WebView), limited as Android limits them.
+export const MIN_FLING = 0.05, MAX_FLING = 8;
+
+// How far a fling at v goes: Android's fling spline (OverScroller), which
+// Chrome uses, so a fast flick goes much further than a slow one (distance
+// grows as v^1.74, not v): 0.5 px/ms about 60 px, 2 about 650, 8 about 7000.
+export function flingDistance(v) {
+  const a = Math.min(Math.abs(v), MAX_FLING * 2);
+  if (a < MIN_FLING) return 0;
+  return Math.sign(v) * 778 * Math.pow(0.45 * a, 1.7357);
+}
+
+// The time constant (ms) of an exponential slowdown that covers exactly
+// flingDistance(v): speed v*e^(-t/tau), distance v*tau.
+export function flingTau(v) {
+  const a = Math.abs(v);
+  return a < MIN_FLING ? 0 : Math.abs(flingDistance(v)) / a;
+}
+
+// One frame of a fling: the distance moved in dt ms and the new speed.
+export function flingStep(v, dt, tau) {
+  if (!(tau > 0)) return { dx: 0, v: 0 };
+  const k = Math.exp(-dt / tau);
+  return { dx: v * tau * (1 - k), v: v * k };
+}
+
+// A new flick while one is still going, the same way: they add up (Chrome's
+// fling boosting), so a few quick flicks race through a long scrollback.
+export function boost(vNow, vNew) {
+  if (Math.abs(vNow) < 0.3 || Math.sign(vNow) !== Math.sign(vNew)) return vNew;
+  return Math.sign(vNew) * Math.min(MAX_FLING * 2, Math.abs(vNew) + Math.abs(vNow));
+}
+
+// Where position px (from the top of the scrollback) is drawn: the first
+// line the terminal shows, and the shift of its drawing. Moving down the
+// scrollback (dir > 0) the incoming bottom line is drawn whole, moving up
+// the incoming top line; the other edge waits for the next line.
+export function place(px, lineHeight, dir) {
+  if (!(lineHeight > 0)) return { line: 0, shift: 0 };
+  let line = dir > 0 ? Math.ceil(px / lineHeight - 1e-6) : Math.floor(px / lineHeight + 1e-6);
+  line = Math.max(0, line);
+  return { line, shift: line * lineHeight - px };
+}
+
+// Overscroll: a pull of px past the end shows as a stretch that resists
+// more the further it goes (never past size).
+export function rubber(pull, size, c = 0.55) {
+  if (!(size > 0) || !(pull > 0)) return 0;
+  return (1 - 1 / (pull * c / size + 1)) * size;
+}
+
+// The Android 12 stretch of the content for a pull (scale along Y from the
+// pulled edge), and the scrollbar thumb's squeeze (a fraction of its length).
+export function stretch(pull, size) {
+  return 1 + 0.5 * rubber(pull, size) / size || 1;
+}
+export function squeeze(pull, size) {
+  return size > 0 ? Math.max(0.35, 1 - 1.6 * rubber(pull, size) / size) : 1;
+}
+
+// A critically damped spring (no wobble) pulling x back to 0, moved on by
+// dt ms: how the stretch springs back. omega sets the pace (~300 ms).
+export const SPRING = 0.016;
+export function spring(x, v, dt, omega = SPRING) {
+  const b = v + omega * x;
+  const e = Math.exp(-omega * dt);
+  return { x: (x + b * dt) * e, v: (v - omega * b * dt) * e };
+}
+export function springDone(x, v) {
+  return Math.abs(x) < 0.5 && Math.abs(v) < 0.01;
+}
+
+// A fling that hits the end: the speed that the stretch takes up (it grows,
+// then springs back; peak pull is about v * 0.9 / (omega * e)).
+export function absorb(v) {
+  return Math.min(Math.abs(v), 6) * 0.9;
+}
+
+// The fast-scroll thumb: its length on a track of trackPx for rows shown of
+// total lines, where it sits for line top of max, and the line a thumb at y
+// (its top, px) means.
+export const MIN_THUMB = 44;
+export function thumbSize(trackPx, rows, total) {
+  if (!(total > 0) || rows >= total) return trackPx;
+  return Math.min(trackPx, Math.max(MIN_THUMB, trackPx * rows / total));
+}
+export function thumbTop(trackPx, size, top, max) {
+  return max > 0 ? (trackPx - size) * Math.min(1, Math.max(0, top / max)) : 0;
+}
+export function thumbLine(y, trackPx, size, max) {
+  const room = trackPx - size;
+  if (!(room > 0)) return 0;
+  return Math.round(Math.min(1, Math.max(0, y / room)) * max);
+}
+
+// Whole lines in an accumulated drag of px, and what is left over (kept for
+// the next move, so slow drags still add up).
 export function lines(px, lineHeight) {
   if (!(lineHeight > 0)) return { n: 0, rest: px };
   const n = Math.trunc(px / lineHeight);

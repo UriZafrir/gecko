@@ -1,6 +1,10 @@
 // Touch gestures for phones and tablets (only where the main pointer is a
 // finger; a mouse or trackpad is untouched):
-//   - one finger up or down scrolls, and a flick coasts;
+//   - one finger up or down scrolls the scrollback by the pixel, a flick
+//     coasts like a web page (faster flicks much further), and past either
+//     end the terminal stretches and springs back;
+//   - a fast-scroll thumb on the right comes up while scrolling (or on a
+//     touch near the edge): drag it, or tap the strip, to jump;
 //   - pinch changes the font size (previewed, then the terminal refits);
 //   - two fingers sideways, or a swipe on the tab bar, change tabs;
 //   - a swipe in from the left edge opens the workspaces drawer, a swipe
@@ -8,7 +12,11 @@
 //   - a tap focuses the terminal (keyboard up), a long-press opens the
 //     selectable text view.
 // The math is in gestures.js.
-import { SLOP, classify, velocity, decay, STOP, lines, distance, midpoint, pinchFont, twoFinger, swipeDone } from './gestures.js';
+import {
+  SLOP, classify, velocity, STOP, lines, distance, midpoint, pinchFont, twoFinger, swipeDone,
+  MIN_FLING, flingTau, flingStep, boost, place, stretch, squeeze, spring, springDone, absorb,
+  thumbSize, thumbTop, thumbLine,
+} from './gestures.js';
 
 const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 const phoneLayout = () => matchMedia('(max-width: 760px)').matches;
@@ -28,21 +36,15 @@ function overlayOpen(app) {
   return app.paletteOpen || app.textViewOpen || !!app.closeMenu || !document.getElementById('modal').hidden;
 }
 
-// A finger drag on the terminal scrolls by whole lines: through the
-// scrollback, or, when the program uses the mouse (tmux, vim, less, Claude
-// Code) or the alternate screen, as the mouse wheel would.
-function scroller(p) {
+// When the program uses the mouse (tmux, vim, less, Claude Code) or the
+// alternate screen, a drag scrolls as the mouse wheel would: xterm turns
+// wheel events into mouse reports, or arrow keys in the alternate screen;
+// one event per line, the fractions carried over to the next move.
+function wheeler(p) {
   return (n, at) => {
     const t = p.term;
-    if (!n) return;
-    if (t.buffer.active.type === 'normal' && t.modes.mouseTrackingMode === 'none') {
-      t.scrollLines(-n);
-      return;
-    }
-    // xterm turns wheel events into mouse reports, or arrow keys in the
-    // alternate screen; one event per line.
     const screen = t.element?.querySelector('.xterm-screen');
-    if (!screen) return;
+    if (!n || !screen) return;
     const r = screen.getBoundingClientRect();
     const x = at ? Math.min(Math.max(at.x, r.left + 1), r.right - 1) : r.left + r.width / 2;
     const y = at ? Math.min(Math.max(at.y, r.top + 1), r.bottom - 1) : r.top + r.height / 2;
@@ -52,19 +54,221 @@ function scroller(p) {
   };
 }
 
+const wheelMode = (t) => t.buffer.active.type !== 'normal' || t.modes.mouseTrackingMode !== 'none';
+
 function cellHeight(p) {
   const h = p.term._core?._renderService?.dimensions?.css?.cell?.height;
   return h > 0 ? h : p.el.clientHeight / Math.max(1, p.term.rows);
 }
 
+// Width of the fast-scroll strip on the right that takes touches (the
+// thumb drawn in it is thin).
+export const THUMB_HIT = 36;
+
+// The scrollback under a finger, by the pixel: the terminal scrolls whole
+// lines and its drawing is shifted by the rest. Past either end it
+// stretches (Android 12 style) and springs back; a fast-scroll thumb on
+// the right shows where you are and can be dragged.
+function scrollView(p) {
+  const t = p.term, el = p.el;
+  let shift = 0; // px the drawing is moved down (see place())
+  let pull = 0, edge = ''; // overscroll, raw finger px past 'top' or 'bottom'
+  let drawn = -1; // the line we scrolled the terminal to
+  let anim = 0, gen = 0, hideT = 0, dragging = false;
+  const bar = document.createElement('div');
+  bar.className = 'fastscroll';
+  const thumb = document.createElement('i');
+  bar.appendChild(thumb);
+  el.appendChild(bar);
+  el.classList.add('touchpane');
+  const screen = () => t.element?.querySelector('.xterm-screen');
+  const h = () => cellHeight(p);
+  const b = () => t.buffer.active;
+  const max = () => b().baseY * h();
+  const pos = () => b().viewportY * h() - shift;
+  const usable = () => b().type === 'normal' && b().baseY > 0;
+
+  const geometry = () => {
+    const H = el.clientHeight;
+    const size = thumbSize(H, t.rows, b().baseY + t.rows);
+    let top = thumbTop(H, size, pos(), max()), len = size;
+    if (pull > 0) {
+      len = size * squeeze(pull, H);
+      top = edge === 'bottom' ? H - len : 0;
+    }
+    return { H, size, top, len };
+  };
+  const drawThumb = () => {
+    if (!bar.classList.contains('show')) return;
+    const g = geometry();
+    thumb.style.transform = `translateY(${g.top}px)`;
+    thumb.style.height = `${g.len}px`;
+  };
+  const draw = () => {
+    const s = screen();
+    if (s) {
+      const k = pull > 0 && !reduceMotion() ? stretch(pull, el.clientHeight) : 1;
+      s.style.transformOrigin = edge === 'bottom' ? '50% 100%' : '50% 0';
+      s.style.transform = k !== 1 ? `translateY(${shift}px) scaleY(${k})` : shift ? `translateY(${shift}px)` : '';
+      el.dataset.stretch = k.toFixed(3);
+    }
+    drawThumb();
+  };
+  const show = () => {
+    if (!usable()) return hide();
+    bar.classList.add('show');
+    drawThumb();
+    clearTimeout(hideT);
+    if (!dragging) hideT = setTimeout(hide, 1500);
+  };
+  const hide = () => { clearTimeout(hideT); bar.classList.remove('show'); };
+  const go = (px, dir) => {
+    const H = h();
+    px = Math.min(max(), Math.max(0, px));
+    let { line, shift: sh } = place(px, H, dir);
+    if (line > b().baseY) { line = b().baseY; sh = line * H - px; }
+    drawn = line;
+    if (line !== b().viewportY) t.scrollToLine(line);
+    shift = sh;
+    draw();
+  };
+  const stop = () => { cancelAnimationFrame(anim); anim = 0; gen++; };
+  // Run frame(dt) every frame while it returns true; a newer animation
+  // (one frame may start the next) replaces it.
+  const animate = (frame) => {
+    stop();
+    const id = gen;
+    let t0 = performance.now();
+    const tick = (now) => {
+      if (id !== gen) return;
+      const dt = Math.min(48, now - t0);
+      t0 = now;
+      const more = frame(dt);
+      if (id !== gen) return;
+      anim = more ? requestAnimationFrame(tick) : 0;
+    };
+    anim = requestAnimationFrame(tick);
+  };
+  // Come to rest on a whole line, the nearest one.
+  const snap = () => {
+    if (!shift) return;
+    const H = h();
+    const target = Math.round(pos() / H) * H;
+    if (reduceMotion()) return go(target, 0);
+    animate((dt) => {
+      const now = pos();
+      const next = Math.abs(target - now) < 0.5 ? target : now + (target - now) * (1 - Math.exp(-dt / 40));
+      go(next, target > now ? 1 : -1);
+      return next !== target;
+    });
+  };
+  // The stretch springs back (v: pull px/ms, a fling hitting the end).
+  const release = (v = 0) => {
+    if (reduceMotion()) { pull = 0; edge = ''; draw(); return; }
+    let x = pull, vel = v;
+    animate((dt) => {
+      ({ x, v: vel } = spring(x, vel, dt));
+      const done = springDone(x, vel) || x < 0;
+      pull = done ? 0 : x;
+      if (done) edge = '';
+      draw();
+      return !done;
+    });
+  };
+  // A finger move of d px (down is positive). Returns the end it ran into.
+  const move = (d, stretchy = !reduceMotion()) => {
+    let rest = d;
+    if (pull > 0) {
+      const more = pull + (edge === 'top' ? rest : -rest);
+      if (more > 0) { pull = more; draw(); show(); return edge; }
+      rest = edge === 'top' ? more : -more;
+      pull = 0;
+    }
+    const px = pos() - rest, m = max();
+    let hit = '';
+    if (px < 0) { hit = 'top'; go(0, -1); }
+    else if (px > m) { hit = 'bottom'; go(m, 1); }
+    else go(px, rest < 0 ? 1 : -1);
+    if (hit && stretchy) { edge = hit; pull = hit === 'top' ? -px : px - m; draw(); }
+    show();
+    return hit;
+  };
+  // A fling at v px/ms (finger direction), tuned like Chrome on Android.
+  let vel = 0;
+  const fling = (v) => {
+    vel = v;
+    el.dataset.fling = v.toFixed(2); // for tests
+    const tau = flingTau(v);
+    if (!tau || reduceMotion()) { vel = 0; return snap(); }
+    animate((dt) => {
+      const s = flingStep(vel, dt, tau);
+      vel = s.v;
+      const hit = move(s.dx, false);
+      if (hit) {
+        const v0 = absorb(vel);
+        vel = 0;
+        edge = hit;
+        pull = 0.01;
+        release(v0); // takes over the frames
+        return false;
+      }
+      if (Math.abs(vel) < STOP) { vel = 0; snap(); return false; }
+      return true;
+    });
+  };
+  const offScroll = t.onScroll(() => {
+    if (b().viewportY === drawn) return;
+    shift = 0; // the terminal moved by itself (output, typing): drawn as it is
+    draw();
+  });
+  const offResize = t.onResize(() => { stop(); shift = 0; pull = 0; edge = ''; draw(); });
+
+  return {
+    usable, move, fling, snap, release, show, hide, stop, draw,
+    get busy() { return !!anim; },
+    get velocity() { return anim ? vel : 0; },
+    get pulled() { return pull > 0; },
+    settle() { if (pull > 0) release(); else snap(); },
+    reset() { stop(); shift = 0; pull = 0; edge = ''; draw(); },
+    // The thumb strip: is (x, y) on it, and on the thumb itself?
+    hit(at) {
+      const r = el.getBoundingClientRect();
+      if (at.x < r.right - THUMB_HIT || at.y < r.top || at.y > r.bottom) return '';
+      if (!usable() || !bar.classList.contains('show')) return 'edge';
+      const g = geometry(), y = at.y - r.top;
+      return y >= g.top - 16 && y <= g.top + g.len + 16 ? 'thumb' : 'track';
+    },
+    // Drag the thumb: held where the finger is on it, or by the middle
+    // after a tap on the strip (a jump there).
+    grab(at, onThumb) {
+      stop();
+      shift = 0; pull = 0; edge = '';
+      const r = el.getBoundingClientRect(), g = geometry();
+      dragging = true;
+      bar.classList.add('drag');
+      const off = onThumb ? at.y - r.top - g.top : g.size / 2;
+      const to = (y) => {
+        const line = thumbLine(y - r.top - off, g.H, g.size, b().baseY);
+        go(line * h(), 0);
+        show();
+      };
+      to(at.y);
+      return { to, done: () => { dragging = false; bar.classList.remove('drag'); show(); } };
+    },
+    dispose() { stop(); hide(); offScroll.dispose(); offResize.dispose(); bar.remove(); },
+  };
+}
+
 // Gestures on one terminal.
 export function attachPane(app, p) {
   const el = p.el;
-  const scroll = scroller(p);
+  const wheel = wheeler(p);
+  const sv = scrollView(p);
   let g = null;
   let coast = 0;
+  let wheelVel = 0;
   let longPress = 0;
-  const stopCoast = () => { cancelAnimationFrame(coast); coast = 0; };
+  const stopCoast = () => { cancelAnimationFrame(coast); coast = 0; wheelVel = 0; };
   const end = () => {
     clearTimeout(longPress);
     g = null;
@@ -76,13 +280,21 @@ export function attachPane(app, p) {
 
   el.addEventListener('touchstart', (ev) => {
     if (shared.claimed || overlayOpen(app)) return;
-    const wasCoasting = !!coast;
+    const wasMoving = !!coast || sv.busy;
+    const flingV = coast ? wheelVel : sv.velocity; // a flick on top of this one adds up
     stopCoast();
+    sv.stop();
     clearTimeout(longPress);
     if (ev.touches.length === 1) {
       const at = point(ev.touches[0]);
-      g = { kind: '', start: at, last: at, acc: 0, samples: [{ t: ev.timeStamp, ...at }] };
-      if (!wasCoasting) {
+      const spot = sv.hit(at);
+      if (spot === 'thumb' || spot === 'track') {
+        g = { kind: 'thumb', drag: sv.grab(at, spot === 'thumb') };
+        return claim(ev);
+      }
+      if (spot === 'edge') sv.show(); // a touch near the edge brings the thumb up
+      g = { kind: '', start: at, last: at, acc: 0, flingV, stopped: wasMoving, samples: [{ t: ev.timeStamp, ...at }] };
+      if (!wasMoving) {
         longPress = setTimeout(() => {
           if (g && g.kind === '') {
             g.kind = 'done';
@@ -91,6 +303,8 @@ export function attachPane(app, p) {
         }, 550);
       }
     } else if (ev.touches.length === 2) {
+      g?.drag?.done();
+      sv.reset();
       const a = point(ev.touches[0]), b = point(ev.touches[1]);
       g = { kind: 'two', what: '', d0: distance(a, b), c0: midpoint(a, b), d1: distance(a, b), c1: midpoint(a, b), size: app.termFontSize(), samples: [{ t: ev.timeStamp, ...midpoint(a, b) }] };
       claim(ev);
@@ -121,23 +335,32 @@ export function attachPane(app, p) {
       }
       return claim(ev);
     }
+    if (g.kind === 'thumb') {
+      g.drag.to(ev.touches[0].clientY);
+      return claim(ev);
+    }
     if (g.kind === 'done') return claim(ev);
     const at = point(ev.touches[0]);
     if (g.kind === '') {
       const c = classify(at.x - g.start.x, at.y - g.start.y, SLOP);
       if (!c) return;
       clearTimeout(longPress);
-      g.kind = c === 'v' ? 'scroll' : 'done';
+      g.kind = c !== 'v' ? 'done' : wheelMode(p.term) ? 'wheel' : 'scroll';
       g.last = at; // start counting from here: no jump by the slop
     }
-    if (g.kind === 'scroll') {
-      g.acc += at.y - g.last.y;
+    if (g.kind === 'scroll' || g.kind === 'wheel') {
+      const dy = at.y - g.last.y;
       g.last = at;
       g.samples.push({ t: ev.timeStamp, ...at });
-      if (g.samples.length > 20) g.samples.shift();
-      const { n, rest } = lines(g.acc, cellHeight(p));
-      g.acc = rest;
-      scroll(n, at);
+      if (g.samples.length > 30) g.samples.shift();
+      if (g.kind === 'scroll') {
+        sv.move(dy); // by the pixel: the content stays under the finger
+      } else {
+        g.acc += dy;
+        const { n, rest } = lines(g.acc, cellHeight(p));
+        g.acc = rest;
+        wheel(n, at);
+      }
     }
     claim(ev);
   }, { capture: true, passive: false });
@@ -160,31 +383,48 @@ export function attachPane(app, p) {
       }
       return claim(ev);
     }
-    if (g.kind === 'scroll') {
-      let v = velocity(g.samples, 'y');
-      let acc = g.acc;
-      const at = g.last;
+    if (g.kind === 'thumb') {
+      g.drag.done();
       end();
-      if (!reduceMotion() && Math.abs(v) >= STOP) {
+      return claim(ev);
+    }
+    if (g.kind === 'scroll' || g.kind === 'wheel') {
+      const v = boost(g.flingV, velocity(g.samples, 'y', 100, ev.timeStamp));
+      const kind = g.kind, at = g.last;
+      let acc = g.acc;
+      end();
+      if (kind === 'scroll') {
+        if (!sv.pulled && Math.abs(v) >= MIN_FLING && !reduceMotion()) sv.fling(v);
+        else sv.settle();
+        return claim(ev);
+      }
+      if (!reduceMotion() && Math.abs(v) >= MIN_FLING) {
+        // The program scrolls by lines; the fling still slows like a page.
+        const tau = flingTau(v);
+        wheelVel = v;
         let t0 = performance.now();
         const step = (now) => {
           const dt = Math.min(48, now - t0);
           t0 = now;
-          acc += v * dt;
-          v = decay(v, dt);
+          const s = flingStep(wheelVel, dt, tau);
+          wheelVel = s.v;
+          acc += s.dx;
           const { n, rest } = lines(acc, cellHeight(p));
           acc = rest;
-          scroll(n, at);
-          coast = Math.abs(v) >= STOP ? requestAnimationFrame(step) : 0;
+          wheel(n, at);
+          coast = Math.abs(wheelVel) >= STOP ? requestAnimationFrame(step) : 0;
+          if (!coast) wheelVel = 0;
         };
         coast = requestAnimationFrame(step);
       }
       return claim(ev);
     }
-    const tapped = g.kind === '';
+    const tapped = g.kind === '' && !g.stopped;
     end();
-    // A tap: xterm focuses itself (keyboard up), as it always has.
+    // A tap: xterm focuses itself (keyboard up), as it always has. A tap
+    // that stopped a fling only stops it.
     if (!tapped) claim(ev);
+    sv.settle();
   };
   el.addEventListener('touchend', finish, { capture: true, passive: false });
   el.addEventListener('touchcancel', (ev) => {
@@ -192,10 +432,12 @@ export function attachPane(app, p) {
       el.style.transform = '';
       delete el.dataset.pinch;
     }
+    g?.drag?.done();
     end();
+    sv.settle();
     if (ev.cancelable) ev.preventDefault();
   }, { capture: true, passive: false });
-  return () => stopCoast();
+  return () => { stopCoast(); sv.dispose(); };
 }
 
 // Gestures outside the terminal: the tab bar, the left edge, the drawer.

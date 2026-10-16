@@ -349,6 +349,24 @@ body.side-hidden #ws-title {
 .pane .xterm, .pane .xterm-viewport, .pane .xterm-screen { background: var(--surface-term) !important; }
 .pane .xterm-viewport { scrollbar-width: thin; }
 
+/* Phones and tablets (touch.js): the scrollback moves by the pixel and
+   stretches past the ends, so the pane clips it; the fast-scroll thumb
+   replaces xterm's scrollbar. */
+.pane.touchpane { overflow: hidden; }
+.pane.touchpane .xterm-scrollable-element > .scrollbar { display: none !important; }
+.pane.touchpane .xterm-screen { will-change: transform; }
+.fastscroll {
+  position: absolute; top: 0; right: 0; bottom: 0; width: 36px; z-index: 5;
+  pointer-events: none; opacity: 0; transition: opacity 0.3s ease-out;
+}
+.fastscroll.show { opacity: 1; transition-duration: 0.12s; }
+.fastscroll i {
+  position: absolute; top: 0; right: 2px; width: 5px; min-height: 8px; border-radius: 3px;
+  background: var(--muted); opacity: 0.7; transition: width 0.12s, background-color 0.12s;
+}
+.fastscroll.drag i { width: 9px; background: var(--accent); opacity: 0.9; }
+@media (prefers-reduced-motion: reduce) { .fastscroll, .fastscroll i { transition: none; } }
+
 #empty { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; overflow-y: auto; }
 .hello { max-width: 34rem; }
 .hello h1 { font-size: 26px; font-weight: 650; letter-spacing: -0.02em; margin: 0 0 8px; }
