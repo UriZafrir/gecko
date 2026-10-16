@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/quic-go/webtransport-go"
 
 	"github.com/gecko-term/gecko/internal/hub"
 	"github.com/gecko-term/gecko/web"
@@ -27,11 +26,12 @@ type HTTP struct {
 	Token  string
 	Listen string
 
-	// WebTransport, when StartWT was called (see wt.go).
-	wt      *webtransport.Server
-	wtPort  int
-	certs   *certManager
-	tickets tickets
+	// WebTransport, between StartWT and CloseWT (see wt.go).
+	wtMu      sync.Mutex
+	wt        *wtServer
+	wtStarted bool
+	certs     *certManager
+	tickets   tickets
 }
 
 // Handler returns the http.Handler.
@@ -170,8 +170,15 @@ type wsConn struct {
 	mu sync.Mutex
 }
 
+// wsDead is how long a WebSocket may stay silent (browsers answer our
+// pings every 25 s, and the app pings every 2 s) before it counts as a
+// half-open TCP connection and is dropped.
+const wsDead = 60 * time.Second
+
 func newWSConn(c *websocket.Conn) *wsConn {
 	w := &wsConn{c: c}
+	_ = c.SetReadDeadline(time.Now().Add(wsDead))
+	c.SetPongHandler(func(string) error { return c.SetReadDeadline(time.Now().Add(wsDead)) })
 	// Keep NATs and mobile networks from silently dropping idle sockets.
 	go func() {
 		t := time.NewTicker(25 * time.Second)
@@ -190,6 +197,9 @@ func newWSConn(c *websocket.Conn) *wsConn {
 
 func (w *wsConn) Read() (bool, []byte, error) {
 	t, b, err := w.c.ReadMessage()
+	if err == nil {
+		_ = w.c.SetReadDeadline(time.Now().Add(wsDead))
+	}
 	return t == websocket.BinaryMessage, b, err
 }
 

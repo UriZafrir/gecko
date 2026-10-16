@@ -163,7 +163,19 @@ func wtOrigin(r *http.Request) bool {
 	if h, _, err := net.SplitHostPort(host); err == nil {
 		host = h
 	}
-	return strings.EqualFold(u.Hostname(), strings.Trim(host, "[]"))
+	host = strings.Trim(host, "[]")
+	if loopback(u.Hostname()) && loopback(host) {
+		return true // a page on localhost connecting to 127.0.0.1
+	}
+	return strings.EqualFold(u.Hostname(), host)
+}
+
+func loopback(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // wtAuthed accepts a ticket from /api/wt, or the token itself (query or
@@ -186,8 +198,16 @@ func (s *HTTP) wtInfo(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
-	if s.wt == nil {
-		http.Error(w, "webtransport is off", http.StatusNotFound)
+	s.wtMu.Lock()
+	ws, started := s.wt, s.wtStarted
+	s.wtMu.Unlock()
+	if ws == nil {
+		if started {
+			// Between CloseWT and a restart (upgrading in place).
+			http.Error(w, "webtransport is restarting", http.StatusServiceUnavailable)
+		} else {
+			http.Error(w, "webtransport is off", http.StatusNotFound)
+		}
 		return
 	}
 	_, hash, err := s.certs.current()
@@ -198,7 +218,11 @@ func (s *HTTP) wtInfo(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	_ = json.NewEncoder(w).Encode(map[string]any{
-		"port":   s.wtPort,
+		// Where to connect when it isn't the page's own host name: a
+		// daemon on 127.0.0.1 only, opened as http://localhost, where the
+		// browser might try ::1 for QUIC.
+		"host":   ws.host,
+		"port":   ws.port,
 		"hash":   base64.StdEncoding.EncodeToString(hash[:]),
 		"ticket": s.tickets.issue(),
 	})
@@ -208,9 +232,11 @@ func (s *HTTP) wtInfo(w http.ResponseWriter, r *http.Request) {
 // port) in the background until CloseWT. Call it before serving HTTP, so
 // /api/wt knows about it.
 func (s *HTTP) StartWT(pc net.PacketConn) error {
+	s.wtMu.Lock()
 	if s.certs == nil {
 		s.certs = newCertManager()
 	}
+	s.wtMu.Unlock()
 	// The default UDP buffers are fine for terminal traffic; don't log
 	// about them on every start.
 	if os.Getenv("QUIC_GO_DISABLE_RECEIVE_BUFFER_WARNING") == "" {
@@ -219,6 +245,7 @@ func (s *HTTP) StartWT(pc net.PacketConn) error {
 	if _, _, err := s.certs.current(); err != nil {
 		return err
 	}
+	ws := &wtServer{pc: pc, sessions: map[*webtransport.Session]bool{}}
 	mux := http.NewServeMux()
 	srv := &webtransport.Server{
 		H3: http3.Server{
@@ -261,6 +288,14 @@ func (s *HTTP) StartWT(pc net.PacketConn) error {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		ws.mu.Lock()
+		ws.sessions[sess] = true
+		ws.mu.Unlock()
+		defer func() {
+			ws.mu.Lock()
+			delete(ws.sessions, sess)
+			ws.mu.Unlock()
+		}()
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 		str, err := sess.AcceptStream(ctx)
 		cancel()
@@ -270,10 +305,19 @@ func (s *HTTP) StartWT(pc net.PacketConn) error {
 		}
 		Serve(s.Hub, newWTConn(sess, str))
 	})
+	ws.srv = srv
 	if a, ok := pc.LocalAddr().(*net.UDPAddr); ok {
-		s.wtPort = a.Port
+		ws.port = a.Port
+		if a.IP.IsLoopback() {
+			ws.host = a.IP.String()
+			if a.IP.To4() == nil {
+				ws.host = "[" + ws.host + "]"
+			}
+		}
 	}
-	s.wt = srv
+	s.wtMu.Lock()
+	s.wt, s.wtStarted = ws, true
+	s.wtMu.Unlock()
 	go func() {
 		err := srv.Serve(pc)
 		if err != nil && !errors.Is(err, http.ErrServerClosed) && !errors.Is(err, quic.ErrServerClosed) {
@@ -283,11 +327,38 @@ func (s *HTTP) StartWT(pc net.PacketConn) error {
 	return nil
 }
 
-// CloseWT stops WebTransport (sessions close; clients fall back or retry).
+// wtServer is one run of the WebTransport server, StartWT to CloseWT.
+type wtServer struct {
+	srv      *webtransport.Server
+	pc       net.PacketConn
+	port     int
+	host     string
+	mu       sync.Mutex
+	sessions map[*webtransport.Session]bool
+}
+
+// CloseWT stops WebTransport. Open sessions are closed explicitly, so
+// browsers reconnect right away instead of waiting for pings to time out
+// (nothing else tells them a UDP socket went away).
 func (s *HTTP) CloseWT() {
-	if s.wt != nil {
-		_ = s.wt.Close()
+	s.wtMu.Lock()
+	ws := s.wt
+	s.wt = nil
+	s.wtMu.Unlock()
+	if ws == nil {
+		return
 	}
+	ws.mu.Lock()
+	n := len(ws.sessions)
+	for sess := range ws.sessions {
+		_ = sess.CloseWithError(0, "gecko is restarting")
+	}
+	ws.mu.Unlock()
+	if n > 0 {
+		time.Sleep(100 * time.Millisecond) // let the close go out
+	}
+	_ = ws.srv.Close()
+	_ = ws.pc.Close()
 }
 
 // wtConn is proto.Conn over a WebTransport stream.

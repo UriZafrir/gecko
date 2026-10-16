@@ -87,7 +87,9 @@ func TestWTOrigin(t *testing.T) {
 		{"http://127.0.0.1:7681", "127.0.0.1:7681", true},
 		{"https://box.example.ts.net", "box.example.ts.net:7681", true},
 		{"http://[::1]:7681", "[::1]:7681", true},
+		{"http://localhost:7681", "127.0.0.1:7681", true},
 		{"https://evil.example", "127.0.0.1:7681", false},
+		{"http://localhost.evil.example", "127.0.0.1:7681", false},
 	} {
 		r := httptest.NewRequest("GET", "/wt", nil)
 		r.Host = c.host
@@ -139,6 +141,9 @@ func TestWebTransport(t *testing.T) {
 	_, info := getInfo(true)
 	hash, _ := base64.StdEncoding.DecodeString(info["hash"].(string))
 	port := int(info["port"].(float64))
+	if info["host"] != "127.0.0.1" {
+		t.Fatalf("host %v", info["host"])
+	}
 	if port != pc.LocalAddr().(*net.UDPAddr).Port {
 		t.Fatalf("port %d", port)
 	}
