@@ -41,7 +41,7 @@ import { THEMES, AUTO, resolveTheme, paintTheme, swatch } from './themes.js';
 import { Keys, prettyCombo, comboOf, ACTIONS, DEFAULTS, DEFAULT_TAB_MODIFIER, TAB_MODIFIERS } from './keys.js';
 import { startupChime } from './sound.js';
 import { siClaude, siGooglegemini, siCursor, siGithubcopilot, siQwen, siOpencode } from 'simple-icons';
-import { $, esc, ago, shortPath, copyText, readClipboard, fuzzy, store, save, isTouch, isMac } from './util.js';
+import { $, esc, ago, shortPath, copyText, readClipboard, fuzzy, store, save, isTouch, isMac, android } from './util.js';
 
 const MAX_LIVE_PANES = 12;
 
@@ -485,6 +485,10 @@ class App {
   }
 
   notify(title, body, id) {
+    if (android && document.hidden) {
+      // The Android app posts it; tapping it opens this tab.
+      try { android.notify(title, body, id || ''); return; } catch {}
+    }
     if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
       const n = new Notification(title, { body, tag: id || title, icon: '/icon.svg' });
       n.onclick = () => { window.focus(); if (id) this.focusSession(id); n.close(); };
@@ -1461,6 +1465,7 @@ class App {
   }
 
   async enableNotifications() {
+    if (android) return android.enableNotifications();
     if (!('Notification' in window)) return this.toast('This browser has no notifications.');
     const r = await Notification.requestPermission();
     this.toast(r === 'granted' ? 'Gecko will notify you when an agent needs you.' : 'Notifications are blocked for this site.');
@@ -2362,38 +2367,65 @@ class App {
   }
 
   bindKeybar() {
-    const seq = {
-      esc: '\x1b', tab: '\t', up: '\x1b[A', down: '\x1b[B', left: '\x1b[D', right: '\x1b[C',
-      pgup: '\x1b[5~', pgdn: '\x1b[6~', home: '\x1b[H', end: '\x1b[F', 'ctrl-c': '\x03', 'ctrl-d': '\x04',
-    };
     const bar = $('#keybar');
     bar.addEventListener('pointerdown', (ev) => {
       if (ev.target.closest('button')) ev.preventDefault(); // keep the keyboard up
     });
     bar.addEventListener('click', (ev) => {
       const b = ev.target.closest('button');
-      if (!b) return;
-      const k = b.dataset.k;
-      const id = this.activeId();
-      if (k === 'ctrl' || k === 'alt') {
-        this.mods[k] = !this.mods[k];
-        this.renderKeybar();
-        this.activePane()?.focus();
-        return;
-      }
-      if (k === 'paste') return this.paste();
-      if (k === 'select') return this.openTextView();
-      if (k === 'compose') return this.toggleCompose();
-      if (!id) return;
-      const data = seq[k] ?? b.dataset.text ?? b.textContent;
-      this.sendInput(id, data);
+      if (b) this.pressKey(b.dataset.k, b.dataset.text ?? b.textContent);
     });
+  }
+
+  // A key of the key bar (or the Android app's extra keys row), by name:
+  // esc, tab, ctrl, alt, arrows, ctrl-c, pgup... or text to type.
+  pressKey(k, text) {
+    const seq = {
+      esc: '\x1b', tab: '\t', up: '\x1b[A', down: '\x1b[B', left: '\x1b[D', right: '\x1b[C',
+      pgup: '\x1b[5~', pgdn: '\x1b[6~', home: '\x1b[H', end: '\x1b[F', 'ctrl-c': '\x03', 'ctrl-d': '\x04',
+      pipe: '|', slash: '/', dash: '-', tilde: '~',
+    };
+    const id = this.activeId();
+    if (k === 'ctrl' || k === 'alt') {
+      this.mods[k] = !this.mods[k];
+      this.renderKeybar();
+      this.activePane()?.focus();
+      return;
+    }
+    if (k === 'paste') return this.paste();
+    if (k === 'select') return this.openTextView();
+    if (k === 'compose') return this.toggleCompose();
+    if (!id) return;
+    const data = seq[k] ?? text;
+    if (data) this.sendInput(id, data);
+  }
+
+  // The Android back button: closes what is open on top, innermost first.
+  // False when nothing was, so the app can leave this machine.
+  back() {
+    if (this.closeMenu) { this.closeMenu(); return true; }
+    const m = $('#modal');
+    if (!m.hidden) {
+      // Dialogs close on Escape; the rest have a cancel or done button.
+      const at = m.contains(document.activeElement) ? document.activeElement : m.querySelector('.card') || m;
+      at.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+      if (!m.hidden) m.querySelector('[data-no], [data-cancel], [data-close], [data-done]')?.click();
+      if (!m.hidden) { m.hidden = true; m.innerHTML = ''; this.capturingKeys = false; }
+      return true;
+    }
+    if (this.paletteOpen) { this.closePalette(); return true; }
+    if (this.textViewOpen) { this.closeTextView(); return true; }
+    if (!$('#find').hidden) { $('#find [data-close]').click(); return true; }
+    if (document.body.classList.contains('drawer')) { this.closeDrawer(); return true; }
+    if (!$('#compose').hidden) { this.toggleCompose(false); return true; }
+    return false;
   }
 
   renderKeybar() {
     for (const b of document.querySelectorAll('#keybar [data-k=ctrl], #keybar [data-k=alt]')) {
       b.classList.toggle('on', !!this.mods[b.dataset.k]);
     }
+    try { android?.mods(!!this.mods.ctrl, !!this.mods.alt); } catch {}
   }
 
   bindCompose() {
@@ -3275,6 +3307,7 @@ class App {
 
 // Colors first, so the page never flashes the default theme.
 if (window.geckoDesktop) document.documentElement.classList.add('desktop', 'desktop-' + window.geckoDesktop.platform);
+if (window.GeckoAndroid) document.documentElement.classList.add('android'); // its own extra keys row
 paintTheme(
   resolveTheme(initialTheme()),
   window.geckoDesktop?.transparent ? store('opacity', 0.9) : 1,

@@ -1259,3 +1259,6 @@ html.layout-watch .pane .xterm-viewport::-webkit-scrollbar { display: none; }
 #watchface .p-tr:active, #watchface .p-br:active { right: -6px; }
 #watchface .p-tl, #watchface .p-tr { top: calc(50% - 64px); }
 #watchface .p-bl, #watchface .p-br { top: calc(50% + 30px); }
+
+/* The Android app draws its own extra keys row above the keyboard. */
+html.android #keybar { display: none !important; }
