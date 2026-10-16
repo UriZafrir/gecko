@@ -145,11 +145,17 @@ scp notes.txt me@devbox.lan:    # and back: scp me@devbox.lan:file .
 
 **SSH key** (in **⋮** on the machine list, or in the extra keys while on This
 phone) shows the phone's public key, making it on first use, with Copy and
-Share. Add it to `~/.ssh/authorized_keys` on a machine; adding that machine
-to Gecko from the phone (**Machines +** in the sidebar) needs it, since Gecko
-connects without a password prompt. The machine needs Gecko installed
-(`gecko host install` from a computer, or the Linux binary in
-`~/.local/bin`): the phone carries only its own build.
+Share.
+
+To add a computer from the phone, use **Machines +** in the sidebar, or
+**Make it a Gecko machine** under a tab where you ran `ssh`. Gecko asks you to
+confirm a new machine's fingerprint and asks for its password if it has no key
+for it. It then puts the phone's key in `~/.ssh/authorized_keys` there, so
+it can stay connected without a password (see [More machines](machines.md)).
+If Gecko isn't installed there, the phone installs it: the app carries Gecko
+for Linux on x86_64 and arm64 (the same files it runs itself), so Linux
+machines on those CPUs work. For a Mac or another system, install Gecko there
+yourself first.
 
 ### Allow other devices
 
