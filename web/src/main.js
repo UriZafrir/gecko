@@ -116,7 +116,7 @@ function newOrder(shown, old) {
 const SYNCED = ['theme', 'opacity', 'fontSize', 'mobileFontSize', 'copyOnSelect', 'smartCopy', 'optionIsMeta', 'renderer', 'sidebarHidden', 'keys', 'startupSound', 'order', 'quickReplies'];
 
 // Protocol version this client speaks; see internal/proto.
-const PROTOCOL = 6;
+const PROTOCOL = 7;
 const WATCH_MIN_COLS = 20, WATCH_MIN_ROWS = 3; // the Digital Watch LCD
 const OUTDATED = 'The Gecko background service is older than this window, so some features are missing. Click to restart it.';
 
@@ -240,6 +240,12 @@ function agentMark(s) {
   // of the sidebar and tab bar don't restart it (cycle as in style.css).
   const phase = st === 'working' ? ` style="animation-delay:-${Date.now() % 2000}ms"` : '';
   return `<svg class="alogo s-${esc(st)} a-${esc(s.agent.name)}"${phase} viewBox="0 0 24 24" aria-hidden="true"><title>${esc(`${s.agent.name}: ${STATUS_TEXT[st] || st}`)}</title><path d="${AGENT_LOGOS[s.agent.name] || AGENT_PROMPT}"/></svg>`;
+}
+
+// The logo of the agent in a tmux window (its status isn't tracked there).
+function windowAgentMark(w) {
+  if (!w.agent) return '';
+  return `<svg class="alogo w-agent a-${esc(w.agent)}" viewBox="0 0 24 24" aria-hidden="true"><title>${esc(w.agent + ' runs here')}</title><path d="${AGENT_LOGOS[w.agent] || AGENT_PROMPT}"/></svg>`;
 }
 
 function numGlyph(s, n, plain = false) {
@@ -3125,7 +3131,7 @@ class App {
         ${tm.map((t) => {
           const tab = this.tmuxTab(h.name, t.name);
           const open = !!this.tmuxOpen[h.name + '/' + t.name];
-          const wins = (t.wins || []).map((w) => `<button class="tmux-win ${w.active ? 'on' : ''}" data-act="tmux-win" data-host="${esc(h.name)}" data-name="${esc(t.name)}" data-idx="${w.index}" title="${esc((tab ? 'Show this window in tab ' + nums.get(tab.id) : 'Open in a new tab') + '. Double-click to rename.')}"><span class="wi">${w.index}</span>${esc(w.name)}${w.command && w.command !== w.name ? `<span class="where">${esc(w.command)}</span>` : ''}</button>`).join('');
+          const wins = (t.wins || []).map((w) => `<button class="tmux-win ${w.active ? 'on' : ''}" data-act="tmux-win" data-host="${esc(h.name)}" data-name="${esc(t.name)}" data-idx="${w.index}" title="${esc((tab ? 'Show this window in tab ' + nums.get(tab.id) : 'Open in a new tab') + '. Double-click to rename.')}"><span class="wi">${w.index}</span>${windowAgentMark(w)}${esc(w.name)}${w.command && w.command !== w.name ? `<span class="where">${esc(w.command)}</span>` : ''}</button>`).join('');
           return `<div class="tmux-row">
             <button class="fold" data-act="tmux-fold" data-host="${esc(h.name)}" data-name="${esc(t.name)}" aria-label="${open ? 'Hide' : 'Show'} windows">${open ? '▾' : '▸'}</button>
             <button class="tmux" data-act="tmux" data-host="${esc(h.name)}" data-name="${esc(t.name)}" title="${esc((tab ? 'Go to tab ' + nums.get(tab.id) + ', which shows this session' : 'Open in a new tab') + '. Double-click to rename.')}">${TMUX_ICON}<b>${esc(t.name)}</b><span class="where">${t.windows} ${t.windows === 1 ? 'window' : 'windows'}</span>${tab ? numGlyph(tab, nums.get(tab.id)) : ''}</button>

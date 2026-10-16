@@ -275,6 +275,12 @@ type Session struct {
 	startup    string
 	dirty      bool
 	closed     bool
+
+	// An agent recognised from the terminal title (see inspect.TitleRules),
+	// what that title says about its status, and the foreground process it
+	// was seen under (ssh, say): when that changes, the agent is gone.
+	titleAgent, titleStatus string
+	titleAgentPid           int
 }
 
 // Info returns a snapshot of the session's metadata.
@@ -494,8 +500,17 @@ func (s *Session) flush() {
 func (s *Session) osc(num int, payload string) {
 	switch num {
 	case 0, 2:
-		if t := strings.TrimSpace(payload); t != s.info.Title {
+		t := strings.TrimSpace(payload)
+		if t != s.info.Title {
 			s.info.Title, s.dirty = t, true
+		}
+		if a, st, ok := inspect.TitleAgent(t, s.titleAgent); ok {
+			if a != s.titleAgent {
+				s.titleAgentPid = 0
+			}
+			s.titleAgent, s.titleStatus = a, st
+		} else {
+			s.clearTitleAgent()
 		}
 	case 7:
 		if u, err := url.Parse(payload); err == nil && u.Path != "" {
@@ -510,6 +525,7 @@ func (s *Session) osc(num int, payload string) {
 		switch {
 		case payload == "A" || strings.HasPrefix(payload, "A;"):
 			s.pendingCmd = ""
+			s.clearTitleAgent() // back at a prompt: whatever set the title is gone
 			if s.startup != "" {
 				go s.sendStartup()
 			}
@@ -546,6 +562,10 @@ func (s *Session) osc(num int, payload string) {
 			s.notify(body)
 		}
 	}
+}
+
+func (s *Session) clearTitleAgent() {
+	s.titleAgent, s.titleStatus, s.titleAgentPid = "", "", 0
 }
 
 func (s *Session) setCwd(d string) {
@@ -592,6 +612,8 @@ func (m *Manager) inspect(ss []*Session, slow bool) {
 		table = nil
 	}
 	now := time.Now()
+	var clients []tmux.Client
+	clientsRead := false
 	for _, s := range ss {
 		var cls inspect.Info
 		if table != nil && s.pty.Pid() > 0 && runtime.GOOS != "windows" {
@@ -602,8 +624,18 @@ func (m *Manager) inspect(ss []*Session, slow bool) {
 			cls = inspect.Classify(fg)
 		}
 		var tmuxSess, cwd string
+		// tmux: the agent, if any, runs in the pane the client shows.
+		var paneAgent, paneStatus string
 		if cls.Kind == "tmux" && cls.Proc == "tmux" && s.info.TTY != "" {
-			tmuxSess = tmux.ClientSession(s.info.TTY)
+			if !clientsRead {
+				clients, clientsRead = tmux.Clients(), true
+			}
+			if c, ok := tmux.ClientOn(clients, s.info.TTY); ok {
+				tmuxSess = c.Session
+				if table != nil && c.PanePid > 0 {
+					paneAgent, paneStatus = table.PaneAgent(c.PanePid, c.Title)
+				}
+			}
 		}
 		s.mu.Lock()
 		integrated := s.info.Integrated
@@ -655,14 +687,20 @@ func (m *Manager) inspect(ss []*Session, slow bool) {
 		} else {
 			s.info.Repo, s.info.RepoRoot, s.info.Branch, s.info.GitStatus = "", "", "", nil
 		}
-		if cls.Agent != "" {
-			st := agentStatus(s.vt.ScreenLines(), now.Sub(s.lastOutput), now.Sub(s.lastInput), s.info.Attention)
-			if s.info.Agent == nil || s.info.Agent.Name != cls.Agent || s.info.Agent.Status != st.Status {
+		name, hint := s.agentOf(cls, paneAgent, paneStatus)
+		if name != "" {
+			screen := s.vt.ScreenLines()
+			if tmuxSess != "" || s.info.RemoteTmux != "" {
+				screen = withoutTmuxStatus(screen)
+			}
+			st := agentStatus(screen, now.Sub(s.lastOutput), now.Sub(s.lastInput), s.info.Attention)
+			st.Status = withHint(st.Status, hint)
+			if s.info.Agent == nil || s.info.Agent.Name != name || s.info.Agent.Status != st.Status {
 				st.Since = now.UnixMilli()
 			} else {
 				st.Since = s.info.Agent.Since
 			}
-			st.Name = cls.Agent
+			st.Name = name
 			s.info.Agent = &st
 		} else {
 			s.info.Agent = nil
@@ -673,8 +711,69 @@ func (m *Manager) inspect(ss []*Session, slow bool) {
 		s.mu.Unlock()
 	}
 	if slow {
-		m.scanTmux()
+		m.scanTmux(table)
 	}
+}
+
+// agentOf decides which coding agent runs in a session, if any, and what
+// its title says about its status: the foreground process first, then the
+// pane a tmux client shows, then the terminal title (for agents beyond the
+// process table, as over ssh). Called with s.mu held.
+func (s *Session) agentOf(cls inspect.Info, paneAgent, paneStatus string) (name, hint string) {
+	switch {
+	case cls.Agent != "":
+		if s.titleAgent == cls.Agent {
+			return cls.Agent, s.titleStatus
+		}
+		return cls.Agent, ""
+	case cls.Kind == "tmux":
+		return paneAgent, paneStatus
+	case s.titleAgent == "":
+		return "", ""
+	case cls.Kind == "shell":
+		// The shell is in the foreground again: the agent exited without
+		// resetting the title (or the title came from the prompt).
+		s.clearTitleAgent()
+		return "", ""
+	case cls.Pid != 0:
+		// Bind the title to the process it appeared under; another
+		// process in the foreground means it's stale.
+		if s.titleAgentPid == 0 {
+			s.titleAgentPid = cls.Pid
+		} else if s.titleAgentPid != cls.Pid {
+			s.clearTitleAgent()
+			return "", ""
+		}
+	}
+	return s.titleAgent, s.titleStatus
+}
+
+// withHint combines the status read from the screen with the one the
+// title gives: a title spinner means working even when the screen shows
+// no marker, and a title asking for input means just that.
+func withHint(screen, hint string) string {
+	switch {
+	case hint == "working" && screen == "idle":
+		return "working"
+	case hint == "needs-input":
+		return "needs-input"
+	}
+	return screen
+}
+
+// withoutTmuxStatus drops tmux's status bar from a screen, so it isn't
+// read as part of what the agent in the pane shows.
+func withoutTmuxStatus(screen []string) []string {
+	for len(screen) > 0 && strings.TrimSpace(screen[len(screen)-1]) == "" {
+		screen = screen[:len(screen)-1]
+	}
+	if n := len(screen); n > 0 && reTmuxStatus.MatchString(screen[n-1]) {
+		return screen[:n-1]
+	}
+	if len(screen) > 0 && reTmuxStatus.MatchString(screen[0]) {
+		return screen[1:]
+	}
+	return screen
 }
 
 func changed(a, b proto.SessionInfo) bool {
@@ -768,7 +867,8 @@ func (m *Manager) TmuxDo(action, target, arg, tabID string) error {
 		client = s.Info().TTY
 	}
 	err := tmux.Do(action, target, arg, client)
-	m.scanTmux()
+	table, _ := inspect.Snapshot()
+	m.scanTmux(table)
 	m.mu.Lock()
 	ss := make([]*Session, 0, len(m.sessions))
 	for _, x := range m.sessions {
@@ -781,12 +881,16 @@ func (m *Manager) TmuxDo(action, target, arg, tabID string) error {
 
 // scanTmux lists the host's tmux sessions (with their windows) so they can
 // be shown, switched to and attached.
-func (m *Manager) scanTmux() {
+func (m *Manager) scanTmux(table *inspect.Table) {
 	var list []proto.TmuxSession
 	if tmux.Available() {
 		wins := map[string][]proto.TmuxWindow{}
 		for _, w := range tmux.Windows() {
-			wins[w.Session] = append(wins[w.Session], proto.TmuxWindow{Index: w.Index, Name: w.Name, Active: w.Active, Panes: w.Panes, Command: w.Command})
+			tw := proto.TmuxWindow{Index: w.Index, Name: w.Name, Active: w.Active, Panes: w.Panes, Command: w.Command}
+			if table != nil && w.PanePid > 0 {
+				tw.Agent, _ = table.PaneAgent(w.PanePid, w.Title)
+			}
+			wins[w.Session] = append(wins[w.Session], tw)
 		}
 		for _, t := range tmux.Sessions() {
 			list = append(list, proto.TmuxSession{Host: m.opts.Host, Name: t.Name, Windows: t.Windows, Attached: t.Attached, Wins: wins[t.Name]})

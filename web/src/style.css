@@ -233,6 +233,7 @@ body.reordering, body.reordering * { cursor: grabbing !important; }
 .alogo.s-needs-input { fill: var(--need); }
 .alogo.s-idle { fill: var(--idle); }
 .alogo.s-idle.a-claude { fill: #d97757; } /* Claude's own orange */
+.alogo.w-agent.a-claude { fill: #d97757; }
 .agent .alogo { width: 15px; height: 15px; margin: 0; flex: none; }
 @keyframes logo-fade { 50% { opacity: 0.2; } }
 @media (prefers-reduced-motion: reduce) { .alogo.s-working { animation: none; } }

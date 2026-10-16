@@ -52,6 +52,10 @@ func cleanEnv() []string {
 // fields splits one line of tmux -F output.
 func fields(line string) []string { return strings.Split(line, sep) }
 
+// fieldsN splits a line into at most n fields; the last one (a title, say)
+// keeps any separator it contains.
+func fieldsN(line string, n int) []string { return strings.SplitN(line, sep, n) }
+
 // format joins tmux format variables with sep.
 func format(vars ...string) string { return strings.Join(vars, sep) }
 
@@ -76,24 +80,31 @@ type Window struct {
 	Active  bool
 	Panes   int
 	Command string // what runs in its active pane
+	PanePid int    // first process of its active pane
+	Title   string // title of its active pane (set by OSC 0/2 inside it)
 }
 
 // Windows lists the windows of every session.
 func Windows() []Window {
 	out, err := run("list-windows", "-a", "-F",
-		format("#{session_name}", "#{window_index}", "#{window_name}", "#{window_active}", "#{window_panes}", "#{pane_current_command}"))
+		format("#{session_name}", "#{window_index}", "#{window_name}", "#{window_active}", "#{window_panes}", "#{pane_current_command}", "#{pane_pid}", "#{pane_title}"))
 	if err != nil {
 		return nil
 	}
 	var ws []Window
 	for _, l := range strings.Split(strings.TrimSpace(out), "\n") {
-		f := fields(l)
-		if len(f) != 6 {
+		f := fieldsN(l, 8)
+		if len(f) < 6 {
 			continue
 		}
 		idx, _ := strconv.Atoi(f[1])
 		panes, _ := strconv.Atoi(f[4])
-		ws = append(ws, Window{Session: f[0], Index: idx, Name: f[2], Active: f[3] == "1", Panes: panes, Command: f[5]})
+		w := Window{Session: f[0], Index: idx, Name: f[2], Active: f[3] == "1", Panes: panes, Command: f[5]}
+		if len(f) == 8 { // older tmux may lack pane_title
+			w.PanePid, _ = strconv.Atoi(f[6])
+			w.Title = f[7]
+		}
+		ws = append(ws, w)
 	}
 	return ws
 }
@@ -192,18 +203,50 @@ func Panes() []Pane {
 	return ps
 }
 
-// ClientSession returns the tmux session shown by the client on tty.
-func ClientSession(tty string) string {
-	out, err := run("list-clients", "-F", format("#{client_tty}", "#{session_name}"))
+// Client is a tmux client and the pane it shows.
+type Client struct {
+	TTY     string
+	Session string
+	PanePid int    // first process of the pane it shows
+	Title   string // that pane's title
+}
+
+// Clients lists the clients attached to the server.
+func Clients() []Client {
+	out, err := run("list-clients", "-F", format("#{client_tty}", "#{session_name}", "#{pane_pid}", "#{pane_title}"))
 	if err != nil {
-		return ""
+		return nil
 	}
-	for _, l := range strings.Split(out, "\n") {
-		if t, s, ok := strings.Cut(l, sep); ok && t == tty {
-			return s
+	var cs []Client
+	for _, l := range strings.Split(strings.TrimSpace(out), "\n") {
+		f := fieldsN(l, 4)
+		if len(f) < 2 || f[0] == "" {
+			continue
+		}
+		c := Client{TTY: f[0], Session: f[1]}
+		if len(f) == 4 {
+			c.PanePid, _ = strconv.Atoi(f[2])
+			c.Title = f[3]
+		}
+		cs = append(cs, c)
+	}
+	return cs
+}
+
+// ClientOn returns the client on tty, if any.
+func ClientOn(cs []Client, tty string) (Client, bool) {
+	for _, c := range cs {
+		if c.TTY == tty {
+			return c, true
 		}
 	}
-	return ""
+	return Client{}, false
+}
+
+// ClientSession returns the tmux session shown by the client on tty.
+func ClientSession(tty string) string {
+	c, _ := ClientOn(Clients(), tty)
+	return c.Session
 }
 
 // Capture returns the text of a pane (target may be a session name, which

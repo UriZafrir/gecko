@@ -23,7 +23,8 @@ import (
 //	4: listdir
 //	5: updatehost, settings sync
 //	6: tmux windows and actions
-const Version = 6
+//	7: agents in tmux panes and from terminal titles (ssh, mosh)
+const Version = 7
 
 // Data frame kinds.
 const (
@@ -248,6 +249,7 @@ type TmuxWindow struct {
 	Active  bool   `json:"active,omitempty"`
 	Panes   int    `json:"panes,omitempty"`
 	Command string `json:"command,omitempty"`
+	Agent   string `json:"agent,omitempty"` // coding agent in its active pane
 }
 
 // HostInfo describes a machine Gecko can run sessions on.
