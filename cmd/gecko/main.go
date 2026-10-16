@@ -74,6 +74,8 @@ func main() {
 		os.Exit(sshc.KeygenMain(os.Args[1:], sshc.StdIO()))
 	case "scp":
 		os.Exit(sshc.ScpMain(os.Args[1:], sshc.StdIO()))
+	case "gecko-askpass":
+		os.Exit(askpass(os.Args[1:]))
 	}
 	args := os.Args[1:]
 	cmd := ""
@@ -820,4 +822,25 @@ func cmdShare(args []string) error {
 	}
 	fmt.Println("Anyone with the link gets this terminal. `gecko share off` ends it.")
 	return nil
+}
+
+// askpass is SSH_ASKPASS for the checks and installs the daemon runs with a
+// password from the Add machine dialog: it trades the one-time id in
+// GECKO_ASKPASS for the password, over the daemon's own socket.
+func askpass(args []string) int {
+	id := os.Getenv("GECKO_ASKPASS")
+	if id == "" || len(args) == 0 {
+		return 1
+	}
+	c, err := client.Connect(false)
+	if err != nil {
+		return 1
+	}
+	defer c.Close()
+	r, err := c.Call(&proto.Msg{T: proto.TAskpass, Text: id, Data: args[0]})
+	if err != nil {
+		return 1
+	}
+	fmt.Println(r.Secret)
+	return 0
 }

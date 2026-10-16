@@ -31,6 +31,9 @@ func (s *IO) Ask(prompt string, echo bool) (string, error) {
 	if s.AskFunc != nil {
 		return s.AskFunc(prompt, echo)
 	}
+	if ans, used, err := askpass(prompt); used {
+		return ans, err
+	}
 	return askTTY(prompt, echo)
 }
 

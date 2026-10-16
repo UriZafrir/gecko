@@ -79,7 +79,7 @@ func serve(h *hub.Hub, conn proto.Conn, local bool) {
 			continue
 		}
 		switch m.T {
-		case proto.TCreate, proto.TCapture, proto.TOpenWS, proto.TAddHost, proto.TRmHost, proto.TList, proto.TSearch, proto.TProbeHost, proto.TInstall, proto.TListDir, proto.TUpdateHost, proto.TTmux:
+		case proto.TCreate, proto.TCapture, proto.TOpenWS, proto.TAddHost, proto.TRmHost, proto.TList, proto.TSearch, proto.TProbeHost, proto.TInstall, proto.TListDir, proto.TUpdateHost, proto.TTmux, proto.TTrustHost:
 			// May wait on a remote host; don't stall input for other tabs.
 			go c.handle(m)
 		default:
@@ -386,14 +386,38 @@ func (c *client) handle(m *proto.Msg) {
 		if m.T == proto.TProbeHost {
 			ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 			defer cancel()
-			res, err := hostsetup.Probe(ctx, m.Target, m.Data, log)
-			c.reply(m, &proto.Msg{OS: res.OS + "/" + res.Arch, Text: res.Gecko, Missing: res.Missing}, err)
+			// The dialog confirms new host keys and asks for passwords itself.
+			res, err := hostsetup.ProbeWith(ctx, m.Target, hostsetup.Options{GeckoPath: m.Data, Secret: m.Secret, InstallKey: m.InstallKey, Strict: true}, log)
+			r := &proto.Msg{OS: res.OS + "/" + res.Arch, Text: res.Gecko, Missing: res.Missing, CanUseKey: hostsetup.CanUseKey()}
+			var se *hostsetup.Error
+			if errors.As(err, &se) {
+				r.Kind, r.Data = se.Kind, se.Fingerprint
+			}
+			c.reply(m, r, err)
 			return
 		}
 		goos, goarch, _ := strings.Cut(m.OS, "/")
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 		defer cancel()
-		c.reply(m, nil, hostsetup.Install(ctx, m.Target, hostsetup.Result{OS: goos, Arch: goarch}, log))
+		c.reply(m, nil, hostsetup.InstallWith(ctx, m.Target, hostsetup.Result{OS: goos, Arch: goarch}, hostsetup.Options{Secret: m.Secret}, log))
+	case proto.TTrustHost:
+		if c.scope == hub.ScopeLocal {
+			c.reply(m, nil, errors.New("machines can only be set up from the Gecko you are using directly, not through another one"))
+			return
+		}
+		c.reply(m, nil, hostsetup.TrustHost(m.Target, m.Data))
+	case proto.TAskpass:
+		// gecko-askpass, run by ssh for a check or install the daemon started.
+		if !c.local || c.kind != "cli" {
+			c.reply(m, nil, errors.New("not here"))
+			return
+		}
+		secret, ok := hostsetup.AskpassSecret(m.Text, m.Data)
+		if !ok {
+			c.reply(m, nil, errors.New("nothing to answer"))
+			return
+		}
+		c.reply(m, &proto.Msg{Secret: secret}, nil)
 	case proto.TRmHost:
 		c.reply(m, nil, h.RemoveHost(m.Name))
 	default:

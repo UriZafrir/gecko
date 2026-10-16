@@ -531,6 +531,11 @@ input[type=text], input[type=search], textarea {
 .setup input { font-size: 14px; padding: 8px 10px; }
 .setup details summary { cursor: pointer; font-size: 13px; color: var(--muted); }
 .setup details label { margin-top: 8px; }
+.setup-auth { display: flex; flex-direction: column; gap: 10px; }
+.setup-auth[hidden] { display: none; }
+.setup label.check { flex-direction: row; align-items: center; gap: 8px; color: var(--text); }
+.setup label.check[hidden] { display: none; }
+.setup label.check input { width: auto; padding: 0; }
 .setup-status { font-size: 13px; line-height: 1.5; min-height: 1.5em; }
 .setup-status:empty { display: none; }
 .setup-status.good { color: var(--accent); }
@@ -603,6 +608,10 @@ input, textarea, [contenteditable] { cursor: text; user-select: text; -webkit-us
   .tab.cur .x { display: block; }
   .pane { inset: 4px 2px 0 4px; }
   #statusline { display: none; }
+  /* ...except for "Make it a Gecko machine" after an ssh. */
+  #statusline:has(.sl-action) { display: flex; justify-content: center; height: 34px; }
+  #statusline:has(.sl-action) .l > :not(.sl-action), #statusline:has(.sl-action) .r > :not(.sl-action) { display: none; }
+  #statusline .sl-action { padding: 4px 12px; }
   .agent { min-width: 70vw; }
   .replies button { min-width: 34px; height: 30px; }
   .tab-row, .host-main { padding-top: 7px; padding-bottom: 7px; }

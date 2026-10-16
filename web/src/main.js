@@ -1340,6 +1340,10 @@ class App {
         <label>Path to gecko on that machine<input name="gecko" placeholder="found on PATH or in ~/.local/bin" autocomplete="off" spellcheck="false"></label>
       </details>
       <div class="setup-status" role="status"></div>
+      <div class="setup-auth" hidden>
+        <label>Password<input name="secret" type="password" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+        <label class="check" data-key-row><input name="usekey" type="checkbox" checked> <span data-key-label></span></label>
+      </div>
       <pre class="setup-log" hidden></pre>
       <div class="row">
         <button data-cancel>Cancel</button>
@@ -1349,12 +1353,17 @@ class App {
     </div>`;
     m.hidden = false;
     const $m = (sel) => m.querySelector(sel);
-    const f = { target: $m('[name=target]'), name: $m('[name=name]'), gecko: $m('[name=gecko]') };
+    const f = { target: $m('[name=target]'), name: $m('[name=name]'), gecko: $m('[name=gecko]'), secret: $m('[name=secret]'), usekey: $m('[name=usekey]') };
+    const auth = $m('.setup-auth');
+    $m('[data-key-label]').textContent = android ? "Use this phone's SSH key from now on" : 'Use my SSH key from now on (adds it to ~/.ssh/authorized_keys there)';
+    // The password lives only in this dialog and the request it goes with.
+    let secret = '';
+    let fingerprint = '';
     f.target.value = prefill.target || '';
     f.name.value = prefill.name || (prefill.target ? guessName(prefill.target) : '');
     f.gecko.value = prefill.gecko || '';
     let nameEdited = !!prefill.name;
-    let state = 'idle'; // idle | busy | ok | missing | failed
+    let state = 'idle'; // idle | busy | ok | missing | failed | password | hostkey
     let found = null;
     const job = 'setup' + Date.now();
     const log = $m('.setup-log');
@@ -1367,11 +1376,13 @@ class App {
       status.textContent = msg;
       status.className = 'setup-status ' + kind;
       const busy = st === 'busy';
-      for (const el of [main, recheck, f.target, f.name, f.gecko]) el.disabled = busy;
-      main.textContent = { idle: 'Check connection', busy: 'Working…', ok: 'Add machine', missing: 'Install Gecko there', failed: 'Retry' }[st];
+      for (const el of [main, recheck, f.target, f.name, f.gecko, f.secret, f.usekey]) el.disabled = busy;
+      main.textContent = { idle: 'Check connection', busy: 'Working…', ok: 'Add machine', missing: 'Install Gecko there', failed: 'Retry', password: 'Log in', hostkey: 'Trust and connect' }[st];
+      if (st !== 'busy') auth.hidden = st !== 'password';
       recheck.hidden = !(st === 'ok' || st === 'missing');
     };
     const close = () => {
+      secret = '';
       this.hostSetup = null;
       m.hidden = true;
       m.innerHTML = '';
@@ -1390,12 +1401,41 @@ class App {
       if (!target) return setState('failed', 'Enter the SSH destination, for example me@devbox.', 'bad');
       if (keepLog !== true) log.textContent = '';
       setState('busy', 'Connecting…');
+      const installKey = !!secret && f.usekey.checked && !$m('[data-key-row]').hidden;
       try {
-        const r = await this.conn.request({ t: 'probehost', sub: job, target, data: f.gecko.value.trim() });
+        const r = await this.conn.request({ t: 'probehost', sub: job, target, data: f.gecko.value.trim(), secret: secret || undefined, installKey: installKey || undefined });
         if (!this.hostSetup) return;
         found = r;
+        if (installKey) secret = ''; // the key logs in from now on
         if (r.missing) setState('missing', `Reachable (${r.os}), but Gecko isn't installed there. Gecko can copy itself over to ~/.local/bin.`, 'warn');
         else setState('ok', `Connected: ${r.os}, ${r.text}.`, 'good');
+      } catch (e) {
+        if (!this.hostSetup) return;
+        const r = e.reply || {};
+        if (r.kind === 'needs-password') {
+          const again = !!secret;
+          secret = '';
+          f.secret.value = '';
+          $m('[data-key-row]').hidden = !r.canUseKey;
+          setState('password', again ? 'That password didn\'t work. Try again.' : `${target.replace(/:\d+$/, '')} wants a password. Gecko uses it for this setup only and doesn't keep it.`, again ? 'bad' : '');
+          f.secret.focus();
+        } else if (r.kind === 'host-key-unknown') {
+          fingerprint = r.data;
+          setState('hostkey', `First connection to this machine. Its key fingerprint is ${r.data}. If you're not sure it's the right machine, compare it with what \`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub\` shows there.`, 'warn');
+        } else setState('failed', e.message, 'bad');
+      }
+    };
+    const login = () => {
+      if (!f.secret.value) return f.secret.focus();
+      secret = f.secret.value;
+      f.secret.value = '';
+      check(true);
+    };
+    const trust = async () => {
+      setState('busy', 'Trusting the machine…');
+      try {
+        await this.conn.request({ t: 'trusthost', target: f.target.value.trim(), data: fingerprint });
+        if (this.hostSetup) check(true);
       } catch (e) {
         if (this.hostSetup) setState('failed', e.message, 'bad');
       }
@@ -1403,7 +1443,7 @@ class App {
     const install = async () => {
       setState('busy', 'Installing Gecko…');
       try {
-        await this.conn.request({ t: 'installhost', sub: job, target: f.target.value.trim(), os: found.os });
+        await this.conn.request({ t: 'installhost', sub: job, target: f.target.value.trim(), os: found.os, secret: secret || undefined });
         if (this.hostSetup) await check(true);
       } catch (e) {
         if (this.hostSetup) setState('missing', e.message, 'bad');
@@ -1425,6 +1465,8 @@ class App {
       if (state === 'busy') return;
       if (state === 'ok') return add();
       if (state === 'missing') return install();
+      if (state === 'password') return login();
+      if (state === 'hostkey') return trust();
       return check();
     };
     main.onclick = primary;
@@ -1432,6 +1474,7 @@ class App {
     $m('[data-cancel]').onclick = close;
     f.target.addEventListener('input', () => {
       if (!nameEdited) f.name.value = guessName(f.target.value);
+      secret = '';
       if (state !== 'busy') setState('idle');
     });
     f.gecko.addEventListener('input', () => state !== 'busy' && setState('idle'));

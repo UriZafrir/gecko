@@ -180,7 +180,7 @@ var dropEnv = []string{"TMUX=", "TMUX_PANE=", "STY=", "GECKO_", "TERM=", "TERM_P
 
 // keepEnv are GECKO_ variables shells do get: which Gecko the `gecko`
 // command talks to, and (on Android) the DNS file for ssh.
-var keepEnv = []string{"GECKO_HOME=", "GECKO_RESOLV_CONF="}
+var keepEnv = []string{"GECKO_HOME=", "GECKO_RESOLV_CONF=", "GECKO_APK="}
 
 func baseEnv() []string {
 	var env []string

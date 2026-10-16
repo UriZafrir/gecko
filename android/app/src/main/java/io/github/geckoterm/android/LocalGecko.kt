@@ -48,6 +48,9 @@ object LocalGecko {
             "USER" to user,
             "LOGNAME" to user,
             "GECKO_RESOLV_CONF" to resolvConf(ctx).path,
+            // Gecko for linux/amd64 and arm64 is inside (lib/<abi>/libgecko.so),
+            // to install on machines added from the phone.
+            "GECKO_APK" to ctx.applicationInfo.sourceDir,
             "HOME" to home(ctx).path,
             "TMPDIR" to tmp.path,
             "GECKO_HOME" to geckoHome(ctx).path,

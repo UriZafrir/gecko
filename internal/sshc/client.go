@@ -83,6 +83,10 @@ func Dial(r *Resolved, s *IO) (*ssh.Client, error) {
 		if errors.Is(err, errHostKey) {
 			return nil, errHostKey
 		}
+		var de *deniedError
+		if errors.As(err, &de) {
+			return nil, fmt.Errorf("%s@%s: Permission denied (publickey,%s).", r.User, r.HostName, de.method)
+		}
 		msg := err.Error()
 		if i := strings.Index(msg, "unable to authenticate"); i >= 0 {
 			methods := "publickey,password"
@@ -158,8 +162,17 @@ func authMethods(r *Resolved, s *IO) []ssh.AuthMethod {
 	if signers := loadSigners(r, s); len(signers) > 0 {
 		out = append(out, ssh.PublicKeys(signers...))
 	}
-	if r.Batch || !r.Password {
+	if !r.Password {
 		return out
+	}
+	if r.Batch {
+		// No questions in batch mode; but say which ways in the server
+		// offers, as OpenSSH does ("Permission denied (publickey,password)"),
+		// so a caller can tell a password would do.
+		wanted := func(m string) error { return &deniedError{method: m} }
+		return append(out,
+			ssh.KeyboardInteractive(func(string, string, []string, []bool) ([]string, error) { return nil, wanted("keyboard-interactive") }),
+			ssh.PasswordCallback(func() (string, error) { return "", wanted("password") }))
 	}
 	out = append(out, ssh.KeyboardInteractive(func(name, instruction string, questions []string, echos []bool) ([]string, error) {
 		if name != "" {
@@ -357,3 +370,8 @@ func hostKeyOrder(known []string) []string {
 	}
 	return []string{ssh.KeyAlgoED25519, ssh.KeyAlgoECDSA256, ssh.KeyAlgoECDSA384, ssh.KeyAlgoECDSA521, ssh.KeyAlgoRSASHA512, ssh.KeyAlgoRSASHA256}
 }
+
+// deniedError: batch mode met a server that would take a password.
+type deniedError struct{ method string }
+
+func (e *deniedError) Error() string { return "server wants " + e.method }

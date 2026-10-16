@@ -568,3 +568,13 @@ func TestHostKeyOnPort22(t *testing.T) {
 		}
 	}
 }
+
+// Batch mode never asks, but says the server takes a password.
+func TestBatchModeReportsPassword(t *testing.T) {
+	home(t)
+	s := newServer(t, nil)
+	code, _, errOut, asked := run(t, []string{"-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", "-p", strconv.Itoa(s.port), "alice@127.0.0.1", "true"}, "")
+	if code != 255 || len(asked) != 0 || !strings.Contains(errOut, "Permission denied (publickey,") || !strings.Contains(errOut, "password") {
+		t.Errorf("%d %q %q", code, errOut, asked)
+	}
+}
