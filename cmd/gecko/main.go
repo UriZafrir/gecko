@@ -34,6 +34,10 @@ import (
 
 var version = "dev"
 
+// The build id (set by make): the commit, with -dirty for uncommitted
+// changes, and when it was built (UTC, RFC 3339).
+var buildCommit, buildTime string
+
 const usage = `gecko - a terminal for shells, tmux, ssh/mosh and coding agents, everywhere
 
 Usage:
@@ -65,6 +69,7 @@ Config: ` + "%s" + `
 
 func main() {
 	session.Version = version
+	server.Build = server.BuildInfo{Version: version, Commit: buildCommit, Time: buildTime}
 	// Linked as ssh, ssh-keygen or scp (the Android app does, since Android
 	// has none): behave as that program.
 	switch strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe") {

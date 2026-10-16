@@ -119,7 +119,14 @@ rule itself before it connects (`NetPolicy.kt`).
 - **⋮ > Touch diagnostics** shows what the last gesture on a terminal looked
   like (how many touch samples, their time steps, the speed at release, the
   fling it made) with the screen's refresh rate and the WebView version, to
-  copy into a bug report.
+  copy into a bug report. It starts with the build ids.
+- **Build id.** Each APK says which build it is, e.g. `a1b2c3d · Oct 17 02:15`
+  (the commit, `-dirty` if it had uncommitted changes, and when it was built,
+  in the phone's time): at the bottom of the **⋮** menu and of the machine
+  list, tap to copy. Touch diagnostics shows it, the web UI's (the same, as
+  the app brings its own) and, when it differs, the build of the Gecko on the
+  machine, which `/api/info` reports. `make android-gecko` sets it, for the
+  web UI, gecko and the app at once.
 - **Back** closes what is open, innermost first: a menu, a dialog, the
   palette, the text view, find, the drawer, compose. With nothing open it goes
   back to the machine list.

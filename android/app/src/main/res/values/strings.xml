@@ -49,6 +49,8 @@
     <string name="menu_reload">Reload</string>
     <string name="touch_diagnostics">Touch diagnostics</string>
     <string name="copy">Copy</string>
+    <string name="build_copied">Build id copied</string>
+    <string name="build_id_desc">Build %1$s. Tap to copy.</string>
 
     <string name="channel_agents">Agents that need you</string>
     <string name="channel_agents_desc">A coding agent in a Gecko tab is waiting for your answer, or finished.</string>

@@ -34,6 +34,13 @@ type HTTP struct {
 	conns map[*websocket.Conn]struct{}
 }
 
+// BuildInfo identifies the running gecko: its version, the commit it was
+// built from (with -dirty for uncommitted changes) and when (RFC 3339).
+type BuildInfo struct{ Version, Commit, Time string }
+
+// Build is this gecko's (set by main).
+var Build = BuildInfo{Version: "dev"}
+
 // Handler returns the http.Handler.
 func (s *HTTP) Handler() http.Handler {
 	mux := http.NewServeMux()
@@ -187,6 +194,10 @@ func (s *HTTP) info(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"host": s.Hub.Name(),
 		"urls": ShareURLs(s.Listen, s.Token),
+		// Which gecko this is, so a client can tell an older one.
+		"version": Build.Version,
+		"commit":  Build.Commit,
+		"built":   Build.Time,
 	})
 }
 

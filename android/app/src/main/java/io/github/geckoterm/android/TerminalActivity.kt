@@ -291,7 +291,10 @@ class TerminalActivity : AppCompatActivity() {
     private fun tokenRefused(m: Machine): Boolean? = try {
         val client = okhttp3.OkHttpClient.Builder().callTimeout(10, java.util.concurrent.TimeUnit.SECONDS).build()
         val req = okhttp3.Request.Builder().url(m.url + "api/info").header("Authorization", "Bearer " + m.token).build()
-        client.newCall(req).execute().use { it.code == 401 || it.code == 403 }
+        client.newCall(req).execute().use {
+            if (it.isSuccessful) daemonBuild = try { daemonBuildOf(org.json.JSONObject(it.body?.string() ?: "")) } catch (e: Exception) { null }
+            it.code == 401 || it.code == 403
+        }
     } catch (e: Exception) {
         Log.w(TAG, "check token: ${e.message}")
         null
@@ -368,12 +371,14 @@ class TerminalActivity : AppCompatActivity() {
                 menu.add(0, MENU_STOP, 13, R.string.phone_stop_long)
             }
             menu.add(0, MENU_TOUCH, 90, R.string.touch_diagnostics)
+            menu.add(0, MENU_BUILD, 100, BuildId.small(this@TerminalActivity, BuildId.current))
             setOnMenuItemClickListener { item ->
                 when (item.itemId) {
                     MENU_ALLOW -> if (item.isChecked) ShareUi.turnOff(this@TerminalActivity) else ShareUi.turnOn(this@TerminalActivity)
                     MENU_LINKS -> ShareUi.showLinks(this@TerminalActivity)
                     MENU_SSH_KEY -> SshKeyUi.show(this@TerminalActivity)
                     MENU_TOUCH -> showTouchDiagnostics()
+                    MENU_BUILD -> BuildId.copy(this@TerminalActivity)
                     MENU_STOP -> {
                         PhoneService.stop(this@TerminalActivity)
                         leave()
@@ -393,14 +398,30 @@ class TerminalActivity : AppCompatActivity() {
         }
     }
 
-    /** What the last gesture on a terminal looked like (gecko.touchReport), and this device's screen and web view. */
+    /** The connected Gecko's build, from its /api/info ("" when it's too old to say). */
+    @Volatile private var daemonBuild: String? = null
+
+    private fun daemonBuildOf(info: org.json.JSONObject): String {
+        val commit = info.optString("commit")
+        if (commit.isEmpty()) return ""
+        val id = BuildId.format(commit, info.optString("built"))
+        val v = info.optString("version")
+        return if (v.isEmpty() || v == "dev") id else "$id ($v)"
+    }
+
+    /** This app's build id, and what the last gesture on a terminal looked like (gecko.touchReport), and this device's screen and web view. */
     private fun showTouchDiagnostics() {
         web.evaluateJavascript("window.gecko&&gecko.touchReport?gecko.touchReport():'The page has no touch report.'") { v ->
             val page = try { org.json.JSONTokener(v).nextValue() as? String } catch (e: Exception) { null } ?: "The page isn't loaded."
             @Suppress("DEPRECATION")
             val hz = windowManager.defaultDisplay.refreshRate
             val wv = androidx.webkit.WebViewCompat.getCurrentWebViewPackage(this)?.versionName ?: "?"
-            val text = page + "\nDisplay: %.0f Hz; WebView %s; Android %s (%s)".format(hz, wv, Build.VERSION.RELEASE, Build.MODEL)
+            val there = when (val b = daemonBuild) {
+                null -> ""
+                "" -> "\nGecko there: too old to report its build"
+                else -> if (b.startsWith(BuildConfig.BUILD_COMMIT + " ")) "" else "\nGecko there: build $b"
+            }
+            val text = "App build: ${BuildId.current}\n" + page + there + "\nDisplay: %.0f Hz; WebView %s; Android %s (%s)".format(hz, wv, Build.VERSION.RELEASE, Build.MODEL)
             AlertDialog.Builder(this)
                 .setTitle(R.string.touch_diagnostics)
                 .setMessage(text)
@@ -537,6 +558,7 @@ class TerminalActivity : AppCompatActivity() {
         private const val MENU_STOP = 103
         private const val MENU_SSH_KEY = 104
         private const val MENU_TOUCH = 105
+        private const val MENU_BUILD = 106
 
         /** The origin of the machine on show, for requests on web view threads. */
         @Volatile var currentOrigin: String? = null

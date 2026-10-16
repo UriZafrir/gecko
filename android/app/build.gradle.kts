@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -8,6 +10,14 @@ android {
     compileSdk = 35
 
     defaultConfig {
+        // Build id: commit (-dirty with uncommitted changes) and build time
+        // (UTC), from app/build-id.properties that `make android-gecko`
+        // writes; a plain Gradle build says "unknown".
+        val buildId = Properties().apply {
+            file("build-id.properties").takeIf { it.exists() }?.reader()?.use { load(it) }
+        }
+        buildConfigField("String", "BUILD_COMMIT", "\"${buildId.getProperty("commit", "unknown")}\"")
+        buildConfigField("String", "BUILD_TIME", "\"${buildId.getProperty("time", "")}\"")
         applicationId = "io.github.geckoterm.android"
         minSdk = 26
         targetSdk = 35

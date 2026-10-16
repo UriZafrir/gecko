@@ -19,6 +19,10 @@ const opts = {
   loader: { '.woff2': 'file', '.woff': 'file' },
   assetNames: 'assets/[name]-[hash]',
   logLevel: 'info',
+  // The build id (make passes it; see the Makefile): which commit, built when.
+  define: {
+    __GECKO_BUILD__: JSON.stringify({ commit: process.env.GECKO_BUILD_COMMIT || 'dev', time: process.env.GECKO_BUILD_TIME || '' }),
+  },
 };
 if (watch) {
   const ctx = await esbuild.context(opts);

@@ -1,7 +1,11 @@
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 # Package version: the latest release tag without its "v".
 PKG_VERSION ?= $(or $(patsubst v%,%,$(shell git describe --tags --abbrev=0 2>/dev/null)),0.0.0)
-LDFLAGS := -s -w -X main.version=$(VERSION)
+# Build id: the commit (with -dirty for uncommitted changes) and when it
+# was built, in the web UI, gecko and the Android app alike.
+BUILD_COMMIT := $(or $(BUILD_COMMIT),$(shell c=$$(git rev-parse --short=7 HEAD 2>/dev/null || echo unknown); [ -n "$$(git status --porcelain 2>/dev/null)" ] && c="$$c-dirty"; echo $$c))
+BUILD_TIME := $(or $(BUILD_TIME),$(shell date -u +%Y-%m-%dT%H:%M:%SZ))
+LDFLAGS := -s -w -X main.version=$(VERSION) -X main.buildCommit=$(BUILD_COMMIT) -X main.buildTime=$(BUILD_TIME)
 GO ?= go
 export GOTOOLCHAIN ?= local
 
@@ -12,7 +16,7 @@ DESKTOP_DIR := $(PREFIX)/share/gecko/desktop
 all: web build
 
 web:
-	cd web && npm install --no-audit --no-fund && node build.mjs
+	cd web && npm install --no-audit --no-fund && GECKO_BUILD_COMMIT=$(BUILD_COMMIT) GECKO_BUILD_TIME=$(BUILD_TIME) node build.mjs
 
 build:
 	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o bin/gecko ./cmd/gecko
@@ -20,7 +24,7 @@ build:
 test:
 	$(GO) vet ./...
 	$(GO) test ./...
-	node --test web/src/gestures.test.mjs
+	node --test web/src/gestures.test.mjs web/src/build.test.mjs
 
 # Cross-compiled binaries; `gecko host install` picks the right one.
 dist: web
@@ -68,6 +72,8 @@ android-gecko: web
 	done
 	@# The web UI, which the app serves for every machine (BundledUi.kt).
 	@rm -rf android/app/src/main/assets/web && mkdir -p android/app/src/main/assets && cp -r web/dist android/app/src/main/assets/web && rm -f android/app/src/main/assets/web/.keep
+	@# The same build id for the app (BuildConfig, see app/build.gradle.kts).
+	@printf 'commit=%s\ntime=%s\n' '$(BUILD_COMMIT)' '$(BUILD_TIME)' > android/app/build-id.properties
 
 # Its unit tests; `./gradlew connectedDebugAndroidTest` runs the device tests.
 android-test:

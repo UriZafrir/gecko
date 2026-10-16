@@ -41,6 +41,7 @@ import { THEMES, AUTO, resolveTheme, paintTheme, swatch } from './themes.js';
 import { Keys, prettyCombo, comboOf, ACTIONS, DEFAULTS, DEFAULT_TAB_MODIFIER, TAB_MODIFIERS } from './keys.js';
 import { startupChime } from './sound.js';
 import { attachPane, attachPage } from './touch.js';
+import { BUILD, buildId } from './build.js';
 import { siClaude, siGooglegemini, siCursor, siGithubcopilot, siQwen, siOpencode } from 'simple-icons';
 import { $, esc, ago, shortPath, copyText, readClipboard, fuzzy, store, save, isTouch, isMac, android } from './util.js';
 
@@ -3138,11 +3139,17 @@ class App {
 
   // ---------------------------------------------------------------- render
 
+  // This web UI's build id, e.g. "a1b2c3d · Oct 17 02:15" (see build.js).
+  buildId() {
+    return buildId(BUILD.commit, BUILD.time);
+  }
+
   // ⋮ > Touch diagnostics in the Android app: what the last gesture on a
   // terminal looked like, to tell what a real phone sends.
   touchReport() {
     const t = this.touchStats;
     const lines = [
+      `Web UI build: ${this.buildId()}`,
       `UI: ${this.bundled ? 'from the app' : 'from the machine'}, protocol ${PROTOCOL}; Gecko there: ${this.daemonVersion || '?'}`,
       `Screen: ${innerWidth}x${innerHeight} CSS px at ${devicePixelRatio}x; touch: ${this.touch}`,
     ];

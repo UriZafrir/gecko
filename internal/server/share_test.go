@@ -55,6 +55,26 @@ func TestPrivateOnlyRefusesPublicPeers(t *testing.T) {
 	}
 }
 
+// /api/info says which gecko it is (the Android app's touch diagnostics).
+func TestInfoHasBuild(t *testing.T) {
+	old := Build
+	defer func() { Build = old }()
+	Build = BuildInfo{Version: "v1.2.3", Commit: "a1b2c3d-dirty", Time: "2026-10-16T23:15:00Z"}
+	h := hub.New(&config.Config{Name: "test"}, session.NewManager(session.Options{Host: "test", Shell: "/bin/sh", ScriptsDir: t.TempDir()}))
+	s := &HTTP{Hub: h, Token: "secret-token-123456"}
+	r := httptest.NewRequest("GET", "/api/info", nil)
+	r.Header.Set("Authorization", "Bearer secret-token-123456")
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, r)
+	var got map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["version"] != "v1.2.3" || got["commit"] != "a1b2c3d-dirty" || got["built"] != "2026-10-16T23:15:00Z" {
+		t.Errorf("info = %v", got)
+	}
+}
+
 // Sharing is changed only from the daemon's own socket.
 func TestShareOnlyOnLocalSocket(t *testing.T) {
 	h := hub.New(&config.Config{Name: "test"}, session.NewManager(session.Options{Host: "test", Shell: "/bin/sh", ScriptsDir: t.TempDir()}))

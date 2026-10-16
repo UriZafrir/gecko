@@ -69,6 +69,11 @@ class ConnectActivity : AppCompatActivity() {
         empty = findViewById(R.id.empty)
         list.layoutManager = LinearLayoutManager(this)
         findViewById<View>(R.id.scan).setOnClickListener { startScan() }
+        findViewById<TextView>(R.id.build_id).apply {
+            text = BuildId.current
+            contentDescription = getString(R.string.build_id_desc, BuildId.current)
+            setOnClickListener { BuildId.copy(this@ConnectActivity) }
+        }
         findViewById<View>(R.id.paste).setOnClickListener { pasteDialog() }
         Notifier.channels(this)
         if (Gecko.prefs(this).getBoolean(Gecko.BACKGROUND, false)) WatchService.refresh(this)
