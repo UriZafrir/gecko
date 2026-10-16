@@ -100,7 +100,10 @@ rule itself before it connects (`NetPolicy.kt`).
   with `mouse on` (a swipe scrolls its copy mode), and in a machine's tabs.
   In tmux with the mouse off a swipe sends nothing (the arrow keys it would
   become go to the shell's history) and says how to turn the mouse on. With
-  reduced motion on there is no coasting or stretch. Pinch to change the font size (kept per
+  animations removed (Remove animations, animator scale 0, which the page
+  sees as reduced motion) flicks still coast, as Android's own lists do;
+  only the stretch at the ends and the fading go, and a working agent's
+  logo keeps a steady ring instead of fading in and out. Pinch to change the font size (kept per
   device). Two fingers sideways, or a swipe on the tab bar when its tabs fit,
   change tabs. A swipe in from the left edge opens the drawer, a swipe left
   closes it. Tap for the keyboard, long-press for the selectable text view.
@@ -118,7 +121,8 @@ rule itself before it connects (`NetPolicy.kt`).
   [Security](security.md).
 - **⋮ > Touch diagnostics** shows what the last gesture on a terminal looked
   like (how many touch samples, their time steps, the speed at release, the
-  fling it made) with the screen's refresh rate and the WebView version, to
+  fling it made, or why it made none, and its last few samples), whether
+  reduced motion is on, with the screen's refresh rate and the WebView version, to
   copy into a bug report. It starts with the build ids.
 - **Build id.** Each APK says which build it is, e.g. `a1b2c3d · Oct 17 02:15`
   (the commit, `-dirty` if it had uncommitted changes, and when it was built,

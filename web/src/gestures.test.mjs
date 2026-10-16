@@ -1,7 +1,7 @@
 // node --test web/src/gestures.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { classify, velocity, decay, coastDistance, lines, pinchFont, twoFinger, swipeDone, STOP, flingDistance, flingTau, flingStep, boost, place, rubber, stretch, squeeze, spring, springDone, absorb, SPRING, thumbSize, thumbTop, thumbLine, MIN_THUMB, MAX_FLING, addSample, sampleStats, cells, cursorFling, MAX_CURSOR_FLING, wheelPlan, wheelDue, WHEEL_CAP } from './gestures.js';
+import { classify, velocity, decay, coastDistance, lines, pinchFont, twoFinger, swipeDone, STOP, flingDistance, flingTau, flingStep, boost, place, rubber, stretch, squeeze, spring, springDone, absorb, SPRING, thumbSize, thumbTop, thumbLine, MIN_THUMB, MAX_FLING, addSample, sampleStats, cells, cursorFling, MAX_CURSOR_FLING, wheelPlan, wheelDue, WHEEL_CAP, releaseVelocity, lastSteps } from './gestures.js';
 
 test('classify', () => {
   assert.equal(classify(3, 4), '');
@@ -227,4 +227,44 @@ test('wheel flings: spaced out, slowing, capped, faster goes further', () => {
   assert.ok(hard.t < 12000, `hard fling ends in ${hard.t} ms`);
   assert.equal(wheelPlan(0.01, 18), null);
   assert.equal(wheelPlan(3, 0), null);
+});
+
+test('release velocity: a repeated last position right before the lift still flings', () => {
+  const s = [];
+  for (let i = 0; i <= 10; i++) addSample(s, i * 8, 0, i * 16); // 2 px/ms
+  addSample(s, 84, 0, 160); // the same spot again
+  addSample(s, 86, 0, 160);
+  const r = releaseVelocity(s, 'y', 88);
+  assert.ok(Math.abs(r.v - 2) < 0.05, `v ${r.v}`);
+  assert.equal(r.why, '');
+});
+
+test('release velocity: held still before lifting', () => {
+  const s = [];
+  for (let i = 0; i <= 10; i++) addSample(s, i * 8, 0, i * 16);
+  // No moves, then lifted 60 ms later.
+  assert.equal(releaseVelocity(s, 'y', 140).why, 'held still before lifting');
+  // Repeats of the same spot for 60 ms.
+  for (let t = 88; t <= 140; t += 8) addSample(s, t, 0, 160.5);
+  assert.equal(releaseVelocity(s, 'y', 142).v, 0);
+  assert.equal(releaseVelocity(s, 'y', 142).why, 'held still before lifting');
+  // A slow drag is no fling.
+  const slow = [];
+  for (let i = 0; i <= 10; i++) addSample(slow, i * 8, 0, i * 0.36); // 0.045 px/ms
+  assert.equal(releaseVelocity(slow, 'y', 82).why, 'slower than a fling');
+  const steps = [];
+  addSample(steps, 0, 0, 0); addSample(steps, 8, 0, 10); addSample(steps, 12.5, 0, 10);
+  assert.deepEqual(lastSteps(steps, 'y'), [{ dt: 8, d: 10 }, { dt: 4.5, d: 0 }]);
+});
+
+test('release velocity: moves the browser coalesced (stamped early) still fling', () => {
+  // Stamped every 16 ms, the last one 60 ms before the lift's stamp, but
+  // received just before it: the finger was moving.
+  const s = [];
+  for (let i = 0; i <= 6; i++) addSample(s, i * 16, 0, i * i * 6, undefined, 1000 + i * 16);
+  const r = releaseVelocity(s, 'y', 96 + 60, 1000 + 96 + 6);
+  assert.ok(r.v > 1, `v ${r.v}`);
+  assert.equal(r.why, '');
+  // Held still: late in both clocks.
+  assert.equal(releaseVelocity(s, 'y', 96 + 60, 1000 + 96 + 60).why, 'held still before lifting');
 });

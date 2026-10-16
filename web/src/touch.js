@@ -19,12 +19,18 @@
 // come late and couldn't be stopped, which kills flings on real phones.
 // The math is in gestures.js.
 import {
-  SLOP, classify, velocity, STOP, lines, distance, midpoint, pinchFont, twoFinger, swipeDone,
+  SLOP, classify, velocity, releaseVelocity, lastSteps, STOP, lines, distance, midpoint, pinchFont, twoFinger, swipeDone,
   MIN_FLING, flingTau, flingStep, flingDistance, boost, place, stretch, squeeze, spring, springDone, absorb,
   thumbSize, thumbTop, thumbLine, addSample, sampleStats, cells, cursorFling, wheelPlan, wheelDue,
 } from './gestures.js';
 
 const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// Why a gesture made no fling, for the touch diagnostics ('' when it did).
+const noFling = (why, cancelled, flung) => ({
+  flung: !!flung,
+  why: [flung ? '' : why || 'slower than a fling', cancelled ? 'the browser cancelled the touch' : ''].filter(Boolean).join('; '),
+});
 const phoneLayout = () => matchMedia('(max-width: 760px)').matches;
 const point = (t) => ({ x: t.clientX, y: t.clientY });
 
@@ -222,7 +228,8 @@ function scrollView(p) {
     vel = v;
     el.dataset.fling = v.toFixed(2); // for tests
     const tau = flingTau(v);
-    if (!tau || reduceMotion()) { vel = 0; return snap(); }
+    // Flings coast with animations off too, as Android's own lists do.
+    if (!tau) { vel = 0; return snap(); }
     animate((dt) => {
       const s = flingStep(vel, dt, tau);
       vel = s.v;
@@ -300,7 +307,8 @@ export function attachPane(app, p) {
   const note = (g, v, extra = {}) => {
     app.touchStats = {
       kind: g.kind, ...sampleStats(g.samples), moves: g.moves, late: g.late,
-      v: +v.toFixed(3), fling: Math.round(flingDistance(v)), ...extra,
+      v: +v.toFixed(3), fling: Math.round(flingDistance(v)),
+      steps: lastSteps(g.samples, g.kind === 'cursor' ? 'x' : 'y'), reduced: reduceMotion(), ...extra,
       at: new Date().toLocaleTimeString(),
     };
   };
@@ -328,7 +336,7 @@ export function attachPane(app, p) {
         return claim(ev);
       }
       if (spot === 'edge') sv.show(); // a touch near the edge brings the thumb up
-      g = { kind: '', start: at, last: at, acc: 0, flingV, stopped: wasMoving, moves: 0, late: 0, samples: addSample([], ev.timeStamp, at.x, at.y) };
+      g = { kind: '', start: at, last: at, acc: 0, flingV, stopped: wasMoving, moves: 0, late: 0, samples: addSample([], ev.timeStamp, at.x, at.y, undefined, performance.now()) };
       if (!wasMoving) {
         longPress = setTimeout(() => {
           if (g && g.kind === '') {
@@ -379,7 +387,7 @@ export function attachPane(app, p) {
     g.moves++;
     if (!ev.cancelable) g.late++; // the browser had taken it over
     if (g.kind === '') {
-      addSample(g.samples, ev.timeStamp, at.x, at.y);
+      addSample(g.samples, ev.timeStamp, at.x, at.y, undefined, performance.now());
       const c = classify(at.x - g.start.x, at.y - g.start.y, SLOP);
       if (!c) return claim(ev); // not decided yet, but ours already
       clearTimeout(longPress);
@@ -393,7 +401,7 @@ export function attachPane(app, p) {
     if (g.kind === 'cursor') {
       g.acc += at.x - g.last.x;
       g.last = at;
-      addSample(g.samples, ev.timeStamp, at.x, at.y);
+      addSample(g.samples, ev.timeStamp, at.x, at.y, undefined, performance.now());
       const { n, rest } = cells(g.acc, cellWidth(p));
       g.acc = rest;
       g.keys = (g.keys || 0) + n;
@@ -403,7 +411,7 @@ export function attachPane(app, p) {
     if (g.kind === 'scroll' || g.kind === 'wheel') {
       const dy = at.y - g.last.y;
       g.last = at;
-      addSample(g.samples, ev.timeStamp, at.x, at.y);
+      addSample(g.samples, ev.timeStamp, at.x, at.y, undefined, performance.now());
       if (g.kind === 'scroll') {
         sv.move(dy); // by the pixel: the content stays under the finger
       } else {
@@ -416,7 +424,7 @@ export function attachPane(app, p) {
     claim(ev);
   }, { capture: true, passive: false });
 
-  const finish = (ev) => {
+  const finish = (ev, cancelled = false) => {
     if (!g) return;
     if (g.kind === 'two') {
       if (ev.touches.length > 0) return claim(ev); // the other finger is still down
@@ -440,9 +448,9 @@ export function attachPane(app, p) {
       return claim(ev);
     }
     if (g.kind === 'cursor') {
-      const v = velocity(g.samples, 'x', 100, ev.timeStamp);
-      const extra = reduceMotion() ? 0 : cursorFling(v, cellWidth(p));
-      note(g, v, { keys: g.keys || 0, flingKeys: extra });
+      const { v, why, lift } = releaseVelocity(g.samples, 'x', ev.timeStamp, performance.now());
+      const extra = cursorFling(v, cellWidth(p));
+      note(g, v, { keys: g.keys || 0, flingKeys: extra, lift, ...noFling(why, cancelled, extra) });
       end();
       if (extra) {
         // The flick's extra steps, sent as it would coast.
@@ -467,16 +475,22 @@ export function attachPane(app, p) {
       return claim(ev);
     }
     if (g.kind === 'scroll' || g.kind === 'wheel') {
-      const v = boost(g.flingV, velocity(g.samples, 'y', 100, ev.timeStamp));
-      note(g, v, { boosted: g.flingV ? +g.flingV.toFixed(3) : 0 });
+      const r = releaseVelocity(g.samples, 'y', ev.timeStamp, performance.now());
+      const still = r.why && r.why !== 'slower than a fling';
+      const v = still ? 0 : boost(g.flingV, r.v);
+      const pulled = g.kind === 'scroll' && sv.pulled;
+      note(g, v, {
+        boosted: g.flingV && !still ? +g.flingV.toFixed(3) : 0, lift: r.lift,
+        ...(pulled ? { flung: false, why: 'pulled past the end' } : noFling(r.why, cancelled, Math.abs(v) >= MIN_FLING)),
+      });
       const kind = g.kind, at = g.last;
       end();
       if (kind === 'scroll') {
-        if (!sv.pulled && Math.abs(v) >= MIN_FLING && !reduceMotion()) sv.fling(v);
+        if (!pulled && Math.abs(v) >= MIN_FLING) sv.fling(v);
         else sv.settle();
         return claim(ev);
       }
-      const plan = !reduceMotion() && Math.abs(v) >= MIN_FLING ? wheelPlan(v, cellHeight(p)) : null;
+      const plan = Math.abs(v) >= MIN_FLING ? wheelPlan(v, cellHeight(p)) : null;
       if (plan) {
         // The program scrolls by steps; they go out over time on a page's
         // slowing curve (and no faster than 60 a second).
@@ -505,6 +519,9 @@ export function attachPane(app, p) {
   };
   el.addEventListener('touchend', finish, { capture: true, passive: false });
   el.addEventListener('touchcancel', (ev) => {
+    // Taken from the page (the system or the app's own gestures): a scroll
+    // or swipe still ends as it would have, flinging included.
+    if (g && (g.kind === 'scroll' || g.kind === 'wheel' || g.kind === 'cursor')) return finish(ev, true);
     if (g?.kind === 'two') {
       el.style.transform = '';
       delete el.dataset.pinch;

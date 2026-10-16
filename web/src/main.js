@@ -3152,6 +3152,7 @@ class App {
       `Web UI build: ${this.buildId()}`,
       `UI: ${this.bundled ? 'from the app' : 'from the machine'}, protocol ${PROTOCOL}; Gecko there: ${this.daemonVersion || '?'}`,
       `Screen: ${innerWidth}x${innerHeight} CSS px at ${devicePixelRatio}x; touch: ${this.touch}`,
+      `Reduced motion: ${matchMedia('(prefers-reduced-motion: reduce)').matches ? 'yes (flings still coast; no stretch at the ends)' : 'no'}`,
     ];
     if (!t) lines.push('No gesture yet: scroll, flick or swipe on a terminal, then look again.');
     else {
@@ -3160,6 +3161,9 @@ class App {
       lines.push(`Moves: ${t.moves}, taken over by the browser: ${t.late}`);
       lines.push(`Speed at release: ${t.v} px/ms; fling distance: ${t.fling} px${t.boosted ? ` (boosted from ${t.boosted})` : ''}`);
       if (t.keys !== undefined) lines.push(`Cursor: ${t.keys} steps dragged, ${t.flingKeys} flung`);
+      if (t.flung !== undefined) lines.push(t.flung ? `Fling: yes${t.why ? ` (${t.why})` : ''}` : `Why no fling: ${t.why}`);
+      if (t.lift) lines.push(`Lifted ${t.lift[0]} ms after the last move${t.lift[1] !== null ? ` (${t.lift[1]} ms as received)` : ''}`);
+      if (t.steps?.length) lines.push(`Last samples (dt ms, d px): ${t.steps.map((q) => `${q.dt}, ${q.d}`).join(' | ')}`);
     }
     return lines.join('\n');
   }

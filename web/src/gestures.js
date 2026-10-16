@@ -31,6 +31,41 @@ export function velocity(samples, key = 'y', window = 100, now) {
   return den > 0 ? num / den : 0;
 }
 
+// The speed a finger lifted at (time now) leaves with, and when it is 0
+// why: { v, why }. A finger held still before lifting (under STILL_PX
+// over the last STILL_MS) makes no fling. Samples that didn't move in the
+// last ZERO_TAIL_MS are left out (real phones send a repeat of the last
+// position right before the lift), so they don't count as holding still.
+// A sample's r is when the page got it: the browser stamps moves it
+// coalesced (a busy or slow phone) with an earlier time, so a gap counts
+// as holding still only if it shows in both clocks (received: at the lift).
+export const STILL_MS = 50, STILL_PX = 2, ZERO_TAIL_MS = 20;
+export function releaseVelocity(samples, key = 'y', now, received) {
+  if (samples.length < 2) return { v: 0, why: 'too few samples' };
+  const end = now ?? samples[samples.length - 1].t;
+  let n = samples.length;
+  while (n > 2 && end - samples[n - 1].t <= ZERO_TAIL_MS && Math.abs(samples[n - 1][key] - samples[n - 2][key]) < 0.01) n--;
+  const kept = n === samples.length ? samples : samples.slice(0, n);
+  const last = kept[kept.length - 1];
+  const got = received !== undefined && last.r !== undefined ? received - last.r : Infinity;
+  const lift = [Math.round(end - last.t), got === Infinity ? null : Math.round(got)];
+  if (Math.min(end - last.t, got) >= STILL_MS) return { v: 0, why: 'held still before lifting', lift };
+  let from = kept[0];
+  for (const q of kept) if (end - q.t >= STILL_MS) from = q;
+  if (from !== last && end - from.t >= STILL_MS && Math.abs(last[key] - from[key]) < STILL_PX) return { v: 0, why: 'held still before lifting', lift };
+  const v = velocity(kept, key, 100);
+  return { v, why: Math.abs(v) < MIN_FLING ? 'slower than a fling' : '', lift };
+}
+
+// The last few samples as time and distance steps, for the diagnostics.
+export function lastSteps(samples, key = 'y', n = 5) {
+  const out = [];
+  for (let i = Math.max(1, samples.length - n); i < samples.length; i++) {
+    out.push({ dt: +(samples[i].t - samples[i - 1].t).toFixed(1), d: +(samples[i][key] - samples[i - 1][key]).toFixed(1) });
+  }
+  return out;
+}
+
 // A flick's speed after dt ms: exponential friction, the way native lists
 // coast (half the speed about every 115 ms).
 export const FRICTION = 0.994;
@@ -154,13 +189,13 @@ export function lines(px, lineHeight) {
 // go forward, and a sample at the same time as the last replaces it (some
 // devices report coalesced moves with one time stamp), so a zero time step
 // never skews the speed. Keeps the last max samples.
-export function addSample(samples, t, x, y, max = 30) {
+export function addSample(samples, t, x, y, max = 30, r = t) {
   const last = samples[samples.length - 1];
   if (last && t <= last.t) {
     if (t < last.t - 1000) samples.length = 0; // a clock jump: start over
-    else { last.x = x; last.y = y; return samples; }
+    else { last.x = x; last.y = y; last.r = r; return samples; }
   }
-  samples.push({ t, x, y });
+  samples.push({ t, x, y, r });
   if (samples.length > max) samples.shift();
   return samples;
 }
