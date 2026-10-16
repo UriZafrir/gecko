@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/quic-go/webtransport-go"
 
 	"github.com/gecko-term/gecko/internal/hub"
 	"github.com/gecko-term/gecko/web"
@@ -25,6 +26,12 @@ type HTTP struct {
 	Hub    *hub.Hub
 	Token  string
 	Listen string
+
+	// WebTransport, when StartWT was called (see wt.go).
+	wt      *webtransport.Server
+	wtPort  int
+	certs   *certManager
+	tickets tickets
 }
 
 // Handler returns the http.Handler.
@@ -37,6 +44,7 @@ func (s *HTTP) Handler() http.Handler {
 	files := http.FileServer(http.FS(dist))
 	mux.HandleFunc("/ws", s.ws)
 	mux.HandleFunc("/api/info", s.info)
+	mux.HandleFunc("/api/wt", s.wtInfo)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if t := r.URL.Query().Get("token"); t != "" {
 			if !s.tokenOK(t) {

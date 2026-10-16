@@ -132,6 +132,18 @@ func Run(cfg *config.Config, listen string) error {
 		if err != nil {
 			log.Printf("web UI disabled: %v", err)
 		} else {
+			// WebTransport (QUIC) on the same address and port number, UDP.
+			// GECKO_WEBTRANSPORT=off leaves browsers on the WebSocket.
+			if os.Getenv("GECKO_WEBTRANSPORT") == "off" {
+				log.Printf("webtransport off (GECKO_WEBTRANSPORT)")
+			} else if pc, err := net.ListenPacket("udp", hl.Addr().String()); err != nil {
+				log.Printf("webtransport disabled: %v", err)
+			} else if err := web.StartWT(pc); err != nil {
+				pc.Close()
+				log.Printf("webtransport disabled: %v", err)
+			} else {
+				defer web.CloseWT()
+			}
 			_ = os.WriteFile(filepath.Join(config.StateDir(), "web"), []byte(hl.Addr().String()), 0o600)
 			log.Printf("gecko %s on %s: web UI at http://%s/", session.Version, cfg.Name, hl.Addr())
 			go func() { webErr <- srv.Serve(hl) }()
