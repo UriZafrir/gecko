@@ -21,7 +21,7 @@
 import {
   SLOP, classify, velocity, STOP, lines, distance, midpoint, pinchFont, twoFinger, swipeDone,
   MIN_FLING, flingTau, flingStep, flingDistance, boost, place, stretch, squeeze, spring, springDone, absorb,
-  thumbSize, thumbTop, thumbLine, addSample, sampleStats, cells, cursorFling,
+  thumbSize, thumbTop, thumbLine, addSample, sampleStats, cells, cursorFling, wheelPlan, wheelDue,
 } from './gestures.js';
 
 const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -61,6 +61,14 @@ function wheeler(p) {
 }
 
 const wheelMode = (t) => t.buffer.active.type !== 'normal' || t.modes.mouseTrackingMode !== 'none';
+
+// tmux (here or on the far side of ssh) with its mouse off: wheel steps
+// would become arrow keys, which tmux hands to the shell (its history), so
+// a vertical swipe sends nothing there and says how to turn the mouse on.
+function tmuxWithoutMouse(app, p) {
+  const t = p.term, s = app.sessions.get(p.id);
+  return t.buffer.active.type !== 'normal' && t.modes.mouseTrackingMode === 'none' && !!s && (s.kind === 'tmux' || !!s.remoteTmux);
+}
 
 function cellWidth(p) {
   const w = p.term._core?._renderService?.dimensions?.css?.cell?.width;
@@ -366,7 +374,7 @@ export function attachPane(app, p) {
       g.drag.to(ev.touches[0].clientY);
       return claim(ev);
     }
-    if (g.kind === 'done') return claim(ev);
+    if (g.kind === 'done' || g.kind === 'none') return claim(ev);
     const at = point(ev.touches[0]);
     g.moves++;
     if (!ev.cancelable) g.late++; // the browser had taken it over
@@ -375,7 +383,11 @@ export function attachPane(app, p) {
       const c = classify(at.x - g.start.x, at.y - g.start.y, SLOP);
       if (!c) return claim(ev); // not decided yet, but ours already
       clearTimeout(longPress);
-      g.kind = c === 'h' ? 'cursor' : wheelMode(p.term) ? 'wheel' : 'scroll';
+      g.kind = c === 'h' ? 'cursor' : tmuxWithoutMouse(app, p) ? 'none' : wheelMode(p.term) ? 'wheel' : 'scroll';
+      if (g.kind === 'none' && !app.tmuxMouseNoted) {
+        app.tmuxMouseNoted = true;
+        app.toast('tmux has the mouse off, so swiping can\'t scroll it. Turn it on with `tmux set -g mouse on` (or `set -g mouse on` in ~/.tmux.conf).');
+      }
       g.last = at; // start counting from here: no jump by the slop
     }
     if (g.kind === 'cursor') {
@@ -458,35 +470,32 @@ export function attachPane(app, p) {
       const v = boost(g.flingV, velocity(g.samples, 'y', 100, ev.timeStamp));
       note(g, v, { boosted: g.flingV ? +g.flingV.toFixed(3) : 0 });
       const kind = g.kind, at = g.last;
-      let acc = g.acc;
       end();
       if (kind === 'scroll') {
         if (!sv.pulled && Math.abs(v) >= MIN_FLING && !reduceMotion()) sv.fling(v);
         else sv.settle();
         return claim(ev);
       }
-      if (!reduceMotion() && Math.abs(v) >= MIN_FLING) {
-        // The program scrolls by lines; the fling still slows like a page.
-        const tau = flingTau(v);
+      const plan = !reduceMotion() && Math.abs(v) >= MIN_FLING ? wheelPlan(v, cellHeight(p)) : null;
+      if (plan) {
+        // The program scrolls by steps; they go out over time on a page's
+        // slowing curve (and no faster than 60 a second).
+        app.touchStats.wheelSteps = plan.steps;
         wheelVel = v;
-        let t0 = performance.now();
+        const t0 = performance.now();
+        let sent = 0;
         const step = (now) => {
-          const dt = Math.min(48, now - t0);
-          t0 = now;
-          const s = flingStep(wheelVel, dt, tau);
-          wheelVel = s.v;
-          acc += s.dx;
-          const { n, rest } = lines(acc, cellHeight(p));
-          acc = rest;
-          wheel(n, at);
-          coast = Math.abs(wheelVel) >= STOP ? requestAnimationFrame(step) : 0;
-          if (!coast) wheelVel = 0;
+          const { due, done } = wheelDue(plan, now - t0);
+          wheel(due - sent, at);
+          sent = due;
+          wheelVel = done ? 0 : v; // a new flick on top adds to it
+          coast = done ? 0 : requestAnimationFrame(step);
         };
         coast = requestAnimationFrame(step);
       }
       return claim(ev);
     }
-    if (g.kind === '' && g.moves) note(g, 0);
+    if ((g.kind === '' && g.moves) || g.kind === 'none') note(g, 0);
     const tapped = g.kind === '' && !g.stopped;
     end();
     // A tap: xterm focuses itself (keyboard up), as it always has. A tap

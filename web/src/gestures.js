@@ -191,6 +191,26 @@ export function cursorFling(v, cellWidth, cap = MAX_CURSOR_FLING) {
   return Math.sign(v) * Math.min(cap, n);
 }
 
+// A fling where the program scrolls (tmux, less, vim, anything with the
+// mouse on or the alternate screen): wheel steps, sent over time on the
+// same slowing curve as a page, so the program animates; at most rate
+// steps per ms (60 a second) and cap in all, so a hard fling over ssh
+// doesn't flood it. steps: how many (signed); tau: the slowdown (ms).
+export const WHEEL_RATE = 0.06, WHEEL_CAP = 200, WHEEL_STOP = 0.008;
+export function wheelPlan(v, lineHeight, rate = WHEEL_RATE, cap = WHEEL_CAP) {
+  if (!(lineHeight > 0)) return null;
+  const n = Math.min(cap, Math.round(Math.abs(flingDistance(v)) / lineHeight));
+  if (!n) return null;
+  return { steps: Math.sign(v) * n, tau: Math.max(flingTau(v), n / rate) };
+}
+
+// How many of plan's steps are due t ms in (signed), and whether it has
+// slowed to a stop (under WHEEL_STOP steps per ms).
+export function wheelDue(plan, t) {
+  const n = Math.abs(plan.steps), k = Math.exp(-t / plan.tau);
+  return { due: Math.sign(plan.steps) * Math.floor(n * (1 - k)), done: (n / plan.tau) * k < WHEEL_STOP };
+}
+
 export function distance(a, b) {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }

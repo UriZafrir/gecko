@@ -1,7 +1,7 @@
 // node --test web/src/gestures.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { classify, velocity, decay, coastDistance, lines, pinchFont, twoFinger, swipeDone, STOP, flingDistance, flingTau, flingStep, boost, place, rubber, stretch, squeeze, spring, springDone, absorb, SPRING, thumbSize, thumbTop, thumbLine, MIN_THUMB, MAX_FLING, addSample, sampleStats, cells, cursorFling, MAX_CURSOR_FLING } from './gestures.js';
+import { classify, velocity, decay, coastDistance, lines, pinchFont, twoFinger, swipeDone, STOP, flingDistance, flingTau, flingStep, boost, place, rubber, stretch, squeeze, spring, springDone, absorb, SPRING, thumbSize, thumbTop, thumbLine, MIN_THUMB, MAX_FLING, addSample, sampleStats, cells, cursorFling, MAX_CURSOR_FLING, wheelPlan, wheelDue, WHEEL_CAP } from './gestures.js';
 
 test('classify', () => {
   assert.equal(classify(3, 4), '');
@@ -193,4 +193,38 @@ test('a sideways drag moves the cursor by cells; a flick adds some, capped', () 
   assert.equal(cursorFling(-1, 8), -cursorFling(1, 8));
   assert.equal(cursorFling(8, 8), MAX_CURSOR_FLING);
   assert.equal(cursorFling(3, 0), 0);
+});
+
+test('wheel flings: spaced out, slowing, capped, faster goes further', () => {
+  const run = (v) => {
+    const plan = wheelPlan(v, 18);
+    if (!plan) return { sent: 0, times: [] };
+    let sent = 0, t = 0, most = 0;
+    const times = [];
+    for (;;) {
+      t += 16;
+      const { due, done } = wheelDue(plan, t);
+      const n = Math.abs(due) - sent;
+      most = Math.max(most, n);
+      for (let i = 0; i < n; i++) times.push(t);
+      sent += n;
+      if (done) break;
+    }
+    return { sent: Math.sign(plan.steps) * sent, times, most, t };
+  };
+  const slow = run(0.8), fast = run(4), hard = run(8);
+  assert.ok(slow.sent > 0 && fast.sent > slow.sent * 4, `slow ${slow.sent}, fast ${fast.sent}`);
+  assert.ok(hard.sent <= WHEEL_CAP && hard.sent > 150, `hard ${hard.sent}`);
+  assert.equal(run(-4).sent, -fast.sent);
+  for (const r of [slow, fast, hard]) {
+    assert.ok(r.most <= 2, `at most 2 a frame, got ${r.most}`); // 60 a second
+    // slowing: the gaps between steps grow
+    const gaps = r.times.slice(1).map((x, i) => x - r.times[i]);
+    const half = Math.floor(gaps.length / 2);
+    const avg = (a) => a.reduce((x, y) => x + y, 0) / Math.max(1, a.length);
+    if (gaps.length > 6) assert.ok(avg(gaps.slice(half)) > avg(gaps.slice(0, half)), 'slows down');
+  }
+  assert.ok(hard.t < 12000, `hard fling ends in ${hard.t} ms`);
+  assert.equal(wheelPlan(0.01, 18), null);
+  assert.equal(wheelPlan(3, 0), null);
 });
