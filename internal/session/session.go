@@ -178,10 +178,20 @@ func expandHome(p string) string {
 var dropEnv = []string{"TMUX=", "TMUX_PANE=", "STY=", "GECKO_", "TERM=", "TERM_PROGRAM", "COLORTERM=",
 	"ZDOTDIR=", "VSCODE_", "ITERM_", "WT_SESSION=", "KITTY_", "ALACRITTY_", "WEZTERM_"}
 
+// keepEnv are GECKO_ variables shells do get: which Gecko the `gecko`
+// command talks to, and (on Android) the DNS file for ssh.
+var keepEnv = []string{"GECKO_HOME=", "GECKO_RESOLV_CONF="}
+
 func baseEnv() []string {
 	var env []string
 outer:
 	for _, e := range os.Environ() {
+		for _, k := range keepEnv {
+			if strings.HasPrefix(e, k) {
+				env = append(env, e)
+				continue outer
+			}
+		}
 		for _, d := range dropEnv {
 			if strings.HasPrefix(e, d) {
 				continue outer

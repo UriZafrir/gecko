@@ -22,7 +22,12 @@ var errHostKey = errors.New("Host key verification failed.")
 
 // knownName is how known_hosts names host:port ("host", or "[host]:2222").
 func knownName(host string, port int) string {
-	return knownhosts.Normalize(net.JoinHostPort(host, strconv.Itoa(port)))
+	// As OpenSSH writes it: plain on port 22 (IPv6 too; Normalize would
+	// bracket that, and knownhosts can't read it back), else [host]:port.
+	if port == 22 {
+		return host
+	}
+	return "[" + host + "]:" + strconv.Itoa(port)
 }
 
 // knownKeyTypes lists the key types known_hosts has for name, so the
@@ -106,13 +111,19 @@ func hostKeyCallback(r *Resolved, io *IO) (ssh.HostKeyCallback, error) {
 	if f, err := os.OpenFile(r.KnownHosts, os.O_CREATE|os.O_RDONLY, 0o600); err == nil {
 		f.Close()
 	}
-	check, err := knownhosts.New(r.KnownHosts)
-	if err != nil {
+	if _, err := knownhosts.New(r.KnownHosts); err != nil {
 		return nil, fmt.Errorf("%s: %v", r.KnownHosts, err)
 	}
+	// known_hosts writes port 22 as just the host ("ubunty"), but the check
+	// takes host:port, always.
 	name := knownName(r.HostName, r.Port)
+	address := net.JoinHostPort(r.HostName, strconv.Itoa(r.Port))
 	return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
-		err := check(name, remote, key)
+		check, err := knownhosts.New(r.KnownHosts) // as it is now
+		if err != nil {
+			return fmt.Errorf("%s: %v", r.KnownHosts, err)
+		}
+		err = check(address, remote, key)
 		if err == nil {
 			return nil
 		}
@@ -155,7 +166,8 @@ func hostKeyCallback(r *Resolved, io *IO) (ssh.HostKeyCallback, error) {
 				prompt = "Please type 'yes', 'no' or the fingerprint: "
 			}
 		}
-		line := knownhosts.Line([]string{name}, key)
+		// Not knownhosts.Line: it brackets a plain IPv6 address, which it then can't read.
+		line := name + " " + strings.TrimSpace(string(ssh.MarshalAuthorizedKey(key)))
 		f, err := os.OpenFile(r.KnownHosts, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o600)
 		if err != nil {
 			return err

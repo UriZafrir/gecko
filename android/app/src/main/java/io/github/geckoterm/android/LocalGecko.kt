@@ -108,7 +108,7 @@ object LocalGecko {
             val cm = ctx.getSystemService(android.net.ConnectivityManager::class.java)
             val lp = cm.getLinkProperties(cm.activeNetwork) ?: return
             val sb = StringBuilder("# Written by the Gecko app: this phone's DNS, for ssh\n")
-            for (a in lp.dnsServers) sb.append("nameserver ").append(a.hostAddress?.substringBefore('%')).append('\n')
+            for (a in lp.dnsServers) sb.append("nameserver ").append(a.hostAddress).append('\n')
             lp.domains?.split(',', ' ')?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() }?.let { sb.append("search ").append(it.joinToString(" ")).append('\n') }
             geckoHome(ctx).mkdirs()
             resolvConf(ctx).writeText(sb.toString())

@@ -522,3 +522,49 @@ func TestResolvConf(t *testing.T) {
 		t.Error("missing file")
 	}
 }
+
+// The default port: known_hosts names the host without a port ("ubunty"),
+// but the check needs host:port. A Tailscale short name on port 22 failed
+// with "knownhosts: SplitHostPort(ubunty): missing port in address".
+func TestHostKeyOnPort22(t *testing.T) {
+	h := home(t)
+	_, sk, _ := ed25519.GenerateKey(rand.Reader)
+	key, _ := ssh.NewSignerFromKey(sk)
+	remote := &net.TCPAddr{IP: net.ParseIP("100.117.62.82"), Port: 22}
+	for _, c := range []struct {
+		host string
+		port int
+		line string
+	}{
+		{"ubunty", 22, "ubunty "},
+		{"ubunty.tail3d2bf5.ts.net", 22, "ubunty.tail3d2bf5.ts.net "},
+		{"100.117.62.82", 22, "100.117.62.82 "},
+		{"fd7a:115c:a1e0::5", 22, "fd7a:115c:a1e0::5 "},
+		{"ubunty", 2222, "[ubunty]:2222 "},
+	} {
+		os.Remove(filepath.Join(h, ".ssh", "known_hosts"))
+		var e bytes.Buffer
+		r := &Resolved{HostName: c.host, Port: c.port, Strict: "accept-new", KnownHosts: filepath.Join(h, ".ssh", "known_hosts")}
+		cb, err := hostKeyCallback(r, &IO{Err: &e})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := cb(net.JoinHostPort(c.host, strconv.Itoa(c.port)), remote, key.PublicKey()); err != nil {
+			t.Errorf("%s:%d first contact: %v", c.host, c.port, err)
+			continue
+		}
+		kh, _ := os.ReadFile(r.KnownHosts)
+		if !strings.HasPrefix(string(kh), c.line) {
+			t.Errorf("%s:%d known_hosts %q", c.host, c.port, kh)
+		}
+		// Known now, and refused with another key.
+		if err := cb("", remote, key.PublicKey()); err != nil {
+			t.Errorf("%s:%d known: %v", c.host, c.port, err)
+		}
+		_, sk2, _ := ed25519.GenerateKey(rand.Reader)
+		other, _ := ssh.NewSignerFromKey(sk2)
+		if err := cb("", remote, other.PublicKey()); err != errHostKey {
+			t.Errorf("%s:%d changed key: %v", c.host, c.port, err)
+		}
+	}
+}

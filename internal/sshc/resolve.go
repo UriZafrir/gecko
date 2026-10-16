@@ -6,8 +6,11 @@ import (
 	"errors"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
+
+	geckoconfig "github.com/gecko-term/gecko/internal/config"
 )
 
 // Android has no /etc/resolv.conf, so Go's own resolver (in a static
@@ -34,7 +37,10 @@ func readResolvConf(path string) *resolvConf {
 		}
 		switch fields[0] {
 		case "nameserver":
-			rc.servers = append(rc.servers, fields[1])
+			// An address, maybe IPv6 with a zone (fe80::1%wlan0) or in brackets.
+			if ns := strings.Trim(fields[1], "[]"); net.ParseIP(strings.SplitN(ns, "%", 2)[0]) != nil {
+				rc.servers = append(rc.servers, ns)
+			}
 		case "search", "domain":
 			rc.search = append(rc.search, fields[1:]...)
 		}
@@ -48,10 +54,14 @@ func readResolvConf(path string) *resolvConf {
 // appResolver is the resolver for the app's DNS file, or nil to use the
 // system's (anywhere with a /etc/resolv.conf).
 func appResolver() (*net.Resolver, []string) {
-	if _, err := os.Stat("/etc/resolv.conf"); err == nil {
+	if systemResolver() {
 		return nil, nil
 	}
-	rc := readResolvConf(os.Getenv("GECKO_RESOLV_CONF"))
+	file := os.Getenv("GECKO_RESOLV_CONF")
+	if file == "" {
+		file = filepath.Join(geckoconfig.Home(), "resolv.conf") // where the app writes it
+	}
+	rc := readResolvConf(file)
 	if rc == nil {
 		return nil, nil
 	}
@@ -59,7 +69,7 @@ func appResolver() (*net.Resolver, []string) {
 		var d net.Dialer
 		var last error
 		for _, s := range rc.servers {
-			c, err := d.DialContext(ctx, network, net.JoinHostPort(s, "53"))
+			c, err := d.DialContext(ctx, network, net.JoinHostPort(s, dnsServerPort))
 			if err == nil {
 				return c, nil
 			}
@@ -68,6 +78,30 @@ func appResolver() (*net.Resolver, []string) {
 		return nil, last
 	}}
 	return r, rc.search
+}
+
+// dnsServerPort is 53 (a variable for tests).
+var dnsServerPort = "53"
+
+// systemResolver: Go's resolver has a configuration to use.
+var systemResolver = func() bool {
+	_, err := os.Stat("/etc/resolv.conf")
+	return err == nil
+}
+
+// candidates are the names to look up for host, in order: like the C
+// library with ndots:1, a name without a dot is tried in the search
+// domains first (Tailscale's MagicDNS names are short), then as it is.
+func candidates(host string, search []string) []string {
+	h := strings.TrimSuffix(host, ".")
+	if strings.HasSuffix(host, ".") || strings.Contains(h, ".") || len(search) == 0 {
+		return []string{h}
+	}
+	var out []string
+	for _, s := range search {
+		out = append(out, h+"."+strings.Trim(s, "."))
+	}
+	return append(out, h)
 }
 
 // dialTCP connects to host:port, looking the name up as above.
@@ -83,14 +117,8 @@ func dialTCP(host, port string, timeout time.Duration) (net.Conn, error) {
 		ctx, cancel = context.WithTimeout(ctx, timeout)
 		defer cancel()
 	}
-	names := []string{host}
-	if !strings.Contains(strings.TrimSuffix(host, "."), ".") {
-		for _, s := range search {
-			names = append(names, host+"."+s) // short names: the search domains (Tailscale's too)
-		}
-	}
 	var last error
-	for _, n := range names {
+	for _, n := range candidates(host, search) {
 		addrs, err := res.LookupIPAddr(ctx, n)
 		if err != nil {
 			last = err
