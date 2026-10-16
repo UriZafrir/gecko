@@ -19,6 +19,11 @@ a password.
 On Android there is also a native app with notifications that reach you
 when it's closed: see [Android app](android.md).
 
+Touch works like a native terminal app: drag to scroll (or to scroll tmux,
+vim and less when they use the mouse), pinch to zoom the text, swipe with two
+fingers or on the tab bar to change tabs, and swipe in from the left edge for
+the drawer.
+
 The mobile layout has:
 
 - A drawer with workspaces, agents and machines.

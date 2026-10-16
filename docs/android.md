@@ -84,6 +84,16 @@ rule itself before it connects (`NetPolicy.kt`).
   with autocorrect for prompts). Scroll the row sideways for the rest. **⋮**
   at its end has search, **Keep screen on**, **Notify in background**, reload,
   and the machine list.
+- **Touch gestures** (in the Android app and any phone browser): one finger
+  up or down scrolls the scrollback, and a flick coasts; in programs that use
+  the mouse or the full screen (tmux, vim, less, Claude Code) it scrolls them
+  the way a mouse wheel does. Pinch to change the font size (kept per
+  device). Two fingers sideways, or a swipe on the tab bar when its tabs fit,
+  change tabs. A swipe in from the left edge opens the drawer, a swipe left
+  closes it. Tap for the keyboard, long-press for the selectable text view.
+  Android's back gesture is kept off a 200dp strip in the middle of the left
+  edge (the most Android allows), so the swipe works there; the rest of the
+  edge still goes back.
 - **Back** closes what is open, innermost first: a menu, a dialog, the
   palette, the text view, find, the drawer, compose. With nothing open it goes
   back to the machine list.
