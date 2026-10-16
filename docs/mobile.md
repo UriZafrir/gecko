@@ -16,6 +16,9 @@ Then pick **Open on another device** in the palette and scan the QR code. The
 link carries your access token. It is kept as a cookie, so treat the link like
 a password.
 
+On Android there is also a native app with notifications that reach you
+when it's closed: see [Android app](android.md).
+
 The mobile layout has:
 
 - A drawer with workspaces, agents and machines.
