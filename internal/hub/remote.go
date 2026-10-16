@@ -49,7 +49,7 @@ type Remote struct {
 // Pinging a link: how often, how long one ping may take, and how long the
 // link may go without any answer before it counts as dead and is redialed
 // (an SSH connection can hang for minutes when the network goes away).
-const (
+var (
 	pingEvery   = 2 * time.Second
 	pingTimeout = 5 * time.Second
 	linkDead    = 15 * time.Second
