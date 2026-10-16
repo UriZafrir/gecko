@@ -1329,7 +1329,10 @@ class App {
   // Add (or fix) a machine: check the SSH connection with live output,
   // offer to install gecko there, and only then add it.
   addHost(prefill = {}) {
-    const guessName = (t) => t.replace(/^ssh:\/\//, '').replace(/^.*@/, '').replace(/^\[|\]?(:\d+)?\/?$/g, '').split('.')[0].toLowerCase();
+    const guessName = (t) => {
+      const host = t.replace(/^ssh:\/\//, '').replace(/^.*@/, '').replace(/^\[|\]?(:\d+)?\/?$/g, '').toLowerCase();
+      return /^[\d.]+$/.test(host) ? host : host.split('.')[0]; // an IP address whole
+    };
     const m = $('#modal');
     m.innerHTML = `<div class="card setup" role="dialog" aria-modal="true" aria-labelledby="setup-title">
       <h2 id="setup-title">${prefill.name ? `Fix ${esc(prefill.name)}` : 'Add a machine'}</h2>
@@ -1373,7 +1376,7 @@ class App {
 
     const setState = (st, msg = '', kind = '') => {
       state = st;
-      status.textContent = msg;
+      status.innerHTML = md(msg);
       status.className = 'setup-status ' + kind;
       const busy = st === 'busy';
       for (const el of [main, recheck, f.target, f.name, f.gecko, f.secret, f.usekey]) el.disabled = busy;
@@ -1407,6 +1410,12 @@ class App {
         if (!this.hostSetup) return;
         found = r;
         if (installKey) secret = ''; // the key logs in from now on
+        if (secret && !installKey) {
+          // Gecko's own connection there logs in with a key, never a password.
+          return setState('failed', r.canUseKey
+            ? 'The password works, but Gecko stays connected with a key: tick the box to use yours, then log in again.'
+            : 'The password works, but Gecko stays connected with a key and this computer has none. Make one with `ssh-keygen`, then check again.', 'warn');
+        }
         if (r.missing) setState('missing', `Reachable (${r.os}), but Gecko isn't installed there. Gecko can copy itself over to ~/.local/bin.`, 'warn');
         else setState('ok', `Connected: ${r.os}, ${r.text}.`, 'good');
       } catch (e) {
@@ -1421,7 +1430,7 @@ class App {
           f.secret.focus();
         } else if (r.kind === 'host-key-unknown') {
           fingerprint = r.data;
-          setState('hostkey', `First connection to this machine. Its key fingerprint is ${r.data}. If you're not sure it's the right machine, compare it with what \`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub\` shows there.`, 'warn');
+          setState('hostkey', `First connection to this machine. Its key fingerprint is \`${r.data}\`. If you aren't sure it's the right machine, compare it with what \`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub\` shows there.`, 'warn');
         } else setState('failed', e.message, 'bad');
       }
     };
