@@ -20,3 +20,11 @@ that resolve only to those), and needs https anywhere else. Its web view
 shows only the machine's own origin (other links open in the browser), and
 its JavaScript bridge (clipboard, notifications, keys) answers only pages
 from that origin.
+
+Gecko on the phone itself listens on 127.0.0.1 only, with its token in the
+app's private storage. **Allow other devices** (and `gecko share` on any
+machine) opens a second listener with a token of its own, made new every
+time it is turned on and invalid once it is off; it answers only private
+and Tailscale addresses, and turning it off disconnects its clients. Only
+the daemon's own socket (the app, the CLI) can turn it on, not the web UI or
+another Gecko.

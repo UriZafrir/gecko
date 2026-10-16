@@ -6,7 +6,9 @@ The Android app is Gecko's own web UI in a native shell, with the things a
 browser tab on a phone can't do: a row of terminal keys above the keyboard,
 notifications that arrive while the app is closed, the real clipboard, and
 "share to Gecko". It connects to the Gecko daemon on your computer, the same
-way [the phone browser](mobile.md) does. Android 8.0 (API 26) or newer.
+way [the phone browser](mobile.md) does, and it carries Gecko itself too, so
+**This phone** gives you a terminal on the phone, which your computer can
+open as well. Android 8.0 (API 26) or newer, 64-bit (arm64 or x86_64).
 
 ## Install
 
@@ -17,11 +19,14 @@ make android          # needs JDK 17 and the Android SDK, see below
 adb install android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
-`make android` runs `./gradlew assembleDebug` in `android/` (Gradle Kotlin
-DSL, Android Gradle Plugin 8.13, Kotlin 2.2, compile and target SDK 35). The
-build needs `JAVA_HOME` pointing at a JDK 17 and `ANDROID_HOME` at an SDK with
-`platforms;android-35` and `build-tools;35.0.0`; `sdkmanager` from Google's
-command-line tools installs both. `make android-test` runs the unit tests,
+`make android` first builds the web UI and cross-compiles Gecko for the
+phone (`make android-gecko`: a static `GOOS=linux` build for arm64 and
+x86_64, put in `android/app/src/main/jniLibs/<abi>/libgecko.so`), then runs
+`./gradlew assembleDebug` in `android/` (Gradle Kotlin DSL, Android Gradle
+Plugin 8.13, Kotlin 2.2, compile and target SDK 35). It needs Go and Node
+like the rest of Gecko, `JAVA_HOME` pointing at a JDK 17, and `ANDROID_HOME`
+at an SDK with `platforms;android-35` and `build-tools;35.0.0`; `sdkmanager`
+from Google's command-line tools installs both. `make android-test` runs the unit tests,
 `cd android && ./gradlew connectedDebugAndroidTest` the device tests (add
 `-Pandroid.testInstrumentationRunnerArguments.geckoUrl=<link>` to include the
 part that talks to a live Gecko).
@@ -89,6 +94,51 @@ rule itself before it connects (`NetPolicy.kt`).
   is pasted (not run) in the tab you have open, on the machine you used last.
 - **Keep screen on**, in the **⋮** menu.
 
+## A terminal on this phone
+
+**This phone** is always first in the machine list. Tap it and the app
+starts Gecko's own daemon on the phone, the same program as on a computer,
+and opens it: tabs, workspaces, the agent dock and the extra keys all work
+the same. The shell is Android's `/system/bin/sh` (mksh) with the toybox
+commands (`ls`, `ps`, `top`, `grep`, `getprop`, `am`, `pm`...), running as
+the Gecko app in its own sandbox. Its home is the app's private storage,
+with a `.mkshrc` you can edit.
+
+Gecko keeps running while you use other apps, with a "Gecko on this phone"
+notification: Android ends an app's processes along with it otherwise. Stop
+it from that notification, from **⋮** next to **This phone**, or from **⋮**
+in the extra keys. Stopping ends every shell on the phone.
+
+### Allow other devices
+
+Off by default. Turn it on (**⋮** next to **This phone**, or in the extra
+keys while on it, or **Open on another device** in the palette) and the
+phone's Gecko also listens on its Wi-Fi, Ethernet and Tailscale addresses,
+port 7682. The app shows the link and QR code for each address, the same
+kind Gecko shows on a computer: open it in a browser, or add it as a machine
+in another Gecko app.
+
+What that means:
+
+- Anyone with the link can use this phone's terminal: run commands as the
+  Gecko app, read and change its files, use the network. Not other apps'
+  data, not your photos and documents (the app has no storage permission),
+  and nothing that needs root.
+- The link has its own token, separate from the one the app uses. Turning it
+  off closes the listener, disconnects everyone who used the link, and makes
+  the link useless; turning it on again makes a new one. Stopping Gecko on
+  the phone also turns it off.
+- Only peers with private addresses get an answer: LAN (10/8, 172.16/12,
+  192.168/16, link-local) and Tailscale (100.64/10). The listener is IPv4
+  only, since phones often have public IPv6 addresses. Mobile networks can
+  use 100.64/10 too, so the token is what keeps others out there; turn it
+  off when you aren't using it.
+- It is plain http, like Gecko on a LAN: use it on networks you trust, or
+  over Tailscale, which encrypts.
+
+On a computer, the same listener is `gecko share on [addr]` and
+`gecko share off`.
+
 ## Notifications
 
 When an agent in any tab stops for you, or finishes, you get a notification
@@ -109,6 +159,28 @@ and shows a silent "Gecko is watching your agents" notification with a
 see what you missed in the agent dock when you come back.
 
 ## Limits
+
+On the phone's own terminal:
+
+- It is Android's shell and toybox, not a Linux distribution: no package
+  manager, no git, tmux, ssh or compilers (unless you bring static
+  binaries). mksh has no shell integration, so Gecko knows the directory and
+  the running program from the process table, but not command boundaries or
+  exit codes.
+- No storage permission: `ls /sdcard` shows the folders, not your files. The
+  app's own folder there, `/sdcard/Android/data/io.github.geckoterm.android`,
+  is usable.
+- Android 12 and newer may kill the shells' processes ("phantom process"
+  limit: 32 child processes across all apps, and heavy background CPU use).
+  On Android 14 and newer, Developer options has **Disable child process
+  restrictions**; with adb, `adb shell settings put global
+  settings_enable_monitor_phantom_procs false`.
+- Updating or reinstalling the app ends the shells on the phone.
+- 64-bit phones only (arm64-v8a, x86_64). The binary is a static linux build;
+  it runs as the app, from the app's native library folder, the only place
+  Android 10 and newer let an app execute files.
+
+In general:
 
 - Not on the Play Store, and only debug builds are made: there is no release
   signing yet.

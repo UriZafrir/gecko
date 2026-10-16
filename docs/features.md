@@ -24,7 +24,9 @@
 - **[Android app](android.md).** The same UI as a native app: scan the QR code
   to connect, terminal keys above the keyboard, notifications with answer
   buttons when an agent needs you (even with the app closed), the real
-  clipboard and share to Gecko.
+  clipboard and share to Gecko. It runs Gecko on the phone too: **This
+  phone** is a terminal there, which other devices can open when you allow
+  them.
 - **[Many machines](machines.md).** Add a host by its SSH destination. Gecko runs
   `gecko bridge` there over SSH, and that machine's own daemon owns its
   sessions. A dropped connection just reconnects and resumes, much like mosh,
