@@ -29,6 +29,7 @@ type sharer struct {
 	mu    sync.Mutex
 	srv   *http.Server
 	web   *server.HTTP
+	asked string // the address it was turned on with ("0.0.0.0:7682")
 	state proto.ShareState
 }
 
@@ -43,7 +44,7 @@ func (s *sharer) set(action, addr string) (proto.ShareState, error) {
 		if addr == "" {
 			addr = DefaultShareListen
 		}
-		if s.srv != nil && s.state.Listen == addr {
+		if s.srv != nil && (s.asked == addr || s.state.Listen == addr) {
 			break
 		}
 		s.stopLocked()
@@ -57,7 +58,13 @@ func (s *sharer) set(action, addr string) (proto.ShareState, error) {
 }
 
 func (s *sharer) startLocked(addr string) error {
-	ln, err := net.Listen("tcp", addr)
+	// 0.0.0.0 means IPv4 only: Go would otherwise open IPv6 too, where a
+	// phone usually has a public address.
+	network := "tcp"
+	if host, _, err := net.SplitHostPort(addr); err == nil && host == "0.0.0.0" {
+		network = "tcp4"
+	}
+	ln, err := net.Listen(network, addr)
 	if err != nil {
 		return err
 	}
@@ -75,6 +82,7 @@ func (s *sharer) startLocked(addr string) error {
 			log.Printf("sharing: %v", err)
 		}
 	}(s.srv)
+	s.asked = addr
 	s.state = proto.ShareState{On: true, Listen: listen, Token: token, URLs: server.ShareURLs(listen, token)}
 	log.Printf("sharing with other devices on %s", listen)
 	return nil
@@ -86,7 +94,7 @@ func (s *sharer) stopLocked() {
 	}
 	_ = s.srv.Close() // the listener and plain HTTP connections
 	s.web.CloseClients()
-	s.srv, s.web = nil, nil
+	s.srv, s.web, s.asked = nil, nil, ""
 	s.state = proto.ShareState{}
 	log.Printf("stopped sharing with other devices")
 }
