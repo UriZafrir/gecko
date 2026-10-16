@@ -109,6 +109,46 @@ notification: Android ends an app's processes along with it otherwise. Stop
 it from that notification, from **⋮** next to **This phone**, or from **⋮**
 in the extra keys. Stopping ends every shell on the phone.
 
+### SSH from the phone
+
+Android has no ssh, so Gecko brings its own: `ssh`, `ssh-keygen` and `scp`
+are on the phone shell's PATH (links to Gecko, which acts as each), and
+Gecko uses the same ssh to reach machines you add from the phone.
+
+```sh
+ssh-keygen                      # once: ~/.ssh/id_ed25519 and .pub
+ssh me@devbox.lan               # password or key; asks about a new host key
+ssh -p 2222 me@10.0.0.5 uptime  # a command, with its exit code
+scp notes.txt me@devbox.lan:    # and back: scp me@devbox.lan:file .
+```
+
+- Logins: keys (`~/.ssh/id_ed25519`, `id_ecdsa`, `id_rsa`, or `-i`;
+  passphrase-protected ones ask), keyboard-interactive and password.
+- Host keys: `~/.ssh/known_hosts`, with OpenSSH's questions and wording on
+  first contact, and a refusal when a known host's key changed
+  (`ssh-keygen -R host` forgets one). `StrictHostKeyChecking`,
+  `UserKnownHostsFile` and `BatchMode` work with `-o`.
+- A terminal for interactive logins (`-t`, `-tt`, `-T` as usual) that
+  follows the tab's size; `vim`, `top` and the like work. The remote
+  command's exit code is ssh's, 255 for ssh's own errors.
+- `~/.ssh/config`: `Host` blocks with patterns, `HostName`, `User`, `Port`,
+  `IdentityFile`, `ServerAliveInterval`, and the options above. `Match` and
+  `Include` are skipped.
+- `ssh-keygen` makes ed25519 keys; `-y` prints a public key, `-l` a
+  fingerprint, `-R` removes a host from known_hosts.
+- `scp` copies files (and folders with `-r`) between the phone and one other
+  machine, with the classic scp protocol.
+- Not there: an ssh agent, port forwarding (`-L`, `-R`, `-D`), jump hosts
+  (`-J`), X11, `~.` escapes, sftp.
+
+**SSH key** (in **⋮** on the machine list, or in the extra keys while on This
+phone) shows the phone's public key, making it on first use, with Copy and
+Share. Add it to `~/.ssh/authorized_keys` on a machine; adding that machine
+to Gecko from the phone (**Machines +** in the sidebar) needs it, since Gecko
+connects without a password prompt. The machine needs Gecko installed
+(`gecko host install` from a computer, or the Linux binary in
+`~/.local/bin`): the phone carries only its own build.
+
 ### Allow other devices
 
 Off by default. Turn it on (**⋮** next to **This phone**, or in the extra
@@ -176,6 +216,13 @@ On the phone's own terminal:
   restrictions**; with adb, `adb shell settings put global
   settings_enable_monitor_phantom_procs false`.
 - Updating or reinstalling the app ends the shells on the phone.
+- Gecko on Android avoids Go's `exec.LookPath`: Go checks files there with the
+  `faccessat2` system call, which Android's seccomp filter answers by killing
+  the process. Builds with a newer Go must keep that in mind (newer Go also
+  uses `pidfd` calls Android may block).
+- The Digital Watch theme makes the Android emulator itself crash (its
+  software GPU) on the test machine; it renders correctly in Chromium at
+  phone size, and wasn't tried on a real phone.
 - 64-bit phones only (arm64-v8a, x86_64). The binary is a static linux build;
   it runs as the app, from the app's native library folder, the only place
   Android 10 and newer let an app execute files.
