@@ -105,6 +105,20 @@ class TerminalActivity : AppCompatActivity() {
             }
         }
 
+        // The web UI opens its drawer with a swipe in from the left edge,
+        // where Android's back gesture lives: keep the back gesture off a
+        // strip there (Android grants at most 200dp of height per edge), in
+        // the middle of the terminal. Back still works from the rest of the
+        // edge and with the button.
+        if (Build.VERSION.SDK_INT >= 29) {
+            web.addOnLayoutChangeListener { v, _, top, _, bottom, _, _, _, _ ->
+                val d = resources.displayMetrics.density
+                val h = (200 * d).toInt().coerceAtMost(bottom - top)
+                val y = ((bottom - top) - h) / 2
+                v.systemGestureExclusionRects = listOf(android.graphics.Rect(0, y, (32 * d).toInt(), y + h))
+            }
+        }
+
         keys.onKey = { pressKey(it) }
         keys.onMenu = { showMenu(it) }
         findViewById<Button>(R.id.retry).setOnClickListener { load() }

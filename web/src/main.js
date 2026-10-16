@@ -40,6 +40,7 @@ import { Pane, FONT } from './pane.js';
 import { THEMES, AUTO, resolveTheme, paintTheme, swatch } from './themes.js';
 import { Keys, prettyCombo, comboOf, ACTIONS, DEFAULTS, DEFAULT_TAB_MODIFIER, TAB_MODIFIERS } from './keys.js';
 import { startupChime } from './sound.js';
+import { attachPane, attachPage } from './touch.js';
 import { siClaude, siGooglegemini, siCursor, siGithubcopilot, siQwen, siOpencode } from 'simple-icons';
 import { $, esc, ago, shortPath, copyText, readClipboard, fuzzy, store, save, isTouch, isMac, android } from './util.js';
 
@@ -1531,6 +1532,7 @@ class App {
     $('#menu-btn').title = `Show or hide workspaces (${prettyCombo(this.keys.first('toggleSidebar'))})`;
     document.body.classList.toggle('side-hidden', !!this.settings.sidebarHidden);
     $('#scrim').onclick = () => this.closeDrawer();
+    if (this.touch) attachPage(this);
     $('#palette-btn').onclick = () => this.openPalette();
     $('#conn').onclick = () => { if (this.outdated) this.restartService(); };
     $('#palette-btn kbd').textContent = prettyCombo(this.keys.first('palette'));
@@ -2402,20 +2404,7 @@ class App {
   }
 
   setupTouch(p) {
-    if (!this.touch) return;
-    // Long-press anywhere on the terminal opens the selectable text view.
-    let timer = null, x = 0, y = 0;
-    p.el.addEventListener('touchstart', (ev) => {
-      const t = ev.touches[0];
-      x = t.clientX; y = t.clientY;
-      clearTimeout(timer);
-      timer = setTimeout(() => this.openTextView(), 550);
-    }, { passive: true });
-    p.el.addEventListener('touchmove', (ev) => {
-      const t = ev.touches[0];
-      if (Math.abs(t.clientX - x) + Math.abs(t.clientY - y) > 10) clearTimeout(timer);
-    }, { passive: true });
-    p.el.addEventListener('touchend', () => clearTimeout(timer));
+    if (this.touch) p.untouch = attachPane(this, p);
   }
 
   bindKeybar() {

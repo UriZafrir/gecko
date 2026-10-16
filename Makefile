@@ -20,6 +20,7 @@ build:
 test:
 	$(GO) vet ./...
 	$(GO) test ./...
+	node --test web/src/gestures.test.mjs
 
 # Cross-compiled binaries; `gecko host install` picks the right one.
 dist: web

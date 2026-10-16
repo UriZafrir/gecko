@@ -211,6 +211,7 @@ export class Pane {
   focus() { this.term.focus(); }
 
   dispose() {
+    this.untouch?.();
     this.detach();
     this.ro.disconnect();
     cancelAnimationFrame(this.layoutFrame);
