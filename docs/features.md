@@ -25,6 +25,13 @@
   `gecko bridge` there over SSH, and that machine's own daemon owns its
   sessions. A dropped connection just reconnects and resumes, much like mosh,
   for every tab at once.
+- **[One account for every machine](machines.md#through-the-relay-accounts)**
+  (optional). `gecko login` on each machine and they find each other through
+  a relay you run (`gecko relay`), with no SSH, open ports or VPN. A new
+  machine joins only when one already signed in approves it, and terminal
+  data is end-to-end encrypted: the relay can't read it. Revoke a machine
+  from any other and its connections close within seconds. Without
+  `gecko login` nothing changes and Gecko makes no network calls.
 - **tmux, natively.** Gecko talks to each machine's tmux server: sessions and
   windows appear in the sidebar and in the palette, a tmux tab is titled by
   its active window, and the status line has clickable window chips. Click to

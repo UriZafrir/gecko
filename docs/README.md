@@ -2,7 +2,8 @@
 
 - [Features](features.md): what Gecko does, in detail
 - [Install and run](install.md): building, the desktop app, the `gecko` CLI
-- [More machines](machines.md): adding hosts over SSH or any other transport
+- [More machines](machines.md): adding hosts over SSH, any other transport, or a relay
+- [Accounts and the relay](cloud.md): the spec, keys, approvals and the threat model
 - [Phone and tablet](mobile.md): using Gecko from your phone
 - [Themes](themes.md): every theme, with screenshots
 - [Keyboard](keyboard.md): shortcuts on macOS, Linux and Windows
