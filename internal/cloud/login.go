@@ -62,6 +62,9 @@ func Login(o LoginOptions) (*Account, error) {
 	if !ValidAccount(o.Account) {
 		return nil, fmt.Errorf("bad account name %q: use lower-case letters, digits and . _ @ + -", o.Account)
 	}
+	if !ValidName(o.Name) {
+		return nil, fmt.Errorf("this machine's name %q can't be used; set \"name\" in the config (no spaces or slashes)", o.Name)
+	}
 	if o.Out == nil {
 		o.Out = io.Discard
 	}

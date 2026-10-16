@@ -282,7 +282,7 @@ func validMachine(d *cloud.Device) error {
 	if d.ID != cloud.DeviceID(d.Sign) || d.Kind != cloud.KindMachine || len(d.Noise) != 32 {
 		return errors.New("malformed device")
 	}
-	if d.Name == "" || len(d.Name) > 64 || strings.ContainsAny(d.Name, "/ \n") {
+	if !cloud.ValidName(d.Name) {
 		return errors.New("machine name must be 1 to 64 characters without spaces or slashes")
 	}
 	return nil

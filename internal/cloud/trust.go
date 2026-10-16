@@ -126,8 +126,17 @@ func (l *List) wellFormed() error {
 		if d.Kind == KindMachine && len(d.Noise) != 32 {
 			return fmt.Errorf("device list v%d: machine %q has no encryption key", l.Version, d.Name)
 		}
+		if d.Kind == KindMachine && !ValidName(d.Name) {
+			return fmt.Errorf("device list v%d: bad machine name %q", l.Version, d.Name)
+		}
 	}
 	return nil
+}
+
+// ValidName reports whether name can name a machine: it becomes the host
+// part of session ids ("gpu-box/1a2b3c4d"), so no slashes or spaces.
+func ValidName(name string) bool {
+	return name != "" && len(name) <= 64 && !strings.ContainsAny(name, "/ \t\n\r")
 }
 
 // VerifyGenesis checks the first version of an account's list: signed by
