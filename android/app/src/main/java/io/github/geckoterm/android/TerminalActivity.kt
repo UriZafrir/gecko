@@ -49,9 +49,12 @@ class TerminalActivity : AppCompatActivity() {
     @Volatile var pageTrusted = false
         private set
 
+    private var startBackgroundAfterGrant = false
+
     private val askNotifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) {
-            toastInPage(getString(R.string.notify_on))
+            // Turning on the background connection says so itself.
+            if (!startBackgroundAfterGrant) toastInPage(getString(R.string.notify_on))
             offerBackground()
         } else {
             toastInPage(getString(R.string.notify_blocked))
@@ -288,8 +291,6 @@ class TerminalActivity : AppCompatActivity() {
 
     private fun needsPermission() = Build.VERSION.SDK_INT >= 33 &&
         ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-
-    private var startBackgroundAfterGrant = false
 
     private fun startBackground() {
         if (needsPermission()) {
