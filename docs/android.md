@@ -94,7 +94,13 @@ rule itself before it connects (`NetPolicy.kt`).
   the right edge): drag it to jump through the scrollback, or tap the strip to
   jump there. In programs that use the mouse or the full screen (tmux, vim,
   less, Claude Code) a drag or flick scrolls them the way a mouse wheel does,
-  line by line. With reduced motion on there is no coasting or stretch. Pinch to change the font size (kept per
+  line by line, and a flick sends its wheel steps over time on the same
+  slowing curve (at most 60 a second and 200 in all, so a hard flick over
+  ssh doesn't flood the connection). This works the same over ssh, in tmux
+  with `mouse on` (a swipe scrolls its copy mode), and in a machine's tabs.
+  In tmux with the mouse off a swipe sends nothing (the arrow keys it would
+  become go to the shell's history) and says how to turn the mouse on. With
+  reduced motion on there is no coasting or stretch. Pinch to change the font size (kept per
   device). Two fingers sideways, or a swipe on the tab bar when its tabs fit,
   change tabs. A swipe in from the left edge opens the drawer, a swipe left
   closes it. Tap for the keyboard, long-press for the selectable text view.
