@@ -57,6 +57,9 @@ body {
   color: var(--text);
   font: 14px/1.4 var(--ui);
   overflow: hidden;
+  /* An app, not a page: an arrow over labels and no selecting them. Text
+     fields, the terminal and the text view take text as usual. */
+  cursor: default; user-select: none; -webkit-user-select: none;
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
 }
@@ -92,6 +95,11 @@ code { font: 0.92em var(--mono); }
   font-weight: 650; font-size: 15px; letter-spacing: -0.01em;
 }
 .logo { width: 20px; height: 20px; }
+/* Optically centered: the word a little below where its capital letter
+   would be centered, since it's mostly lowercase. Transforms, because
+   layout and text snap to whole pixels. */
+.brand .logo { transform: translateY(-0.4px); }
+.brand > span:not(.conn) { transform: translateY(0.75px); }
 .conn { margin-left: auto; font-size: 12px; font-weight: 500; color: var(--muted); }
 .conn.offline, .conn.unauthorized, .conn.outdated { color: var(--need); }
 .conn.outdated { cursor: pointer; text-decoration: underline dotted; }
@@ -549,10 +557,11 @@ input[type=text], input[type=search], textarea {
 }
 #textview h2 { margin: 0 auto 0 0; font-size: 15px; }
 #textview header input { width: 180px; }
+input, textarea, [contenteditable] { cursor: text; user-select: text; -webkit-user-select: text; }
 #textview pre {
   flex: 1; margin: 0; overflow: auto; padding: 12px 16px calc(24px + env(safe-area-inset-bottom));
   font: 13px/1.45 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere;
-  user-select: text; -webkit-user-select: text;
+  user-select: text; -webkit-user-select: text; cursor: text;
 }
 #textview pre:focus { outline: none; }
 
