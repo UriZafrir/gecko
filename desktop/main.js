@@ -28,7 +28,10 @@ const mac = process.platform === 'darwin';
 const win32 = process.platform === 'win32';
 const linux = process.platform === 'linux';
 let url = arg('url');
-let size = pair(arg('size')) || [900, 500];
+// The web UI switches to its phone layout below 500px of height (a phone in
+// landscape), so the window's content never gets that short here.
+const MIN_HEIGHT = 540;
+let size = pair(arg('size')) || [900, 600];
 let pos = pair(arg('position'));
 
 // Which build this is, like the Android app's: "a1b2c3d · Oct 17 02:15"
@@ -224,7 +227,9 @@ function menu() {
 function createWindow() {
   const w = new BrowserWindow({
     width: size[0],
-    height: size[1],
+    height: Math.max(size[1], MIN_HEIGHT),
+    minHeight: MIN_HEIGHT,
+    useContentSize: true,
     ...(pos ? { x: pos[0], y: pos[1] } : { center: true }),
     show: false,
     title: 'Gecko',
