@@ -154,6 +154,31 @@ async function setBounds(x, y, width, height) {
   await sleep(700);
 }
 
+// TOUR_OUTSIDE=1: the CLI runs from the tour itself (an agent's terminal
+// outside Gecko), shown in a panel over the window, instead of being typed
+// into a Gecko tab.
+const { execFile } = require('child_process');
+async function outside(args) {
+  const out = await new Promise((resolve) => execFile(env.TOUR_GECKO || 'gecko', args, { timeout: 20000 }, (err, stdout, stderr) => resolve(String(stdout || '') + String(stderr || '') + (err && !stdout ? String(err.message) : ''))));
+  await page.evaluate(([cmd, out]) => {
+    let p = document.getElementById('tour-outside');
+    if (!p) {
+      p = document.createElement('div');
+      p.id = 'tour-outside';
+      p.style.cssText = 'position:fixed;right:16px;top:48px;width:56%;max-height:60%;overflow:hidden;z-index:2147483640;background:#0d0e14;color:#c0caf5;border:1px solid #7aa2f7;border-radius:8px;padding:10px 12px;font:12px/1.45 ui-monospace,Consolas,monospace;white-space:pre-wrap;box-shadow:0 8px 30px rgb(0 0 0/.6)';
+      p.innerHTML = '<div style="color:#7aa2f7;margin-bottom:6px">An agent\'s terminal, outside Gecko</div><div class="log"></div>';
+      document.documentElement.appendChild(p);
+    }
+    const log = p.querySelector('.log');
+    const line = document.createElement('div');
+    line.textContent = '> ' + cmd + '\n' + out.trim().slice(0, 600);
+    log.appendChild(line);
+    while (log.children.length > 4) log.firstChild.remove();
+  }, [['gecko', ...args].map((a) => (/\s/.test(a) ? `'${a}'` : a)).join(' '), out]);
+  await sleep(1800);
+  return out;
+}
+
 const [BX, BY, BW, BH] = (env.TOUR_BOUNDS || '0,0,1280,800').split(',').map(Number);
 
 // ------------------------------------------------------------------ chapters
@@ -313,8 +338,10 @@ async function agents() {
 async function managed() {
   const local = await page.evaluate(() => window.gecko.hostName);
   caption('4. Driven from outside: an agent (or a script) runs the gecko CLI and the window follows live');
-  const ops = await newTabOn(local);
-  await run('gecko new -n build', 2500);
+  const ext = env.TOUR_OUTSIDE === '1';
+  const ops = ext ? null : await newTabOn(local);
+  if (ext) await outside(['new', '-n', 'build']);
+  else await run('gecko new -n build', 2500);
   const build = await waitFor(async () => (await sessions()).find((x) => x.name === 'build'), 15000);
   caption('gecko new: a tab named build appeared in the sidebar');
   await hover(`#side [data-drag="tab"][data-id="${build.id}"]`);
@@ -322,20 +349,29 @@ async function managed() {
   const job = win
     ? "gecko send build 'foreach ($i in 1..5) { Write-Output step-$i-of-5; Start-Sleep -Milliseconds 700 }'"
     : `gecko send build 'for i in 1 2 3 4 5; do echo "step $i of 5"; sleep 0.7; done'`;
-  await run(job, 400);
   caption('gecko send types into that tab; watch it run there');
-  await openTab(build.id);
-  await sleep(5000);
-  await openTab(ops.id);
-  caption('gecko capture reads its screen back');
-  await run(win ? 'gecko capture build | Select-Object -Last 4' : 'gecko capture build | tail -n 4', 2500);
+  if (ext) {
+    await openTab(build.id);
+    await outside(['send', 'build', win ? 'foreach ($i in 1..5) { Write-Output step-$i-of-5; Start-Sleep -Milliseconds 700 }' : 'for i in 1 2 3 4 5; do echo "step $i of 5"; sleep 0.7; done']);
+    await sleep(4000);
+    caption('gecko capture reads its screen back');
+    await outside(['capture', 'build']);
+    await sleep(1500);
+  } else {
+    await run(job, 400);
+    await openTab(build.id);
+    await sleep(5000);
+    await openTab(ops.id);
+    caption('gecko capture reads its screen back');
+    await run(win ? 'gecko capture build | Select-Object -Last 4' : 'gecko capture build | tail -n 4', 2500);
+  }
   if (env.TOUR_AGENTS !== '0') {
     caption('An outside agent can start agents too: gecko new -n review -- claude, then gecko send');
     await run('gecko new -n review -- claude', 1500);
     await run("gecko send review 'review the login fix'", 2500);
   }
   caption('gecko agents --json: every agent on every machine and what it is doing');
-  await run(win ? 'gecko agents --json' : "gecko agents --json | jq -c '.[] | [.where, .agent.status, .agent.detail]'", 5000);
+  if (ext) { await outside(['agents', '--json']); await sleep(2500); await page.evaluate(() => document.getElementById('tour-outside')?.remove()); } else await run(win ? 'gecko agents --json' : "gecko agents --json | jq -c '.[] | [.where, .agent.status, .agent.detail]'", 5000);
   if (env.TOUR_AGENTS !== '0') {
     caption('The dock lists every agent; the palette finds them too (type claude)');
     await hover('#dock');

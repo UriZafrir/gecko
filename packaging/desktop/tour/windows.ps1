@@ -26,7 +26,10 @@ New-Item -ItemType Directory -Force -Path $Home2 | Out-Null
 $env:GECKO_HOME = Join-Path $env:RUNNER_TEMP "tour-home"
 Remove-Item -Recurse -Force $env:GECKO_HOME -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path "$env:GECKO_HOME\state" | Out-Null
-$cfg = @{ listen = "0.0.0.0:$Port"; name = "windows-ci"; hosts = @(@{ name = "second"; command = @("cmd.exe", "/c", "set GECKO_HOME=$Home2&& `"$G`" bridge") }) }
+# The transport: a batch file, so no quoting has to survive cmd.exe.
+$bridge = Join-Path $env:RUNNER_TEMP "second-bridge.cmd"
+"@set GECKO_HOME=$Home2`r`n@`"$G`" bridge`r`n" | Set-Content -Encoding ascii -NoNewline $bridge
+$cfg = @{ listen = "0.0.0.0:$Port"; name = "windows-ci"; hosts = @(@{ name = "second"; command = @("cmd.exe", "/d", "/c", $bridge) }) }
 $cfg | ConvertTo-Json -Depth 5 | Set-Content -Encoding ascii "$env:GECKO_HOME\config.json"
 '{"theme":"tokyo-night","fontSize":13}' | Set-Content -Encoding ascii "$env:GECKO_HOME\settings.json"
 New-Item -ItemType File -Force "$env:GECKO_HOME\no-login-service" | Out-Null
@@ -61,6 +64,7 @@ $env:TOUR_PHONE_LABEL = "a second client (Chrome, sized like a phone)"
 $env:TOUR_REMOTE_NAME = "second"; $env:TOUR_REMOTE_ADDED = "1"
 $env:TOUR_REMOTE_LABEL = "a second Gecko daemon on this runner (own home and port), connected with gecko bridge"
 $env:TOUR_AGENTS = "0"
+$env:TOUR_OUTSIDE = "1"; $env:TOUR_GECKO = $G
 $env:TOUR_AGENTS_WHY = "skipped on Windows: the Windows daemon can't inspect processes yet, so it doesn't detect agents"
 node "$Here\tour.cjs" 2>&1 | Tee-Object -FilePath "$Out\tour.log"
 $rc = $LASTEXITCODE

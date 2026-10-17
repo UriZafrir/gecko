@@ -19,7 +19,7 @@ log() { echo "[$(date +%T)] $*" | tee -a "$OUT/tour-setup.log"; }
 H=$RUNNER_TEMP/tour-me
 rm -rf "$H" && mkdir -p "$H/bin" "$H/projects/webapp/src/auth"
 export GECKO_HOME=$H/.gecko-terminal
-mkdir -p "$GECKO_HOME/state" && chmod 700 "$GECKO_HOME"
+mkdir -p "$GECKO_HOME/state" && chmod 700 "$GECKO_HOME" "$GECKO_HOME/state"
 printf '{"listen":"0.0.0.0:%s","name":"mac-ci"}\n' $PORT >"$GECKO_HOME/config.json"
 echo '{"theme":"tokyo-night","fontSize":13}' >"$GECKO_HOME/settings.json"
 touch "$GECKO_HOME/no-login-service"
