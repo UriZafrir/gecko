@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/gecko-term/gecko/internal/config"
 )
 
 //go:embed scripts
@@ -53,16 +55,38 @@ func DefaultShell() string {
 		}
 		return "cmd.exe"
 	}
-	if s := os.Getenv("SHELL"); s != "" {
+	prefix := config.TermuxPrefix()
+	// Termux sets SHELL to its login program, which only starts the real
+	// shell (without Gecko's integration): look for that one instead.
+	if s := os.Getenv("SHELL"); s != "" && !(prefix != "" && filepath.Base(s) == "login") {
 		return s
 	}
-	// Android has no /bin; its shell is /system/bin/sh (mksh).
-	for _, s := range []string{"/bin/zsh", "/bin/bash", "/bin/sh", "/system/bin/sh"} {
-		if _, err := os.Stat(s); err == nil {
+	for _, s := range shellCandidates(prefix) {
+		if st, err := os.Stat(s); err == nil && !st.IsDir() {
 			return s
 		}
 	}
 	return "/bin/sh"
+}
+
+// shellCandidates are the shells to look for, in order, when $SHELL isn't
+// set. Inside Termux (prefix set) that is the one `chsh` picked
+// (~/.termux/shell), then Termux's own: Termux has no /bin, and Android's
+// /system/bin/sh is a bare mksh without Termux's environment. Android
+// outside Termux has only /system/bin/sh (mksh).
+func shellCandidates(prefix string) []string {
+	var out []string
+	if prefix != "" {
+		if home, err := os.UserHomeDir(); err == nil {
+			if p, err := filepath.EvalSymlinks(filepath.Join(home, ".termux", "shell")); err == nil {
+				out = append(out, p)
+			}
+		}
+		for _, s := range []string{"zsh", "bash", "sh"} {
+			out = append(out, filepath.Join(prefix, "bin", s))
+		}
+	}
+	return append(out, "/bin/zsh", "/bin/bash", "/bin/sh", "/system/bin/sh")
 }
 
 // Command returns argv and extra environment for an interactive, integrated
