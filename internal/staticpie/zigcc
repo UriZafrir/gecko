@@ -1,0 +1,13 @@
+#!/bin/sh
+# The C compiler and linker of make dist's static-PIE Linux build:
+#   zigcc <target> args...   runs $ZIG cc -target <target> args...
+# without -rdynamic, which Go's linker always passes. Exported symbols would
+# let the libraries Android's linker preloads (LD_PRELOAD, as Termux sets)
+# bind to this program's musl instead of their own libc.
+t=$1
+shift
+for a; do
+	shift
+	[ "$a" = -rdynamic ] || set -- "$@" "$a"
+done
+exec "${ZIG:-zig}" cc -target "$t" "$@"
