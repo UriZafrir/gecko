@@ -294,8 +294,8 @@ export function paintTheme(s, opacity = 1) {
   }
   root.style.setProperty('--brand', s.brand || (s.dark ? '#7ccb3a' : '#3d8c1c')); // the foot in the start animation
   document.querySelector('meta[name=theme-color]')?.setAttribute('content', s.term.background);
-  // The Android app colors its system bars and extra keys to match.
-  try { window.GeckoAndroid?.theme(JSON.stringify({ ...ui, dark: !!s.dark })); } catch {}
+  // The Android and iOS apps color their system bars and extra keys to match.
+  try { (window.GeckoAndroid || window.GeckoIOS)?.theme(JSON.stringify({ ...ui, dark: !!s.dark })); } catch {}
   const fg = s.term.foreground;
   return {
     ...s.term,

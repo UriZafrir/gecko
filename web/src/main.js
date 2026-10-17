@@ -44,7 +44,7 @@ import { attachPane, attachPage } from './touch.js';
 import { imeMirror } from './ime.js';
 import { BUILD, buildId } from './build.js';
 import { siClaude, siGooglegemini, siCursor, siGithubcopilot, siQwen, siOpencode } from 'simple-icons';
-import { $, esc, ago, shortPath, copyText, readClipboard, fuzzy, store, save, isTouch, isMac, android, compactLayout, COMPACT } from './util.js';
+import { $, esc, ago, shortPath, copyText, readClipboard, fuzzy, store, save, isTouch, isMac, native, compactLayout, COMPACT } from './util.js';
 
 const MAX_LIVE_PANES = 12;
 
@@ -301,8 +301,8 @@ class App {
     this.exited = new Map(); // id -> info of sessions that failed while shown
     this.closing = new Set(); // ids the user closed
     this.touch = isTouch;
-    // The Android app serves this UI from the APK for every machine.
-    this.bundled = (() => { try { return !!android?.bundled?.(); } catch { return false; } })();
+    // The Android and iOS apps serve this UI from the app for every machine.
+    this.bundled = (() => { try { return !!native?.bundled?.(); } catch { return false; } })();
     // Running inside the Gecko desktop app (Electron) rather than a browser.
     this.desktop = window.geckoDesktop || null;
     this.settings = {
@@ -536,9 +536,10 @@ class App {
   }
 
   notify(title, body, id) {
-    if (android && document.hidden) {
-      // The Android app posts it; tapping it opens this tab.
-      try { android.notify(title, body, id || ''); return; } catch {}
+    if (native && (document.hidden || native.notifyVisible)) {
+      // The app posts it; tapping it opens this tab. The iOS app shows it
+      // as a banner while it is open, too.
+      try { native.notify(title, body, id || ''); return; } catch {}
     }
     if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
       const n = new Notification(title, { body, tag: id || title, icon: '/icon.svg' });
@@ -1414,6 +1415,7 @@ class App {
     const auth = $m('.setup-auth');
     // The key is the one of the machine doing the ssh: in the Android app,
     // the phone's on This phone, the computer's when it's connected to one.
+    const android = window.GeckoAndroid;
     $m('[data-key-label]').textContent = !android ? 'Use my SSH key from now on (adds it to ~/.ssh/authorized_keys there)'
       : android.onThisPhone?.() ? "Use this phone's SSH key from now on"
       : `Use ${this.hostName || 'this computer'}'s SSH key from now on (adds it to ~/.ssh/authorized_keys there)`;
@@ -1764,7 +1766,7 @@ class App {
   }
 
   async enableNotifications() {
-    if (android) return android.enableNotifications();
+    if (native) return native.enableNotifications();
     if (!('Notification' in window)) return this.toast('This browser has no notifications.');
     const r = await Notification.requestPermission();
     this.toast(r === 'granted' ? 'Gecko will notify you when an agent needs you.' : 'Notifications are blocked for this site.');
@@ -2749,7 +2751,7 @@ class App {
     for (const b of document.querySelectorAll('#keybar [data-k=ctrl], #keybar [data-k=alt]')) {
       b.classList.toggle('on', !!this.mods[b.dataset.k]);
     }
-    try { android?.mods(!!this.mods.ctrl, !!this.mods.alt); } catch {}
+    try { native?.mods(!!this.mods.ctrl, !!this.mods.alt); } catch {}
   }
 
   bindCompose() {
@@ -3221,7 +3223,7 @@ class App {
 
   async openShare() {
     // The Android app running Gecko on the phone shows its own link and QR code.
-    try { if (android?.shareDevice?.()) return; } catch {}
+    try { if (native?.shareDevice?.()) return; } catch {}
     const m = $('#modal');
     let urls = [];
     try {
@@ -3264,6 +3266,13 @@ class App {
     };
     tv.querySelector('[data-copy-all]').onclick = async () => {
       this.toast((await copyText(tv.querySelector('pre').textContent)) ? 'Copied everything' : 'Copy failed');
+    };
+    // The iOS app's share sheet: the selection, or all of it.
+    const share = tv.querySelector('[data-share]');
+    share.hidden = !native?.share;
+    share.onclick = () => {
+      const text = window.getSelection().toString() || tv.querySelector('pre').textContent;
+      try { native.share(text); } catch {}
     };
     tv.addEventListener('keydown', (ev) => {
       if (ev.key === 'Escape') this.closeTextView();
@@ -3751,6 +3760,7 @@ if (window.geckoDesktop?.build) {
   if (brand) brand.title = `Gecko desktop ${window.geckoDesktop.build}`;
 }
 if (window.GeckoAndroid) document.documentElement.classList.add('android'); // its own extra keys row
+if (window.GeckoIOS) document.documentElement.classList.add('ios'); // the same
 paintTheme(
   resolveTheme(initialTheme()),
   window.geckoDesktop?.transparent ? store('opacity', 0.9) : 1,

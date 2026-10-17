@@ -48,3 +48,29 @@ time it is turned on and invalid once it is off; it answers only private
 and Tailscale addresses, and turning it off disconnects its clients. Only
 the daemon's own socket (the app, the CLI) can turn it on, not the web UI or
 another Gecko.
+
+
+## iOS app
+
+The [iOS app](ios.md) keeps each machine's token in the iOS Keychain (this
+device only, not in backups). Like the Android app it sends a token over
+plain http only to private, loopback and Tailscale addresses (or names that
+resolve only to those), and needs https anywhere else: App Transport
+Security allows http (it can't express address ranges), and the app checks
+every machine before it connects (`NetPolicy.swift`).
+
+It shows its own copy of Gecko's web UI for every machine, also without a
+new origin and without anything new in the daemon. WKWebView can't answer
+http(s) requests itself, so the app loads its page with `loadHTMLString`
+and the machine's address as the base URL: the page has the machine's
+origin, its WebSocket sends that Origin, and the daemon's same-origin check
+applies unchanged. The page carries its script, styles and fonts inside it;
+theme photos come from the app's own `gecko-asset:` scheme, which serves
+only files of the bundled UI. The token goes in as the daemon's HttpOnly,
+SameSite=Strict cookie (set by the app after it checks the token against
+`/api/info`), never in the page's address. Reloads and links to the page
+load the app's page again; other links open in Safari. The bridge
+(`window.GeckoIOS`: clipboard, notifications, keys, share) answers only the
+main frame of the machine's origin. The app's own connections (agent
+notifications, answers from a notification) authenticate with the token as
+a Bearer header and send no Origin, as any non-browser client.

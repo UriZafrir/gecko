@@ -26,10 +26,10 @@ on the right to jump through the scrollback; pinch to zoom the text, swipe with 
 fingers or on the tab bar to change tabs, and swipe in from the left edge for
 the drawer.
 
-The mobile (compact) layout is for windows under 761 CSS px wide or under
-501 tall: phones in portrait and landscape, split screens, folded
-foldables. Tablets and unfolded foldables get the desktop layout with the
-sidebar. It has:
+The mobile (compact) layout is for windows under 720 CSS px wide or under
+501 tall: phones in portrait and landscape, iPad Split View and Slide Over,
+split screens, folded foldables. Tablets (an iPad mini in portrait too) and
+unfolded foldables get the desktop layout with the sidebar. It has:
 
 - A drawer with workspaces, agents and machines.
 - A compact tab bar: just the tabs' titles (the workspace, machine, repo and
@@ -40,6 +40,8 @@ sidebar. It has:
   button at the start folds the row to a count ("2 agents · 1 needs you").
 - A key bar: esc, tab, sticky ctrl/alt, arrows, `^C`, pgup/pgdn, select,
   paste.
+- Wider and taller windows (tablets, iPad mini included) keep the sidebar
+  beside the terminal, as on a computer.
 - A **compose** box for writing prompts with your keyboard's autocorrect.
   Multi-line text goes to agents as a single bracketed paste.
 - Voice typing straight into the terminal (Android): what the keyboard

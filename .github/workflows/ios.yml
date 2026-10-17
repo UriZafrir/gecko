@@ -1,0 +1,208 @@
+# The iOS app (ios/, docs/ios.md): built for the iOS Simulator, unsigned;
+# unit tests; UI tests on a matrix of iPhones and iPads against throwaway
+# Gecko daemons started in the job; demo videos, screenshots, contact sheets.
+name: iOS
+
+on:
+  push:
+    branches: [feature/ios-app]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  XCODE_APP: /Applications/Xcode_16.4.app
+  XCODEGEN_VERSION: "2.46.0"
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: Xcode
+        run: |
+          sudo xcode-select -s "$XCODE_APP"
+          xcodebuild -version
+      - name: XcodeGen
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/xcodegen.zip" "https://github.com/yonaskolb/XcodeGen/releases/download/$XCODEGEN_VERSION/xcodegen.zip"
+          unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP/xcodegen"
+          dirname "$(find "$RUNNER_TEMP/xcodegen" -type f -name xcodegen -perm -u+x | head -1)" >> "$GITHUB_PATH"
+      - name: Web UI for the app, and gecko for this Mac
+        run: make ios-web build
+      - name: An older gecko (protocol 6, from main as it was then)
+        run: |
+          git worktree add "$RUNNER_TEMP/old" b125842
+          (cd "$RUNNER_TEMP/old" && CGO_ENABLED=0 go build -o "$GITHUB_WORKSPACE/bin/gecko-old" ./cmd/gecko)
+      - name: Generate the Xcode project
+        run: cd ios && xcodegen generate
+      - name: Build for testing (iOS Simulator, signed ad hoc for the Keychain)
+        run: |
+          set -o pipefail
+          mkdir -p build
+          xcodebuild build-for-testing -project ios/Gecko.xcodeproj -scheme Gecko \
+            -destination 'generic/platform=iOS Simulator' -derivedDataPath build/dd \
+            2>&1 | tee build/build.log | grep -E "error|warning: .*Gecko/|BUILD" | tail -80
+      - name: The app, unsigned
+        run: |
+          set -o pipefail
+          xcodebuild build -project ios/Gecko.xcodeproj -scheme Gecko -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/unsigned CODE_SIGNING_ALLOWED=NO 2>&1 | tail -3
+      - name: Unit tests
+        run: |
+          SIM_ID=$(ios/scripts/ci-simulator.sh "iPhone 16" | tail -1)
+          mkdir -p out/results
+          set -o pipefail
+          xcodebuild test-without-building -xctestrun "$(ls build/dd/Build/Products/*.xctestrun | head -1)" \
+            -destination "id=$SIM_ID" -only-testing:GeckoTests -resultBundlePath out/results/unit.xcresult 2>&1 \
+            | tee out/results/unit.log | grep -E "Test Case .*(passed|failed)|error:|Executed" | tail -60
+      - name: Pack
+        if: always()
+        run: |
+          mkdir -p products out
+          cp -R build/dd/Build/Products/Debug-iphonesimulator products/ 2>/dev/null || true
+          cp build/dd/Build/Products/*.xctestrun products/ 2>/dev/null || true
+          cp bin/gecko bin/gecko-old products/ 2>/dev/null || true
+          cp build/build.log out/ 2>/dev/null || true
+          if [ -d build/unsigned/Build/Products/Debug-iphonesimulator/Gecko.app ]; then
+            (cd build/unsigned/Build/Products/Debug-iphonesimulator && zip -qry "$GITHUB_WORKSPACE/out/Gecko-simulator-unsigned.app.zip" Gecko.app)
+          fi
+          if [ -d products/Debug-iphonesimulator/Gecko.app ]; then
+            (cd products/Debug-iphonesimulator && zip -qry "$GITHUB_WORKSPACE/out/Gecko-simulator-adhoc.app.zip" Gecko.app)
+          fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: products
+          path: products/
+          retention-days: 3
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: build
+          path: out/
+
+  devices:
+    needs: build
+    runs-on: macos-15
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - device: iPhone 16
+            slug: iphone-16
+            demos: true
+          - device: iPhone SE (3rd generation)
+            slug: iphone-se
+          - device: iPhone 16 Pro Max
+            slug: iphone-16-pro-max
+          - device: iPad mini (A17 Pro)
+            slug: ipad-mini
+          - device: iPad Air 11-inch (M2)
+            slug: ipad-air-11
+          - device: iPad Pro 13-inch (M4)
+            slug: ipad-pro-13
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: products
+          path: products
+      - name: Xcode
+        run: sudo xcode-select -s "$XCODE_APP"
+      - name: Simulator
+        run: ios/scripts/ci-simulator.sh "${{ matrix.device }}"
+      - name: Gecko daemons
+        run: ios/scripts/ci-daemons.sh products/gecko products/gecko-old out
+      - name: Device tour (light, then dark with the largest text)
+        run: |
+          x=$(ls products/*.xctestrun | head -1)
+          s=0
+          ios/scripts/ci-uitest.sh "$x" DevicesTour/testTour tour out || s=1
+          xcrun simctl ui "$SIM_ID" appearance dark
+          xcrun simctl ui "$SIM_ID" content_size accessibility-extra-extra-extra-large
+          ios/scripts/ci-uitest.sh "$x" DevicesTour/testTour - out dark-large- || s=1
+          xcrun simctl ui "$SIM_ID" appearance light
+          xcrun simctl ui "$SIM_ID" content_size large
+          exit $s
+      - name: Demo videos (01 connect, 02 terminal, 03 agent) and an older Gecko
+        if: always() && matrix.demos
+        run: |
+          x=$(ls products/*.xctestrun | head -1)
+          s=0
+          ios/scripts/ci-uitest.sh "$x" ConnectDemo 01-connect out || s=1
+          ios/scripts/ci-uitest.sh "$x" TerminalDemo 02-terminal out || s=1
+          ios/scripts/ci-uitest.sh "$x" AgentDemo 03-agent out || s=1
+          ios/scripts/ci-uitest.sh "$x" OlderMachineTest - out || s=1
+          exit $s
+      - name: Feature tour (05, the iPhone part and the iPad part)
+        if: always() && (matrix.demos || matrix.slug == 'ipad-pro-13')
+        run: |
+          ios/scripts/ci-daemons.sh reset products/gecko
+          ios/scripts/ci-cues.sh "$PWD/products/gecko" "$PWD/out/cues" > out/cues-runner.log 2>&1 &
+          cues=$!
+          x=$(ls products/*.xctestrun | head -1)
+          if [ "${{ matrix.demos }}" = true ]; then t=FeatureTour/testPhoneTour v=feature-tour; else t=FeatureTour/testPadTour v=pad-tour; fi
+          s=0
+          ios/scripts/ci-uitest.sh "$x" "$t" "$v" out || s=1
+          kill $cues 2> /dev/null || true
+          exit $s
+      - name: Split View (iPad)
+        if: always() && contains(matrix.device, 'iPad')
+        run: ios/scripts/ci-uitest.sh "$(ls products/*.xctestrun | head -1)" DevicesTour/testSplitView - out
+      - name: Collect
+        if: always()
+        run: |
+          echo "${{ matrix.device }}" > out/device.txt
+          ls -la out out/shots || true
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: device-${{ matrix.slug }}
+          path: out/
+
+  report:
+    needs: devices
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: device-*
+          path: devices
+      - name: Tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg imagemagick fonts-dejavu-core > /dev/null
+      - name: Contact sheets and 04-devices.mp4
+        run: |
+          mkdir -p tours
+          for d in devices/device-*; do
+            n=${d#devices/device-}
+            mkdir -p "tours/$n"
+            cp -R "$d/shots" "tours/$n/" 2>/dev/null || true
+            cp "$d/tour.mp4" "$d/device.txt" "tours/$n/" 2>/dev/null || true
+          done
+          ios/scripts/ci-report.sh tours report
+      - name: 05-tour.mp4 (the feature tour, with captions)
+        run: |
+          python3 ios/scripts/ci-tour.py report/05-tour.mp4 \
+            devices/device-iphone-16/feature-tour devices/device-ipad-pro-13/pad-tour
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: report
+          path: report/

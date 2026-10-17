@@ -5,12 +5,15 @@ export const isMac = /Mac|iPhone|iPad/.test(navigator.platform) || /Mac OS/.test
 export const isTouch = matchMedia('(pointer: coarse)').matches ||
   (!!window.GeckoAndroid && navigator.maxTouchPoints > 0);
 // The compact layout (drawer, chip dock, no status line): narrow windows, and
-// windows too short for the desktop one (a phone in landscape). Keep in
-// sync with the "phones" block in style.css.
-export const COMPACT = '(max-width: 760px), (max-height: 500px)';
+// windows too short for the desktop one (a phone in landscape). Under 720 px
+// wide, so an iPad mini in portrait keeps the sidebar. Keep in sync with the
+// "phones" block in style.css.
+export const COMPACT = '(max-width: 719px), (max-height: 500px)';
 export const compactLayout = () => matchMedia(COMPACT).matches;
-// The Gecko Android app's bridge (see android/), when running inside it.
-export const android = window.GeckoAndroid || null;
+// The Gecko Android or iOS app's bridge (see android/ and ios/), when
+// running inside one. Both have the same calls; on iOS they answer later
+// (paste returns a promise) and notify also works while the page shows.
+export const native = window.GeckoAndroid || window.GeckoIOS || null;
 
 export const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -38,8 +41,8 @@ export function shortPath(p) {
 // Copy text, falling back to execCommand where the async clipboard API is
 // unavailable (plain-http LAN access from a phone).
 export async function copyText(text) {
-  if (android) {
-    try { android.copy(String(text)); return true; } catch {}
+  if (native) {
+    try { native.copy(String(text)); return true; } catch {}
   }
   try {
     if (window.isSecureContext && navigator.clipboard) {
@@ -61,8 +64,8 @@ export async function copyText(text) {
 }
 
 export async function readClipboard() {
-  if (android) {
-    try { return android.paste(); } catch {}
+  if (native) {
+    try { return await native.paste(); } catch {}
   }
   if (window.isSecureContext && navigator.clipboard?.readText) {
     try { return await navigator.clipboard.readText(); } catch {}

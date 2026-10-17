@@ -22,6 +22,7 @@
   <a href="docs/machines.md">Machines</a> ·
   <a href="docs/mobile.md">Phone</a> ·
   <a href="docs/android.md">Android</a> ·
+  <a href="docs/ios.md">iOS</a> ·
   <a href="docs/themes.md">Themes</a> ·
   <a href="docs/keyboard.md">Keyboard</a> ·
   <a href="docs/config.md">Config</a> ·

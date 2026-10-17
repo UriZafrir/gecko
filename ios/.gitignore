@@ -1,0 +1,7 @@
+# Made by XcodeGen from project.yml
+Gecko.xcodeproj/
+Gecko/Info.plist
+# The web UI and build id, from `make ios-web`
+Gecko/Generated/
+build/
+xcuserdata/
