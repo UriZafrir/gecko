@@ -24,7 +24,8 @@ import (
 //	5: updatehost, settings sync
 //	6: tmux windows and actions
 //	7: agents in tmux panes and from terminal titles (ssh, mosh)
-const Version = 7
+//	8: ping (latency), host rtt; WebTransport for browsers
+const Version = 8
 
 // Data frame kinds.
 const (
@@ -145,6 +146,11 @@ const (
 	TClosed      = "closed"      // push: id removed
 	TState       = "state"       // push: hosts, tmux, templates
 	TSessions    = "sessions"    // push: full session list (on connect/reconnect of a host)
+	// TPing asks for an immediate empty reply, so a client can measure the
+	// round trip and notice a connection that stopped answering. Services
+	// before protocol 8 answer it with an error reply, which works as a
+	// pong just the same.
+	TPing = "ping" // -> reply
 )
 
 // ShareState is the listener for other devices that the Android app turns
@@ -288,6 +294,9 @@ type HostInfo struct {
 	Version int    `json:"version,omitempty"`
 	Error   string `json:"error,omitempty"`
 	OS      string `json:"os,omitempty"`
+	// RTT is the last measured round trip from this hub to that machine,
+	// in milliseconds (0 = not measured yet, or the local machine).
+	RTT int `json:"rtt,omitempty"`
 }
 
 // Workspace is a saved project layout: a set of tabs on a host.

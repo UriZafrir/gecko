@@ -479,6 +479,12 @@ input[type=text], input[type=search], textarea {
 }
 #statusline .sl-action:hover { background: color-mix(in srgb, var(--accent) 15%, transparent); }
 #statusline .notice { color: var(--need); max-width: 30ch; overflow: hidden; text-overflow: ellipsis; }
+#statusline .net { display: inline-flex; align-items: center; gap: 6px; flex: none; }
+#statusline .net .ms { font-variant-numeric: tabular-nums; }
+#statusline .net .via { color: var(--faint); font-size: 10.5px; letter-spacing: 0.04em; margin-right: 5px; }
+#statusline .net .slow, .host .rtt.slow { color: var(--need); }
+#statusline .net .bad, .host .rtt.bad { color: var(--red); }
+.host .rtt { font-size: 11px; color: var(--faint); font-variant-numeric: tabular-nums; flex: none; }
 .conn-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
 .conn-dot.offline, .conn-dot.connecting { background: var(--need); }
 .conn-dot.unauthorized { background: var(--red); }
