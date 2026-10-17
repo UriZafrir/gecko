@@ -179,13 +179,15 @@ final class FeatureTour: GeckoUITestCase {
         chapter("6 Scrolling. The fast-scroll thumb on the right edge: to the top, and back to the end")
         let edgeX: CGFloat = 1
         let edge = { (y: CGFloat) in self.web.coordinate(withNormalizedOffset: CGVector(dx: edgeX, dy: y)).withOffset(CGVector(dx: -12, dy: 0)) }
-        edge(0.5).tap()
-        beat(0.6)
-        drag(from: edge(0.5), to: edge(0.02), hold: 0.25, velocity: .slow)
+        // A flick brings the thumb up (it fades 1.5 s after the scrolling
+        // stops), then a finger on its strip drags it.
+        drag(from: terminalPoint(0.5, 0.2), to: terminalPoint(0.5, 0.7), hold: 0.02, velocity: .fast)
+        drag(from: edge(0.5), to: edge(0.06), hold: 0.1, velocity: .slow)
         p = waitProbe("near the top", timeout: 6) { ($0["viewportY"] as? Int ?? bottom) < bottom / 4 }
         beat(2.5)
         shot("05-06-thumb-top")
-        drag(from: edge(0.04), to: edge(0.99), hold: 0.25, velocity: .slow)
+        drag(from: terminalPoint(0.5, 0.7), to: terminalPoint(0.5, 0.2), hold: 0.02, velocity: .fast)
+        drag(from: edge(0.1), to: edge(0.8), hold: 0.1, velocity: .slow)
         waitProbe("back at the end", timeout: 8) { ($0["viewportY"] as? Int ?? 0) >= ($0["baseY"] as? Int ?? 1) - 2 }
         beat(2.5)
         shot("05-06-end")
@@ -217,7 +219,7 @@ final class FeatureTour: GeckoUITestCase {
         beat(0.8)
         app.typeText("claude\n")
         waitProbe("the agent waiting", timeout: 40) { ($0["agents"] as? [String] ?? []).contains("needs-input") }
-        if app.keyboards.firstMatch.exists { key("hide-keyboard").tap() }
+        if key("hide-keyboard").exists { key("hide-keyboard").tap() }
         beat(3)
         p = probe()
         assertLandscape(p)
@@ -299,10 +301,11 @@ final class FeatureTour: GeckoUITestCase {
     }
 
     /// Types into the open palette one letter at a time (so the video shows
-    /// it), then Enter if asked.
+    /// it), then Enter if asked. The keyboard goes down first, so the
+    /// previewed theme shows.
     private func paletteType(_ text: String, enter: Bool = false) -> String {
         """
-        (function(){var i=document.querySelector('#palette input');if(!i)return;var t=\(quoted(text)),n=0;i.value='';i.dispatchEvent(new Event('input'));
+        (function(){var i=document.querySelector('#palette input');if(!i)return;i.blur();var t=\(quoted(text)),n=0;i.value='';i.dispatchEvent(new Event('input'));
         var f=function(){if(n<t.length){i.value+=t[n++];i.dispatchEvent(new Event('input'));setTimeout(f,110);}
         else if(\(enter)){setTimeout(function(){i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));},600);}};f();})()
         """
