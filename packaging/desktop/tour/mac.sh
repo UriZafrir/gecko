@@ -63,6 +63,10 @@ fi
 # Behind the window, for the transparency chapter: a photo wallpaper and a
 # Chrome window with big text, opened before Gecko so Gecko is on top.
 CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+# The vibrancy blur only shows with Reduce transparency off.
+log "reduce transparency was: $(defaults read com.apple.universalaccess reduceTransparency 2>&1)"
+defaults write com.apple.universalaccess reduceTransparency -bool false >>"$OUT/tour-setup.log" 2>&1
+log "reduce transparency now: $(defaults read com.apple.universalaccess reduceTransparency 2>&1)"
 WALL=$(cd "$HERE/../../.." && pwd)/web/public/themes/jellyfish.jpg
 osascript -e "tell application \"System Events\" to tell every desktop to set picture to \"$WALL\"" >>"$OUT/tour-setup.log" 2>&1 || log "wallpaper not set"
 if [ -x "$CHROME" ]; then

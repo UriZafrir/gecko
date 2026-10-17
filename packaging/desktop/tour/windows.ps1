@@ -52,6 +52,9 @@ Set-ItemProperty -Path $pers -Name EnableTransparency -Value 1 -Type DWord -Erro
 $wall = (Resolve-Path (Join-Path $Here "..\..\..\web\public\themes\jellyfish.jpg")).Path
 Add-Type -TypeDefinition 'using System.Runtime.InteropServices; public class Wall { [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int SystemParametersInfo(int a, int b, string c, int d); }'
 Log ("wallpaper: {0}" -f [Wall]::SystemParametersInfo(20, 0, $wall, 3))
+Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class Bcast { [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr SendMessageTimeout(IntPtr h, int m, IntPtr w, string l, int f, int t, out IntPtr r); }'
+$r = [IntPtr]::Zero
+[Bcast]::SendMessageTimeout([IntPtr]0xffff, 0x1A, [IntPtr]::Zero, "ImmersiveColorSet", 2, 3000, [ref]$r) | Out-Null
 Log ("transparency effects: {0}" -f (Get-ItemProperty -Path $pers -Name EnableTransparency -ErrorAction SilentlyContinue).EnableTransparency)
 Log ("windows build: {0}" -f [Environment]::OSVersion.Version)
 if ($chrome) {
