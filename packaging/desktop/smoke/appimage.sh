@@ -9,7 +9,6 @@ OUT=${2:-out}
 PORT=17696
 mkdir -p "$OUT" && OUT=$(cd "$OUT" && pwd)
 export GECKO_HOME=$RUNNER_TEMP/gecko-home DISPLAY=:99
-export APPIMAGE_EXTRACT_AND_RUN=1 # no FUSE on the runner
 rm -rf "$GECKO_HOME" && mkdir -p "$GECKO_HOME" && chmod 700 "$GECKO_HOME"
 printf '{"listen":"127.0.0.1:%s","name":"appimage-ci"}\n' $PORT >"$GECKO_HOME/config.json"
 fail=0
@@ -27,7 +26,8 @@ sleep 6
 TOKEN=$(cat "$GECKO_HOME/token")
 check "daemon answers /api/info" "curl -fsS -H 'Authorization: Bearer $TOKEN' http://127.0.0.1:$PORT/api/info | tee -a '$OUT/smoke.log' | grep -q appimage-ci"
 check "daemon runs the copied gecko" "pgrep -af 'gecko-appimage-[0-9]+ daemon' | tee -a '$OUT/smoke.log' | grep -q daemon"
-S=$("$AI" gecko new -n smoke </dev/null)
+S=$("$AI" gecko new -n smoke </dev/null | tail -1)
+log "session: $S"
 sleep 2
 "$AI" gecko send "$S" 'echo "hello from the AppImage CLI"' </dev/null
 sleep 3

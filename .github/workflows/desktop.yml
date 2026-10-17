@@ -61,7 +61,7 @@ jobs:
         run: make package-appimage
       - name: Smoke test
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb imagemagick >/dev/null
+          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb imagemagick fuse3 >/dev/null
           packaging/desktop/smoke/appimage.sh dist/desktop/Gecko-*.AppImage out/appimage
       - name: Upload
         if: always()
