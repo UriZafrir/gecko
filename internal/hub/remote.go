@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os/exec"
 	"strings"
 	"sync"
 	"time"
@@ -17,17 +16,24 @@ import (
 )
 
 // Remote is a host reached by running `gecko bridge` on it (over SSH by
-// default). The remote daemon owns the sessions, so they survive every
-// network drop; Remote just reconnects and resumes each stream from the
-// last byte it saw, like mosh but for every tab at once.
+// default), or through the relay for a machine of the same account. The
+// remote daemon owns the sessions, so they survive every network drop;
+// Remote just reconnects and resumes each stream from the last byte it
+// saw, like mosh but for every tab at once.
 type Remote struct {
 	name, target string
-	argv         []string
+	kind         string // KindSSH or KindCloud
 	hub          *Hub
 
 	mu       sync.Mutex
+	dial     DialFunc
+	fallback DialFunc // tried when dial fails: the relay, for an SSH machine that is also in the account
+	via      string   // how the current link goes: ViaSSH or ViaRelay
+	machine  string   // the remote's machine id in the account, if it is signed in
+	online   bool     // the relay sees it (cloud machines)
+	lastSeen int64    // unix ms, from the relay
 	conn     proto.Conn
-	cmd      *exec.Cmd
+	pid      int
 	status   string
 	errMsg   string
 	os       string
@@ -40,7 +46,61 @@ type Remote struct {
 	subN     int
 	closed   bool
 	stop     chan struct{}
+	wake     chan struct{}
+
+	rtt     time.Duration // last ping round trip; 0 = unknown
+	rttSent time.Duration // the value last broadcast in host state
+	rttAt   time.Time     // when it was broadcast
 }
+
+// Pinging a link: how often, how long one ping may take, and how long the
+// link may go without any answer before it counts as dead and is redialed
+// (an SSH connection can hang for minutes when the network goes away).
+var (
+	pingEvery   = 2 * time.Second
+	pingTimeout = 5 * time.Second
+	linkDead    = 15 * time.Second
+)
+
+// Machine kinds and link paths, as HostInfo reports them.
+const (
+	KindLocal = "local"
+	KindSSH   = "ssh"
+	KindCloud = "cloud"
+
+	ViaSSH   = "ssh"
+	ViaRelay = "relay"
+)
+
+// Link is one connection to the gecko on another machine.
+type Link struct {
+	Conn proto.Conn
+	// Explain turns a failure of the link into something to show the user
+	// (nil: the error as it is).
+	Explain func(error) error
+	PID     int    // helper process (ssh), so an upgraded daemon can reap it
+	Wait    func() // reaps the helper once Conn is closed (nil if none)
+}
+
+func (l *Link) close() {
+	l.Conn.Close()
+	if l.Wait != nil {
+		l.Wait()
+	}
+}
+
+func (l *Link) explain(err error) error {
+	if l.Explain != nil {
+		return l.Explain(err)
+	}
+	if errors.Is(err, io.EOF) {
+		return errors.New("connection closed")
+	}
+	return err
+}
+
+// DialFunc opens a link to a machine.
+type DialFunc func() (*Link, error)
 
 type rsub struct {
 	id     string
@@ -49,10 +109,46 @@ type rsub struct {
 }
 
 // NewRemote creates a remote backend; call Run to connect.
-func NewRemote(name string, argv []string, target string, h *Hub) *Remote {
-	return &Remote{name: name, argv: argv, target: target, hub: h, status: "connecting",
+func NewRemote(name, target, kind string, dial DialFunc, h *Hub) *Remote {
+	return &Remote{name: name, target: target, kind: kind, dial: dial, hub: h, status: "connecting",
 		sessions: map[string]proto.SessionInfo{}, pending: map[int]chan *proto.Msg{},
-		subs: map[string]*rsub{}, stop: make(chan struct{})}
+		subs: map[string]*rsub{}, stop: make(chan struct{}), wake: make(chan struct{}, 1)}
+}
+
+// SSHDial runs argv (ssh ... gecko bridge) and talks over its stdio.
+func SSHDial(name string, argv []string) DialFunc {
+	return func() (*Link, error) {
+		cmd := execx.Command(argv[0], argv[1:]...)
+		stderr := &tailBuf{}
+		cmd.Stderr = stderr
+		in, err := cmd.StdinPipe()
+		if err != nil {
+			return nil, err
+		}
+		out, err := cmd.StdoutPipe()
+		if err != nil {
+			return nil, err
+		}
+		if err := cmd.Start(); err != nil {
+			return nil, err
+		}
+		conn := proto.NewStreamConn(out, in, closerFunc(func() error {
+			in.Close()
+			_ = cmd.Process.Kill()
+			return nil
+		}))
+		explain := func(err error) error {
+			if s := stderr.String(); s != "" {
+				lines := strings.Split(s, "\n")
+				return errors.New(hostsetup.Explain(lines[len(lines)-1], name))
+			}
+			if errors.Is(err, io.EOF) {
+				return errors.New("connection closed")
+			}
+			return err
+		}
+		return &Link{Conn: conn, Explain: explain, PID: cmd.Process.Pid, Wait: func() { _ = cmd.Wait() }}, nil
+	}
 }
 
 // Run keeps the connection up until Close.
@@ -67,6 +163,7 @@ func (r *Remote) Run() {
 			return
 		}
 		r.conn = nil
+		r.rtt, r.rttSent = 0, 0
 		r.status, r.errMsg = "error", err.Error()
 		for rid, ch := range r.pending {
 			close(ch)
@@ -79,11 +176,22 @@ func (r *Remote) Run() {
 		}
 		select {
 		case <-time.After(backoff):
+		case <-r.wake:
+			backoff = time.Second
 		case <-r.stop:
 			return
 		}
 		backoff = min(backoff*2, 30*time.Second)
 		r.setStatus("connecting", "")
+	}
+}
+
+// Wake retries a disconnected link now instead of after the backoff (the
+// relay saw the machine come online).
+func (r *Remote) Wake() {
+	select {
+	case r.wake <- struct{}{}:
+	default:
 	}
 }
 
@@ -115,63 +223,83 @@ func (t *tailBuf) String() string {
 	return strings.TrimSpace(string(t.b))
 }
 
-func (r *Remote) serve() error {
-	cmd := execx.Command(r.argv[0], r.argv[1:]...)
-	stderr := &tailBuf{}
-	cmd.Stderr = stderr
-	in, err := cmd.StdinPipe()
+// open dials and runs the hello handshake.
+func (r *Remote) open(dial DialFunc) (*Link, *proto.Msg, error) {
+	link, err := dial()
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
-	out, err := cmd.StdoutPipe()
-	if err != nil {
-		return err
-	}
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-	conn := proto.NewStreamConn(out, in, closerFunc(func() error {
-		in.Close()
-		_ = cmd.Process.Kill()
-		return nil
-	}))
 	r.mu.Lock()
 	if r.closed {
 		r.mu.Unlock()
-		conn.Close()
-		return errors.New("closed")
+		link.close()
+		return nil, nil, errors.New("closed")
 	}
-	r.cmd = cmd
+	r.pid = link.PID
 	r.mu.Unlock()
-	defer func() {
-		conn.Close()
-		_ = cmd.Wait()
-	}()
-
+	conn := link.Conn
 	if err := proto.WriteJSON(conn, &proto.Msg{T: proto.THello, Scope: ScopeLocal, Client: "hub", Version: proto.Version}); err != nil {
-		return r.fail(err, stderr)
+		link.close()
+		return nil, nil, link.explain(err)
 	}
 	// Handshake: the first message must be the hello reply.
 	timer := time.AfterFunc(30*time.Second, func() { conn.Close() })
 	_, b, err := conn.Read()
 	timer.Stop()
 	if err != nil {
-		return r.fail(err, stderr)
+		link.close()
+		return nil, nil, link.explain(err)
 	}
 	var hello proto.Msg
 	if json.Unmarshal(b, &hello) != nil || hello.T != proto.THello {
-		return r.fail(errors.New("unexpected handshake from remote (is gecko installed there?)"), stderr)
+		link.close()
+		return nil, nil, link.explain(errors.New("unexpected handshake from remote (is gecko installed there?)"))
 	}
+	return link, &hello, nil
+}
+
+func (r *Remote) serve() error {
 	r.mu.Lock()
-	r.conn, r.os, r.version, r.status, r.errMsg = conn, hello.OS, hello.Version, "connected", ""
+	dial, fallback, via := r.dial, r.fallback, ViaSSH
+	if r.kind == KindCloud {
+		via = ViaRelay
+	}
+	r.mu.Unlock()
+	link, hello, err := r.open(dial)
+	if err != nil && fallback != nil {
+		// The direct path failed; this machine is also in the account, so
+		// try the relay.
+		l, h, ferr := r.open(fallback)
+		if ferr != nil {
+			return fmt.Errorf("%v (relay: %v)", err, ferr)
+		}
+		link, hello, err, via = l, h, nil, ViaRelay
+	}
+	if err != nil {
+		return err
+	}
+	conn := link.Conn
+	defer link.close()
+	r.mu.Lock()
+	learned := hello.Machine != "" && hello.Machine != r.machine && r.kind == KindSSH
+	if hello.Machine != "" {
+		r.machine = hello.Machine
+	}
+	r.conn, r.os, r.version, r.status, r.errMsg, r.via = conn, hello.OS, hello.Version, "connected", "", via
 	r.mu.Unlock()
 	r.hub.stateChanged()
+	if learned {
+		go r.hub.machineLearned(r.name, hello.Machine)
+	}
 
 	go r.resync()
+	done := make(chan struct{})
+	defer close(done)
+	go r.pinger(conn, done)
 	for {
 		bin, b, err := conn.Read()
 		if err != nil {
-			return r.fail(err, stderr)
+			return link.explain(err)
 		}
 		if bin {
 			r.onData(b)
@@ -185,15 +313,52 @@ func (r *Remote) serve() error {
 	}
 }
 
-func (r *Remote) fail(err error, stderr *tailBuf) error {
-	if s := stderr.String(); s != "" {
-		lines := strings.Split(s, "\n")
-		return errors.New(hostsetup.Explain(lines[len(lines)-1], r.name))
+// pinger measures the link's round trip with app-level pings (the same
+// ones browsers send), reports it in host state, and closes a link that
+// stopped answering so Run dials it again.
+func (r *Remote) pinger(conn proto.Conn, done chan struct{}) {
+	t := time.NewTicker(pingEvery)
+	defer t.Stop()
+	last := time.Now()
+	for {
+		select {
+		case <-done:
+			return
+		case <-t.C:
+		}
+		start := time.Now()
+		// Gecko before protocol 8 answers "ping" with an error reply,
+		// which is just as good a pong.
+		_, err := r.requestTimeout(&proto.Msg{T: proto.TPing}, pingTimeout)
+		if err != nil && !errors.Is(err, errRemote) {
+			if time.Since(last) > linkDead {
+				conn.Close()
+				return
+			}
+			continue
+		}
+		last = time.Now()
+		r.setRTT(time.Since(start))
 	}
-	if errors.Is(err, io.EOF) {
-		return errors.New("connection closed")
+}
+
+// setRTT records a measurement and broadcasts host state when it changed
+// enough to matter on screen (every 2 s for every client would be noise).
+func (r *Remote) setRTT(d time.Duration) {
+	r.mu.Lock()
+	r.rtt = d
+	diff := d - r.rttSent
+	if diff < 0 {
+		diff = -diff
 	}
-	return err
+	changed := r.rttSent == 0 || diff > 5*time.Millisecond && diff > r.rttSent/4 || diff > time.Millisecond && time.Since(r.rttAt) > 30*time.Second
+	if changed {
+		r.rttSent, r.rttAt = d, time.Now()
+	}
+	r.mu.Unlock()
+	if changed {
+		r.hub.stateChanged()
+	}
 }
 
 // resync refreshes the session list and resumes every attached stream.
@@ -299,7 +464,20 @@ func (r *Remote) send(m *proto.Msg) error {
 	return proto.WriteJSON(conn, m)
 }
 
+// errRemote wraps an error the remote reported in its reply (as opposed
+// to the link failing or timing out).
+var errRemote = errors.New("remote error")
+
+type remoteErr struct{ msg string }
+
+func (e remoteErr) Error() string        { return e.msg }
+func (e remoteErr) Is(target error) bool { return target == errRemote }
+
 func (r *Remote) request(m *proto.Msg) (*proto.Msg, error) {
+	return r.requestTimeout(m, 20*time.Second)
+}
+
+func (r *Remote) requestTimeout(m *proto.Msg, timeout time.Duration) (*proto.Msg, error) {
 	ch := make(chan *proto.Msg, 1)
 	r.mu.Lock()
 	conn := r.conn
@@ -320,10 +498,10 @@ func (r *Remote) request(m *proto.Msg) (*proto.Msg, error) {
 			return nil, fmt.Errorf("host %s disconnected", r.name)
 		}
 		if reply.Error != "" {
-			return nil, errors.New(reply.Error)
+			return nil, remoteErr{reply.Error}
 		}
 		return reply, nil
-	case <-time.After(20 * time.Second):
+	case <-time.After(timeout):
 		r.mu.Lock()
 		delete(r.pending, m.Rid)
 		r.mu.Unlock()
@@ -334,7 +512,58 @@ func (r *Remote) request(m *proto.Msg) (*proto.Msg, error) {
 func (r *Remote) Info() proto.HostInfo {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return proto.HostInfo{Name: r.name, Target: r.target, Status: r.status, Error: r.errMsg, OS: r.os, Version: r.version}
+	ms := 0
+	if r.rtt > 0 {
+		ms = max(1, int((r.rtt+time.Millisecond/2)/time.Millisecond))
+	}
+	info := proto.HostInfo{Name: r.name, Target: r.target, Status: r.status, Error: r.errMsg, OS: r.os, Version: r.version,
+		Kind: r.kind, Machine: r.machine, LastSeen: r.lastSeen, RTT: ms}
+	if r.conn != nil {
+		info.Via = r.via
+	} else if r.kind == KindCloud && !r.online {
+		// The relay says it isn't connected: that's all there is to say.
+		info.Status, info.Error = "offline", ""
+	}
+	return info
+}
+
+// setFallback sets (or clears) the relay path of an SSH machine. Clearing
+// it drops a link that runs over the relay.
+func (r *Remote) setFallback(d DialFunc) {
+	r.mu.Lock()
+	r.fallback = d
+	conn := r.conn
+	drop := d == nil && r.via == ViaRelay && conn != nil
+	r.mu.Unlock()
+	if drop {
+		conn.Close()
+	}
+}
+
+// setPresence records what the relay says about the machine and retries
+// at once when it just came online.
+func (r *Remote) setPresence(online bool, lastSeen int64, os string, dial DialFunc) {
+	r.mu.Lock()
+	came := online && !r.online
+	r.online, r.lastSeen = online, lastSeen
+	if r.os == "" {
+		r.os = os
+	}
+	if dial != nil {
+		r.dial = dial
+	}
+	idle := r.conn == nil
+	r.mu.Unlock()
+	if came && idle {
+		r.Wake()
+	}
+}
+
+// MachineID is the remote's id in the account ("" if unknown).
+func (r *Remote) MachineID() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.machine
 }
 
 func (r *Remote) Sessions() []proto.SessionInfo {

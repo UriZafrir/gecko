@@ -63,6 +63,10 @@ The first time `gecko` runs it sets the daemon to start at login (a systemd
 user unit, a launchd agent, or a script in the Windows Startup folder), so a
 reboot doesn't leave you without one. `gecko service uninstall` removes it
 and stops `gecko` from adding it back; `gecko service install` adds it again.
+Only your installed Gecko does this: a build inside a source checkout, a run
+with its own `GECKO_HOME`, or a copy other than the `gecko` on your PATH
+leaves the service alone (`gecko service install` still works from any of
+them).
 
 `gecko open` opens Gecko in its own window. It starts at exactly 80×24,
 centered, and remembers the right size after the first time.

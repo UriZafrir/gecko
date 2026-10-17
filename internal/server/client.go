@@ -79,7 +79,7 @@ func serve(h *hub.Hub, conn proto.Conn, local bool) {
 			continue
 		}
 		switch m.T {
-		case proto.TCreate, proto.TCapture, proto.TOpenWS, proto.TAddHost, proto.TRmHost, proto.TList, proto.TSearch, proto.TProbeHost, proto.TInstall, proto.TListDir, proto.TUpdateHost, proto.TTmux, proto.TTrustHost:
+		case proto.TCreate, proto.TCapture, proto.TOpenWS, proto.TAddHost, proto.TRmHost, proto.TList, proto.TSearch, proto.TProbeHost, proto.TInstall, proto.TListDir, proto.TUpdateHost, proto.TTmux, proto.TTrustHost, proto.TCloud:
 			// May wait on a remote host; don't stall input for other tabs.
 			go c.handle(m)
 		default:
@@ -182,7 +182,7 @@ func (c *client) handle(m *proto.Msg) {
 		if m.Scope == hub.ScopeLocal {
 			c.scope = hub.ScopeLocal
 		}
-		c.send(&proto.Msg{T: proto.THello, Rid: m.Rid, Host: h.Name(), Version: proto.Version, OS: runtime.GOOS, Text: startID})
+		c.send(&proto.Msg{T: proto.THello, Rid: m.Rid, Host: h.Name(), Version: proto.Version, OS: runtime.GOOS, Text: startID, Machine: h.MachineID()})
 		if c.unsub == nil {
 			c.unsub = h.Subscribe(c.scope, c.send)
 		}
@@ -191,12 +191,17 @@ func (c *client) handle(m *proto.Msg) {
 			c.send(h.State(c.scope))
 			if c.scope != hub.ScopeLocal {
 				c.send(&proto.Msg{T: proto.TSettings, Text: h.Settings()})
+				if st := h.CloudState(); st != nil {
+					c.send(&proto.Msg{T: proto.TCloud, Cloud: st})
+				}
 			}
 		} else if m.Client == "hub" {
 			// A Gecko connecting to this machine: send the current tmux list
 			// right away; otherwise it only arrives when something changes.
 			c.send(h.State(c.scope))
 		}
+	case proto.TPing:
+		c.reply(m, nil, nil)
 	case proto.TList:
 		c.reply(m, &proto.Msg{Sessions: h.Sessions(c.scope)}, nil)
 	case proto.TCreate:
@@ -420,6 +425,13 @@ func (c *client) handle(m *proto.Msg) {
 		c.reply(m, &proto.Msg{Secret: secret}, nil)
 	case proto.TRmHost:
 		c.reply(m, nil, h.RemoveHost(m.Name))
+	case proto.TCloud:
+		if c.scope == hub.ScopeLocal {
+			c.reply(m, nil, errors.New("the account belongs to the Gecko you are using directly"))
+			return
+		}
+		st, err := h.CloudDo(m.Name, m.Data)
+		c.reply(m, &proto.Msg{Cloud: st}, err)
 	default:
 		c.reply(m, nil, fmt.Errorf("this Gecko service doesn't know %q; it is older than the app talking to it. Restart it: gecko stop && gecko", m.T))
 	}
