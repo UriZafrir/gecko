@@ -1,8 +1,10 @@
 # The plain Linux binaries (make dist): dist/gecko-linux-amd64 and -arm64,
 # static-PIE, linked by zig against musl (see the Makefile). The Termux
 # installer downloads them, and `gecko host install` copies them to other
-# machines. Each is smoke-tested on its own CPU with a fresh GECKO_HOME; a v*
-# tag attaches them to the draft GitHub release.
+# machines. Each is smoke-tested on its own CPU with a fresh GECKO_HOME,
+# started directly and through Android's linker (as Termux from Google Play
+# does, packaging/termux/linker-smoke.sh); a v* tag attaches them to the
+# draft GitHub release.
 name: Linux binaries
 
 on:
@@ -89,6 +91,17 @@ jobs:
           $g ls </dev/null
           $g stop </dev/null
           cat "$GECKO_HOME/daemon.log"
+      # Termux from Google Play starts programs through Android's linker.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: src
+          sparse-checkout: packaging/termux
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/gecko-android-linker
+          key: android-linker-${{ matrix.arch }}-${{ hashFiles('src/packaging/termux/linker-smoke.sh') }}
+      - name: Through Android's linker
+        run: src/packaging/termux/linker-smoke.sh bin/gecko-linux-${{ matrix.arch }} ${{ matrix.arch }}
 
   # A v* tag: the binaries go to the draft GitHub release for that tag.
   release:
