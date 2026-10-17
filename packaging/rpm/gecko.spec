@@ -80,7 +80,6 @@ mkdir -p %{buildroot}%{_prefix}/lib
 cp -a $bin/usr/lib/gecko-desktop %{buildroot}%{_prefix}/lib/
 chmod 644 %{buildroot}%{_prefix}/lib/gecko-desktop/*.so*
 install -Dm755 packaging/linux/gecko-desktop %{buildroot}%{_bindir}/gecko-desktop
-%{_mandir}/man1/gecko-desktop.1*
 
 %check
 desktop-file-validate %{buildroot}%{_datadir}/applications/gecko.desktop
@@ -100,6 +99,7 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/dev.gecko.app.
 %files desktop
 %license gecko-%{version}-linux-x86_64/usr/lib/gecko-desktop/LICENSE.electron.txt
 %{_bindir}/gecko-desktop
+%{_mandir}/man1/gecko-desktop.1*
 %dir %{_prefix}/lib/gecko-desktop
 %{_prefix}/lib/gecko-desktop/*
 %exclude %{_prefix}/lib/gecko-desktop/chrome-sandbox
