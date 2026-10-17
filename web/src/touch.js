@@ -567,6 +567,10 @@ export function attachPage(app) {
     if (!g) return;
     const at = point(ev.touches[0]);
     const dx = at.x - g.start.x, dy = at.y - g.start.y;
+    // From the edge, the touch is the drawer's from its first move: left to
+    // the browser while the direction is still unclear, it starts a pan of
+    // its own and cancels the touch (seen on WebView 113).
+    if (!g.dir && g.kind === 'open' && ev.cancelable) ev.preventDefault();
     if (!g.dir) {
       g.dir = classify(dx, dy);
       if (g.dir === 'v') { // a vertical drag: not ours (the drawer's list scrolls)

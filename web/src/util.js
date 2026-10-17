@@ -1,5 +1,9 @@
 export const isMac = /Mac|iPhone|iPad/.test(navigator.platform) || /Mac OS/.test(navigator.userAgent);
-export const isTouch = matchMedia('(pointer: coarse)').matches;
+// Touch: a coarse pointer, or in the Android app any touchscreen (some
+// Android WebViews call their touchscreen a fine pointer when a mouse-like
+// device is also present: an emulator, a phone with a mouse or a stylus).
+export const isTouch = matchMedia('(pointer: coarse)').matches ||
+  (!!window.GeckoAndroid && navigator.maxTouchPoints > 0);
 // The compact layout (drawer, chip dock, no status line): narrow windows, and
 // windows too short for the desktop one (a phone in landscape). Keep in
 // sync with the "phones" block in style.css.
