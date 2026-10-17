@@ -7,6 +7,7 @@ name: Desktop
 on:
   push:
     branches: [feature/desktop-apps]
+    tags: ['v*']
   workflow_dispatch:
     inputs:
       tour:
@@ -136,3 +137,27 @@ jobs:
             dist/desktop/*.zip
             out/windows
           if-no-files-found: warn
+
+  # A v* tag: the installers go to a draft GitHub release for that tag.
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [mac, appimage, windows]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: gecko-*
+          path: rel
+      - name: Attach to the draft release for this tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          R: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release view "$TAG" -R "$R" >/dev/null 2>&1 ||
+            gh release create "$TAG" -R "$R" --draft --verify-tag --title "Gecko $TAG" \
+              --notes "Installers built by the Desktop and Linux packages workflows. Draft: review before publishing." ||
+            sleep 10
+          find rel -type f \( -name '*.dmg' -o -name '*.AppImage' -o -name '*-setup.exe' -o -name '*.zip' \) -print0 | xargs -0 gh release upload "$TAG" -R "$R" --clobber

@@ -7,6 +7,7 @@ name: Linux packages
 on:
   push:
     branches: [feature/desktop-apps]
+    tags: ['v*']
     paths-ignore:
       - packaging/desktop/smoke/**
       - packaging/desktop/tour/**
@@ -297,3 +298,35 @@ jobs:
         with:
           path: site
       - uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+
+  # A v* tag: the packages go to a draft GitHub release for that tag.
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build, rpm, arch, snap]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: linux-packages
+          path: rel/linux-packages
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: arch
+          path: rel/arch
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: snap
+          path: rel/snap
+      - name: Attach to the draft release for this tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          R: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release view "$TAG" -R "$R" >/dev/null 2>&1 ||
+            gh release create "$TAG" -R "$R" --draft --verify-tag --title "Gecko $TAG" \
+              --notes "Installers built by the Desktop and Linux packages workflows. Draft: review before publishing." ||
+            sleep 10
+          find rel -type f \( -name '*.deb' -o -name '*.rpm' -o -name 'gecko-bin-*.pkg.tar.zst' -o -name '*.snap' -o -name '*.tar.gz' \) -print0 | xargs -0 gh release upload "$TAG" -R "$R" --clobber
