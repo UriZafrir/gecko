@@ -122,15 +122,45 @@ class TerminalActivity : AppCompatActivity() {
         // strip there (Android grants at most 200dp of height per edge), in
         // the middle of the terminal. Back still works from the rest of the
         // edge and with the button.
+        // The strip is the root's, from the screen edge: in landscape the page
+        // starts after a camera cutout, and a swipe from the edge begins
+        // there, beside the page (passed on to it below).
         if (Build.VERSION.SDK_INT >= 29) {
-            web.addOnLayoutChangeListener { v, _, top, _, bottom, _, _, _, _ ->
+            web.addOnLayoutChangeListener { _, left, top, right, bottom, _, _, _, _ ->
                 val d = resources.displayMetrics.density
+                // A persistent sidebar (wide, not short): no drawer, so no swipe.
+                if ((right - left) / d > 760 && (bottom - top) / d > 500) {
+                    root.systemGestureExclusionRects = emptyList()
+                    return@addOnLayoutChangeListener
+                }
+                val at = IntArray(2).also { web.getLocationInWindow(it) }
+                val rootAt = IntArray(2).also { root.getLocationInWindow(it) }
+                val webTop = at[1] - rootAt[1]
                 val h = (200 * d).toInt().coerceAtMost(bottom - top)
-                val y = ((bottom - top) - h) / 2
-                v.systemGestureExclusionRects = listOf(android.graphics.Rect(0, y, (32 * d).toInt(), y + h))
+                val y = webTop + ((bottom - top) - h) / 2
+                root.systemGestureExclusionRects = listOf(android.graphics.Rect(0, y, at[0] - rootAt[0] + (32 * d).toInt(), y + h))
             }
         }
+        // Touches beside the page (over a cutout's inset at the left or
+        // right edge) go to the page's edge, so the drawer swipe works from
+        // the screen edge.
+        root.setOnTouchListener { v, ev ->
+            val at = IntArray(2).also { web.getLocationInWindow(it) }
+            val rootAt = IntArray(2).also { v.getLocationInWindow(it) }
+            val dx = (at[0] - rootAt[0]).toFloat()
+            val dy = (at[1] - rootAt[1]).toFloat()
+            if (ev.actionMasked == android.view.MotionEvent.ACTION_DOWN && (ev.y < dy || ev.y > dy + web.height)) return@setOnTouchListener false
+            val e = android.view.MotionEvent.obtain(ev)
+            e.offsetLocation(-dx, -dy)
+            if (e.x < 0) e.setLocation(0f, e.y)
+            if (e.x > web.width - 1) e.setLocation((web.width - 1).toFloat(), e.y)
+            val handled = web.dispatchTouchEvent(e)
+            e.recycle()
+            handled || ev.actionMasked != android.view.MotionEvent.ACTION_DOWN
+        }
 
+        keys.setHardwareKeyboard(hasHardwareKeyboard())
+        getSystemService(android.hardware.input.InputManager::class.java)?.registerInputDeviceListener(keyboards, null)
         keys.onKey = { pressKey(it) }
         keys.onMenu = { showMenu(it) }
         findViewById<Button>(R.id.retry).setOnClickListener { load() }
@@ -161,6 +191,27 @@ class TerminalActivity : AppCompatActivity() {
         machine?.let { outState.putString(EXTRA_MACHINE, it.id) }
     }
 
+    // Rotation, folding, a window resize, dark mode, text size: the page
+    // stays (and with it the session and the scroll position) and refits.
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        keys.resize()
+        keys.setHardwareKeyboard(hasHardwareKeyboard())
+    }
+
+    /**
+     * A keyboard plugged in or paired (not the phone's own buttons, nor
+     * a built-in one that only some devices and emulators report).
+     */
+    private fun hasHardwareKeyboard(): Boolean {
+        val im = getSystemService(android.hardware.input.InputManager::class.java) ?: return false
+        return im.inputDeviceIds.any { id ->
+            val d = im.getInputDevice(id) ?: return@any false
+            !d.isVirtual && d.keyboardType == android.view.InputDevice.KEYBOARD_TYPE_ALPHABETIC &&
+                (Build.VERSION.SDK_INT < 29 || d.isExternal)
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         Gecko.foregroundMachine = machine?.id
@@ -172,7 +223,14 @@ class TerminalActivity : AppCompatActivity() {
         super.onPause()
     }
 
+    private val keyboards = object : android.hardware.input.InputManager.InputDeviceListener {
+        override fun onInputDeviceAdded(id: Int) = keys.setHardwareKeyboard(hasHardwareKeyboard())
+        override fun onInputDeviceRemoved(id: Int) = keys.setHardwareKeyboard(hasHardwareKeyboard())
+        override fun onInputDeviceChanged(id: Int) = keys.setHardwareKeyboard(hasHardwareKeyboard())
+    }
+
     override fun onDestroy() {
+        getSystemService(android.hardware.input.InputManager::class.java)?.unregisterInputDeviceListener(keyboards)
         web.destroy()
         super.onDestroy()
     }
