@@ -234,7 +234,22 @@ function createWindow() {
       autoplayPolicy: 'no-user-gesture-required', // the startup chime
     },
   });
-  w.once('ready-to-show', () => w.show());
+  // Show the window once the page has painted its theme (the preload says
+  // so), not at its first paint: that one still has the default colors, a
+  // light flash on a light system. Gecko's own page always reports; the
+  // timeout covers anything else (an error page, a remote that's down).
+  let ready = false, painted = false, shown = false;
+  const show = () => {
+    if (shown || !ready || !painted || w.isDestroyed()) return;
+    shown = true;
+    w.show();
+  };
+  w.webContents.ipc.once('gecko:painted', () => { painted = true; show(); });
+  w.once('ready-to-show', () => {
+    ready = true;
+    show();
+    setTimeout(() => { painted = true; show(); }, 2000);
+  });
   // Links open in the real browser; the window only ever shows Gecko.
   w.webContents.setWindowOpenHandler(({ url: u }) => {
     if (/^https?:/.test(u)) shell.openExternal(u);
@@ -304,7 +319,7 @@ if (!app.requestSingleInstanceLock()) {
     // Linux compositors need a moment before a transparent window maps.
     setTimeout(() => {
       const w = createWindow();
-      w.once('ready-to-show', () => sandboxNote(w));
+      w.once('show', () => sandboxNote(w));
     }, linux ? 150 : 0);
   });
   app.on('window-all-closed', () => app.quit());
