@@ -1412,7 +1412,11 @@ class App {
     const $m = (sel) => m.querySelector(sel);
     const f = { target: $m('[name=target]'), name: $m('[name=name]'), gecko: $m('[name=gecko]'), secret: $m('[name=secret]'), usekey: $m('[name=usekey]') };
     const auth = $m('.setup-auth');
-    $m('[data-key-label]').textContent = android ? "Use this phone's SSH key from now on" : 'Use my SSH key from now on (adds it to ~/.ssh/authorized_keys there)';
+    // The key is the one of the machine doing the ssh: in the Android app,
+    // the phone's on This phone, the computer's when it's connected to one.
+    $m('[data-key-label]').textContent = !android ? 'Use my SSH key from now on (adds it to ~/.ssh/authorized_keys there)'
+      : android.onThisPhone?.() ? "Use this phone's SSH key from now on"
+      : `Use ${this.hostName || 'this computer'}'s SSH key from now on (adds it to ~/.ssh/authorized_keys there)`;
     // The password lives only in this dialog and the request it goes with.
     let secret = '';
     let fingerprint = '';

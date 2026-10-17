@@ -82,8 +82,18 @@ class ExtraKeys @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = n
         v.setTextSize(TypedValue.COMPLEX_UNIT_DIP, (if (k.label.length > 2) 13f else 16f) * s)
         v.minWidth = dp(((if (k.wide) 46 else 38) * s).toInt())
         v.setPadding(dp(6), 0, dp(6), 0)
-        v.layoutParams = LayoutParams(LayoutParams.WRAP_CONTENT, dp((38 * s).toInt())).apply { marginEnd = dp(4) }
+        v.layoutParams = LayoutParams(LayoutParams.WRAP_CONTENT, dp(((if (compact) 32 else 38) * s).toInt())).apply { marginEnd = dp(4) }
     }
+
+    /** A phone on its side: slimmer keys, so the terminal keeps its rows. */
+    var compact = false
+        set(v) {
+            if (field == v) return
+            field = v
+            val pad = dp(if (v) 2 else 4)
+            setPadding(pad, pad, pad, pad)
+            resize()
+        }
 
     /** After a change of text size (the activity keeps running through it). */
     fun resize() {
