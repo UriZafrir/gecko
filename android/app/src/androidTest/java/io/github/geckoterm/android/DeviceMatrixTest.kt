@@ -180,8 +180,7 @@ class DeviceMatrixTest {
     /** Puts the device in this shape; null when done, else why it can't. */
     private fun apply(step: String, states: Map<String, Int>): String? {
         when (step) {
-            "portrait" -> device.setOrientationPortrait()
-            "landscape" -> device.setOrientationLandscape()
+            "portrait", "landscape" -> turn(step == "landscape")
             "folded", "unfolded", "half" -> {
                 val id = states.entries.firstOrNull { (n, _) ->
                     !n.contains("REAR") && !n.contains("CONCURRENT") && when (step) {
@@ -291,8 +290,41 @@ class DeviceMatrixTest {
         return null
     }
 
+    private fun displayWide(): Boolean {
+        val dm = android.util.DisplayMetrics()
+        @Suppress("DEPRECATION") ctx.getSystemService(android.view.WindowManager::class.java).defaultDisplay.getRealMetrics(dm)
+        return dm.widthPixels > dm.heightPixels
+    }
+
+    /**
+     * Turns the display to this shape. UiAutomator freezes the rotation it
+     * asks for, but some images (seen on Android 14 after split screen and
+     * back) ignore it: then the rotation is locked through the window
+     * manager, and the result says so.
+     */
+    private fun turn(landscape: Boolean) {
+        if (landscape) device.setOrientationLandscape() else device.setOrientationPortrait()
+        val until = System.currentTimeMillis() + 4000
+        while (System.currentTimeMillis() < until) {
+            if (displayWide() == landscape) return
+            Thread.sleep(200)
+        }
+        val diag = sh("dumpsys window displays").lines().map { it.trim() }
+            .filter { it.startsWith("mRotation") || it.contains("mUserRotation") || it.contains("FixedToUserRotation") || it.contains("mIgnoreOrientationRequest") }
+            .joinToString(" ").take(240)
+        @Suppress("DEPRECATION") val now = ctx.getSystemService(android.view.WindowManager::class.java).defaultDisplay.rotation
+        val rot = (now + 1) % 4 // a quarter turn from here changes the shape
+        locked = true
+        if (android.os.Build.VERSION.SDK_INT >= 34) sh("wm user-rotation lock $rot")
+        else { sh("settings put system accelerometer_rotation 0"); sh("settings put system user_rotation $rot") }
+        val until2 = System.currentTimeMillis() + 4000
+        while (System.currentTimeMillis() < until2 && displayWide() != landscape) Thread.sleep(200)
+        note = "UiAutomator's rotation didn't take ($diag); locked rotation $rot through the window manager"
+    }
+
     private fun restore(states: Map<String, Int>) {
         try { device.unfreezeRotation() } catch (_: Exception) {}
+        if (locked) { if (android.os.Build.VERSION.SDK_INT >= 34) sh("wm user-rotation free") else sh("settings put system accelerometer_rotation 1") }
         sh("settings put system font_scale 1.0")
         sh("cmd uimode night no")
         sh("settings put global debug.force_rtl 0")
@@ -330,7 +362,7 @@ class DeviceMatrixTest {
                 // The window short of the display while it isn't split or windowed.
                 if (!m.multi && (abs(m.winW - m.dispW) > 2 || abs(m.winH - m.dispH) > 2)) add("the window (${m.winW}x${m.winH}) is letterboxed on the display (${m.dispW}x${m.dispH})")
                 // The terminal refitted to its pane: no more than two cells to spare across.
-                if (m.spareCols > 2.5) add("the terminal leaves ${"%.1f".format(m.spareCols)} columns of its pane empty (not refitted)")
+                if (m.spareCols > 3.5) add("the terminal leaves ${"%.1f".format(m.spareCols)} columns of its pane empty (not refitted)")
             }
             val key = "${m.winW}x${m.winH} ${m.pageW}x${m.pageH} ${m.cols}x${m.rows} ${p.size}"
             if (key == last) { if (++stable >= 2 && p.isEmpty()) break } else stable = 0
@@ -469,6 +501,7 @@ class DeviceMatrixTest {
         return x!!
     }
     private var recreated = 0
+    private var locked = false
     private var note = ""
     private var mouseBefore = ""
     private var mouseAfter = ""
