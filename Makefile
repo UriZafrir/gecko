@@ -94,7 +94,7 @@ ios: ios-web
 ios-test: ios-web
 	cd ios && xcodegen generate
 	xcodebuild test -project ios/Gecko.xcodeproj -scheme Gecko -destination 'platform=iOS Simulator,name=$(IOS_SIM)' \
-		-derivedDataPath ios/build -only-testing:GeckoTests CODE_SIGNING_ALLOWED=NO
+		-derivedDataPath ios/build -only-testing:GeckoTests
 
 # Native desktop app (Electron): see-through window with blur on macOS and
 # Windows. `gecko open` uses it automatically once installed.

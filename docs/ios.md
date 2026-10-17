@@ -8,8 +8,9 @@ the keyboard, the real clipboard, the share sheet, and notifications when an
 agent needs you. It connects to the Gecko daemon on your computer, the same
 way [the phone browser](mobile.md) does. iOS 16 or newer.
 
-For now it is built for the iOS Simulator only (no signing, no App Store or
-TestFlight yet), and checked there by CI on a matrix of iPhones and iPads.
+For now it is built for the iOS Simulator only (no certificate, no App
+Store or TestFlight yet), and checked there by CI on a matrix of iPhones and
+iPads.
 
 ## Build
 
@@ -23,8 +24,11 @@ make ios-test     # the unit tests on a simulator (IOS_SIM="iPhone SE (3rd gener
 `make ios-web` (any OS) puts the web UI into the app as one page
 (`ios/scripts/bundle-web.mjs`: the script, styles and fonts inlined, the
 theme photos as files) with the build id. The Xcode project is not checked
-in; `ios/project.yml` is the project. CI (`.github/workflows/ios.yml`, on
-GitHub's macOS runners) builds the app unsigned, runs the unit tests, then
+in; `ios/project.yml` is the project. Builds are signed ad hoc ("Sign to
+Run Locally", no certificate or team): the Keychain refuses an app without
+entitlements even on the Simulator (`CODE_SIGNING_ALLOWED=NO` builds run,
+but can't keep tokens). CI (`.github/workflows/ios.yml`, on
+GitHub's macOS runners) builds the app (ad hoc, and unsigned), runs the unit tests, then
 the UI tests on iPhone SE (3rd generation), iPhone 16, iPhone 16 Pro Max,
 iPad mini, iPad Air 11-inch and iPad Pro 13-inch against Gecko daemons it
 starts in the job (this version, and an older one from `main`), and keeps
@@ -121,7 +125,7 @@ What iOS allows, honestly:
 
 ## Limits
 
-- Simulator only for now: not signed, not on the App Store or TestFlight.
+- Simulator only for now: signed only ad hoc, not on the App Store or TestFlight.
   Runs on iPhone and iPad simulators (iOS 18 in CI); not tried on a real
   device yet. The camera scan can't be tried on the Simulator (it has no
   camera); reading a QR code from a picture is tested.

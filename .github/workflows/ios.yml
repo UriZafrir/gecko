@@ -50,13 +50,18 @@ jobs:
           (cd "$RUNNER_TEMP/old" && CGO_ENABLED=0 go build -o "$GITHUB_WORKSPACE/bin/gecko-old" ./cmd/gecko)
       - name: Generate the Xcode project
         run: cd ios && xcodegen generate
-      - name: Build for testing (iOS Simulator, unsigned)
+      - name: Build for testing (iOS Simulator, signed ad hoc for the Keychain)
         run: |
           set -o pipefail
           mkdir -p build
           xcodebuild build-for-testing -project ios/Gecko.xcodeproj -scheme Gecko \
             -destination 'generic/platform=iOS Simulator' -derivedDataPath build/dd \
-            CODE_SIGNING_ALLOWED=NO 2>&1 | tee build/build.log | grep -E "error|warning: .*Gecko/|BUILD" | tail -80
+            2>&1 | tee build/build.log | grep -E "error|warning: .*Gecko/|BUILD" | tail -80
+      - name: The app, unsigned
+        run: |
+          set -o pipefail
+          xcodebuild build -project ios/Gecko.xcodeproj -scheme Gecko -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/unsigned CODE_SIGNING_ALLOWED=NO 2>&1 | tail -3
       - name: Unit tests
         run: |
           SIM_ID=$(ios/scripts/ci-simulator.sh "iPhone 16" | tail -1)
@@ -73,8 +78,11 @@ jobs:
           cp build/dd/Build/Products/*.xctestrun products/ 2>/dev/null || true
           cp bin/gecko bin/gecko-old products/ 2>/dev/null || true
           cp build/build.log out/ 2>/dev/null || true
+          if [ -d build/unsigned/Build/Products/Debug-iphonesimulator/Gecko.app ]; then
+            (cd build/unsigned/Build/Products/Debug-iphonesimulator && zip -qry "$GITHUB_WORKSPACE/out/Gecko-simulator-unsigned.app.zip" Gecko.app)
+          fi
           if [ -d products/Debug-iphonesimulator/Gecko.app ]; then
-            (cd products/Debug-iphonesimulator && zip -qry "$GITHUB_WORKSPACE/out/Gecko-simulator.app.zip" Gecko.app)
+            (cd products/Debug-iphonesimulator && zip -qry "$GITHUB_WORKSPACE/out/Gecko-simulator-adhoc.app.zip" Gecko.app)
           fi
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
