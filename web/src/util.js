@@ -1,7 +1,9 @@
 export const isMac = /Mac|iPhone|iPad/.test(navigator.platform) || /Mac OS/.test(navigator.userAgent);
 export const isTouch = matchMedia('(pointer: coarse)').matches;
-// The Gecko Android app's bridge (see android/), when running inside it.
-export const android = window.GeckoAndroid || null;
+// The Gecko Android or iOS app's bridge (see android/ and ios/), when
+// running inside one. Both have the same calls; on iOS they answer later
+// (paste returns a promise) and notify also works while the page shows.
+export const native = window.GeckoAndroid || window.GeckoIOS || null;
 
 export const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -29,8 +31,8 @@ export function shortPath(p) {
 // Copy text, falling back to execCommand where the async clipboard API is
 // unavailable (plain-http LAN access from a phone).
 export async function copyText(text) {
-  if (android) {
-    try { android.copy(String(text)); return true; } catch {}
+  if (native) {
+    try { native.copy(String(text)); return true; } catch {}
   }
   try {
     if (window.isSecureContext && navigator.clipboard) {
@@ -52,8 +54,8 @@ export async function copyText(text) {
 }
 
 export async function readClipboard() {
-  if (android) {
-    try { return android.paste(); } catch {}
+  if (native) {
+    try { return await native.paste(); } catch {}
   }
   if (window.isSecureContext && navigator.clipboard?.readText) {
     try { return await navigator.clipboard.readText(); } catch {}

@@ -31,7 +31,7 @@ const noFling = (why, cancelled, flung) => ({
   flung: !!flung,
   why: [flung ? '' : why || 'slower than a fling', cancelled ? 'the browser cancelled the touch' : ''].filter(Boolean).join('; '),
 });
-const phoneLayout = () => matchMedia('(max-width: 760px)').matches;
+const phoneLayout = () => matchMedia('(max-width: 719px)').matches;
 const point = (t) => ({ x: t.clientX, y: t.clientY });
 
 // How far in from the left edge a drawer swipe may start (CSS px). The

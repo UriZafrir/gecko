@@ -44,7 +44,7 @@ import { attachPane, attachPage } from './touch.js';
 import { imeMirror } from './ime.js';
 import { BUILD, buildId } from './build.js';
 import { siClaude, siGooglegemini, siCursor, siGithubcopilot, siQwen, siOpencode } from 'simple-icons';
-import { $, esc, ago, shortPath, copyText, readClipboard, fuzzy, store, save, isTouch, isMac, android } from './util.js';
+import { $, esc, ago, shortPath, copyText, readClipboard, fuzzy, store, save, isTouch, isMac, native } from './util.js';
 
 const MAX_LIVE_PANES = 12;
 
@@ -187,7 +187,7 @@ function gitStateText(g) {
 }
 
 // The phone layout (style.css, "phones"): the same breakpoint.
-const phoneLayout = () => matchMedia('(max-width: 760px)').matches;
+const phoneLayout = () => matchMedia('(max-width: 719px)').matches;
 
 // full: also show counts and ahead/behind (status line). Otherwise just a
 // dot when there are uncommitted changes (tabs).
@@ -289,8 +289,8 @@ class App {
     this.exited = new Map(); // id -> info of sessions that failed while shown
     this.closing = new Set(); // ids the user closed
     this.touch = isTouch;
-    // The Android app serves this UI from the APK for every machine.
-    this.bundled = (() => { try { return !!android?.bundled?.(); } catch { return false; } })();
+    // The Android and iOS apps serve this UI from the app for every machine.
+    this.bundled = (() => { try { return !!native?.bundled?.(); } catch { return false; } })();
     // Running inside the Gecko desktop app (Electron) rather than a browser.
     this.desktop = window.geckoDesktop || null;
     this.settings = {
@@ -520,9 +520,10 @@ class App {
   }
 
   notify(title, body, id) {
-    if (android && document.hidden) {
-      // The Android app posts it; tapping it opens this tab.
-      try { android.notify(title, body, id || ''); return; } catch {}
+    if (native && (document.hidden || native.notifyVisible)) {
+      // The app posts it; tapping it opens this tab. The iOS app shows it
+      // as a banner while it is open, too.
+      try { native.notify(title, body, id || ''); return; } catch {}
     }
     if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
       const n = new Notification(title, { body, tag: id || title, icon: '/icon.svg' });
@@ -1396,7 +1397,7 @@ class App {
     const $m = (sel) => m.querySelector(sel);
     const f = { target: $m('[name=target]'), name: $m('[name=name]'), gecko: $m('[name=gecko]'), secret: $m('[name=secret]'), usekey: $m('[name=usekey]') };
     const auth = $m('.setup-auth');
-    $m('[data-key-label]').textContent = android ? "Use this phone's SSH key from now on" : 'Use my SSH key from now on (adds it to ~/.ssh/authorized_keys there)';
+    $m('[data-key-label]').textContent = window.GeckoAndroid ? "Use this phone's SSH key from now on" : 'Use my SSH key from now on (adds it to ~/.ssh/authorized_keys there)';
     // The password lives only in this dialog and the request it goes with.
     let secret = '';
     let fingerprint = '';
@@ -1555,7 +1556,7 @@ class App {
   }
 
   async enableNotifications() {
-    if (android) return android.enableNotifications();
+    if (native) return native.enableNotifications();
     if (!('Notification' in window)) return this.toast('This browser has no notifications.');
     const r = await Notification.requestPermission();
     this.toast(r === 'granted' ? 'Gecko will notify you when an agent needs you.' : 'Notifications are blocked for this site.');
@@ -2426,7 +2427,7 @@ class App {
 
   // Desktop: hide or show the sidebar (remembered). Phones: open the drawer.
   toggleSidebar() {
-    if (matchMedia('(max-width: 760px)').matches) {
+    if (matchMedia('(max-width: 719px)').matches) {
       document.body.classList.toggle('drawer');
       return;
     }
@@ -2524,7 +2525,7 @@ class App {
     for (const b of document.querySelectorAll('#keybar [data-k=ctrl], #keybar [data-k=alt]')) {
       b.classList.toggle('on', !!this.mods[b.dataset.k]);
     }
-    try { android?.mods(!!this.mods.ctrl, !!this.mods.alt); } catch {}
+    try { native?.mods(!!this.mods.ctrl, !!this.mods.alt); } catch {}
   }
 
   bindCompose() {
@@ -2991,7 +2992,7 @@ class App {
 
   async openShare() {
     // The Android app running Gecko on the phone shows its own link and QR code.
-    try { if (android?.shareDevice?.()) return; } catch {}
+    try { if (native?.shareDevice?.()) return; } catch {}
     const m = $('#modal');
     let urls = [];
     try {
@@ -3034,6 +3035,13 @@ class App {
     };
     tv.querySelector('[data-copy-all]').onclick = async () => {
       this.toast((await copyText(tv.querySelector('pre').textContent)) ? 'Copied everything' : 'Copy failed');
+    };
+    // The iOS app's share sheet: the selection, or all of it.
+    const share = tv.querySelector('[data-share]');
+    share.hidden = !native?.share;
+    share.onclick = () => {
+      const text = window.getSelection().toString() || tv.querySelector('pre').textContent;
+      try { native.share(text); } catch {}
     };
     tv.addEventListener('keydown', (ev) => {
       if (ev.key === 'Escape') this.closeTextView();
@@ -3462,6 +3470,7 @@ class App {
 // Colors first, so the page never flashes the default theme.
 if (window.geckoDesktop) document.documentElement.classList.add('desktop', 'desktop-' + window.geckoDesktop.platform);
 if (window.GeckoAndroid) document.documentElement.classList.add('android'); // its own extra keys row
+if (window.GeckoIOS) document.documentElement.classList.add('ios'); // the same
 paintTheme(
   resolveTheme(initialTheme()),
   window.geckoDesktop?.transparent ? store('opacity', 0.9) : 1,

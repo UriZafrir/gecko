@@ -49,7 +49,7 @@ html.desktop-darwin .brand { padding-left: 80px; min-height: 38px; }
 /* Without the sidebar beside it (hidden, or a drawer in a narrow window)
    the tab bar starts under the traffic lights; start it after them. */
 html.desktop-darwin body.side-hidden #tabbar { padding-left: 78px; }
-@media (max-width: 760px) { html.desktop-darwin #tabbar { padding-left: 78px; } }
+@media (max-width: 719px) { html.desktop-darwin #tabbar { padding-left: 78px; } }
 html.desktop-darwin .brand, html.desktop-darwin #tabbar { -webkit-app-region: drag; }
 html.desktop-darwin .brand *, html.desktop-darwin #tabbar button, html.desktop-darwin .tab { -webkit-app-region: no-drag; }
 body {
@@ -614,7 +614,7 @@ input, textarea, [contenteditable] { cursor: text; user-select: text; -webkit-us
 
 /* ------------------------------------------------------------ phones */
 
-@media (max-width: 760px) {
+@media (max-width: 719px) {
   #app, body.side-hidden #app { grid-template-columns: 1fr; }
   body.side-hidden #side { display: flex; }
   #side {
@@ -679,7 +679,7 @@ input, textarea, [contenteditable] { cursor: text; user-select: text; -webkit-us
 }
 @media (prefers-reduced-motion: reduce) { #side { transition: none; } }
 
-@media (pointer: coarse), (max-width: 760px) {
+@media (pointer: coarse), (max-width: 719px) {
   #keybar {
     display: flex; gap: 4px; overflow-x: auto; flex: none; scrollbar-width: none;
     padding: 5px 6px calc(5px + env(safe-area-inset-bottom));
@@ -870,10 +870,10 @@ html.has-image #side, html.has-image #main {
    and making it relative put it back in the grid as a row of its own above
    the terminal, splitting the screen in two. */
 html.has-image #main { position: relative; }
-@media (min-width: 761px) { html.has-image #side { position: relative; } }
+@media (min-width: 720px) { html.has-image #side { position: relative; } }
 /* The drawer slides over the terminal: under its blurred photo, whose
    edges fade out, it needs a solid floor or the terminal shows through. */
-@media (max-width: 760px) { html.has-image:not(.desktop) #side { background: var(--panel) !important; } }
+@media (max-width: 719px) { html.has-image:not(.desktop) #side { background: var(--panel) !important; } }
 html.has-image #side::before, html.has-image #main::before {
   content: ""; position: absolute; z-index: -1; pointer-events: none;
   opacity: var(--win-opacity, 1);
@@ -1335,4 +1335,4 @@ html.layout-watch .pane .xterm-viewport::-webkit-scrollbar { display: none; }
 #watchface .p-bl, #watchface .p-br { top: calc(50% + 30px); }
 
 /* The Android app draws its own extra keys row above the keyboard. */
-html.android #keybar { display: none !important; }
+html.android #keybar, html.ios #keybar { display: none !important; }
