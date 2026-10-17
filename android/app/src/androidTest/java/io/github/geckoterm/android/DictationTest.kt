@@ -99,6 +99,35 @@ class DictationTest {
             finish()
             compose("x"); commit("x")
         },
+        // Samsung Keyboard: a word composes, a space commits it on its own,
+        // backspace shrinks the composing word, a word left behind is taken
+        // back into composing, and it autocorrects and adds ". " itself.
+        Case("Samsung: word by word, space on its own", "hello world") {
+            compose("hel"); compose("hello"); finish(); commit(" ")
+            compose("wor"); compose("world"); finish()
+        },
+        Case("Samsung: backspace while composing", "hello") {
+            compose("helo"); compose("hel"); compose("hell"); compose("hello"); finish()
+        },
+        Case("Samsung: back into a committed word", "help") {
+            compose("hello"); finish(); commit(" ")
+            delete(1); region(0, 5); compose("hell"); compose("help"); finish()
+        },
+        Case("Samsung: autocorrect on space", "the end") {
+            compose("teh"); commit("the "); compose("end"); finish()
+        },
+        Case("Samsung: double space for a period", "done. Next") {
+            compose("done"); finish(); commit(" ")
+            delete(1); commit(". ")
+            compose("Next"); finish()
+        },
+        Case("Samsung: backspace key on a committed line", "ab") {
+            commit("abc"); finish()
+            del()
+        },
+        Case("Samsung: voice input replaces its phrase", "Turn on the lights.") {
+            compose("turn on the"); compose("turn on the lights"); commit("Turn on the lights.")
+        },
     )
 
     @Test fun intoTheTerminal() = drive(compose = false)
@@ -414,6 +443,11 @@ class DictationTest {
             androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
                 .findObject(androidx.test.uiautomator.By.desc(desc)).click()
             Thread.sleep(300)
+        }
+        /** The keyboard's Backspace as a key (Samsung's, outside composing). */
+        fun del() {
+            call { sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL)) }
+            call { sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DEL)) }
         }
         fun enter() {
             call { sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER)) }

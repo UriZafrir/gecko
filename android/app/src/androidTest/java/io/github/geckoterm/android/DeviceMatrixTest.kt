@@ -51,6 +51,24 @@ class DeviceMatrixTest {
         val states = deviceStates()
         sh("settings put system font_scale 1.0")
         val intent = Intent(ctx, TerminalActivity::class.java).putExtra(TerminalActivity.EXTRA_MACHINE, m.id)
+        // A WebView older than the page needs (an emulator image that the
+        // Play Store never updated): Gecko says so and offers the update.
+        val webview = androidx.webkit.WebViewCompat.getCurrentWebViewPackage(ctx)?.versionName ?: ""
+        if ((webview.substringBefore('.').toIntOrNull() ?: 999) < TerminalActivity.MIN_WEBVIEW) {
+            ActivityScenario.launch<TerminalActivity>(intent).use {
+                Thread.sleep(3000)
+                device.takeScreenshot(File(out, "$name-01-old-webview.png"))
+                val shown = device.hasObject(androidx.test.uiautomator.By.text(ctx.getString(R.string.webview_update)))
+                val r = JSONObject().put("ok", shown).put("size", "WebView $webview")
+                    .put("problems", if (shown) "" else "no update screen for WebView $webview")
+                    .put("note", "WebView $webview is older than ${TerminalActivity.MIN_WEBVIEW}: Gecko shows how to update it")
+                results.put("01-old-webview", r)
+                android.util.Log.i(TAG, "$name / old-webview: ${if (shown) "ok" else "PROBLEMS"} (WebView $webview)")
+                File(out, "$name.json").writeText(results.toString(1))
+                assertEquals("update screen for WebView $webview", true, shown)
+            }
+            return
+        }
         try {
             ActivityScenario.launch<TerminalActivity>(intent).use { s ->
                 sc = s
@@ -68,18 +86,20 @@ class DeviceMatrixTest {
                 js("document.activeElement.blur()")
                 scrollTo("line 150 of the scrollback")
                 Thread.sleep(800)
-                for (step in steps) {
+                for ((i, step) in steps.withIndex()) {
+                    // Steps repeat (portrait, landscape, portrait): each its own shot.
+                    val key = "%02d-%s".format(i + 1, step)
                     val r = JSONObject()
                     val applied = apply(step, states)
                     if (applied != null) {
                         r.put("skipped", applied)
-                        results.put(step, r)
+                        results.put(key, r)
                         android.util.Log.i(TAG, "$name / $step: skipped ($applied)")
                         continue
                     }
                     Thread.sleep(2500)
                     val problems = check(shell, step).toMutableList()
-                    device.takeScreenshot(File(out, "$name-$step.png"))
+                    device.takeScreenshot(File(out, "$name-$key.png"))
                     when (step) {
                         "keyboard" -> {
                             val seen = js("window.__seen||''").let { org.json.JSONTokener(it).nextValue() as String }
@@ -93,6 +113,10 @@ class DeviceMatrixTest {
                             if (js("document.body.classList.contains('drawer')") == "true") problems += "Back didn't close the drawer"
                             if (act().isFinishing) problems += "Back left the app"
                         }
+                        "mouse" -> {
+                            if (mouseBefore == mouseAfter) problems += "the mouse wheel didn't scroll ($mouseBefore)"
+                            if (!mouseTab) problems += "a mouse click didn't pick a tab"
+                        }
                         "dark", "light" -> {
                             val dark = js("matchMedia('(prefers-color-scheme: dark)').matches") == "true"
                             if (dark != (step == "dark")) problems += "page still ${if (dark) "dark" else "light"}"
@@ -103,7 +127,7 @@ class DeviceMatrixTest {
                     r.put("size", js("innerWidth+'x'+innerHeight+' css px, '+gecko.activePane().term.cols+'x'+gecko.activePane().term.rows").trim('"'))
                     r.put("recreated", recreated)
                     if (note.isNotEmpty()) { r.put("note", note); note = "" }
-                    results.put(step, r)
+                    results.put(key, r)
                     android.util.Log.i(TAG, "$name / $step: ${if (problems.isEmpty()) "ok" else "PROBLEMS " + problems}  (${r.getString("size")})")
                     if (problems.isNotEmpty()) failures += "$step: ${problems.joinToString("; ")}"
                 }
@@ -122,9 +146,13 @@ class DeviceMatrixTest {
             "portrait" -> device.setOrientationPortrait()
             "landscape" -> device.setOrientationLandscape()
             "folded", "unfolded", "half" -> {
-                val want = when (step) { "folded" -> "CLOSE"; "half" -> "HALF"; else -> "OPEN" }
-                val id = states.entries.firstOrNull { it.key.contains(want) && !it.key.contains("REAR") && !it.key.contains("CONCURRENT") }?.value
-                    ?: return "no $want device state"
+                val id = states.entries.firstOrNull { (n, _) ->
+                    !n.contains("REAR") && !n.contains("CONCURRENT") && when (step) {
+                        "folded" -> n.contains("CLOSE") || n == "FOLDED"
+                        "half" -> n.contains("HALF")
+                        else -> (n.contains("OPEN") || n == "UNFOLDED") && !n.contains("HALF")
+                    }
+                }?.value ?: return "no $step device state"
                 sh("cmd device_state state $id")
                 if (step == "folded") sh("input keyevent WAKEUP")
             }
@@ -180,6 +208,25 @@ class DeviceMatrixTest {
                 Thread.sleep(800)
                 sh("am start --windowingMode 1 -n $PKG/.TerminalActivity")
                 Thread.sleep(1500)
+            }
+            "mouse" -> {
+                // A mouse or trackpad: the wheel scrolls the scrollback, a click picks a tab.
+                val web = device.findObject(androidx.test.uiautomator.UiSelector().className("android.webkit.WebView")).bounds
+                val d = ctx.resources.displayMetrics.density
+                mouseBefore = js("gecko.activePane().term.buffer.active.viewportY")
+                sh("input mouse scroll ${web.centerX()} ${web.centerY()} --axis VSCROLL,4")
+                Thread.sleep(800)
+                mouseAfter = js("gecko.activePane().term.buffer.active.viewportY")
+                val tab = js("(()=>{const r=document.querySelector('#tabs .tab').getBoundingClientRect();return Math.round(r.left+r.width/2)+','+Math.round(r.top+r.height/2)})()").trim('"').split(",").map { it.toInt() }
+                val shellId = js("gecko.activeId()")
+                sh("input mouse tap ${web.left + (tab[0] * d).toInt()} ${web.top + (tab[1] * d).toInt()}")
+                Thread.sleep(800)
+                mouseTab = js("gecko.activeId()") != shellId
+                js("gecko.focusSession($shellId)")
+                Thread.sleep(600)
+                // Back to the marker for the layout checks.
+                scrollTo("line 150 of the scrollback")
+                Thread.sleep(400)
             }
             "keyboard" -> {
                 // A hardware keyboard's typing, with the terminal focused.
@@ -302,6 +349,9 @@ class DeviceMatrixTest {
     }
     private var recreated = 0
     private var note = ""
+    private var mouseBefore = ""
+    private var mouseAfter = ""
+    private var mouseTab = false
 
     private val screenJs = "(function(){var t=gecko.activePane().term,b=t.buffer.active,o=[];for(var i=b.viewportY;i<b.viewportY+t.rows;i++){var l=b.getLine(i);if(l)o.push(l.translateToString(true))}return o.join('\\n')})()"
 
