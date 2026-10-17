@@ -1,0 +1,110 @@
+# The desktop apps (docs/desktop-packages.md): an unsigned universal macOS
+# dmg, a Linux AppImage and a Windows setup.exe, each smoke-tested on its own
+# runner with a fresh GECKO_HOME: bundled daemon up, UI loads, a session
+# outlives the window. Installers, screenshots and video frames are uploaded.
+name: Desktop
+
+on:
+  push:
+    branches: [feature/desktop-apps]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mac:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: Build the dmg
+        run: make package-mac
+      - name: Smoke test
+        run: packaging/desktop/smoke/mac.sh dist/desktop/Gecko-*-mac-universal.dmg out/mac
+      - name: Upload
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: gecko-mac
+          path: |
+            dist/desktop/*.dmg
+            out/mac
+          if-no-files-found: warn
+
+  appimage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: Build the AppImage
+        run: make package-appimage
+      - name: Smoke test
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb imagemagick >/dev/null
+          packaging/desktop/smoke/appimage.sh dist/desktop/Gecko-*.AppImage out/appimage
+      - name: Upload
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: gecko-appimage
+          path: |
+            dist/desktop/*.AppImage
+            out/appimage
+          if-no-files-found: warn
+
+  windows:
+    runs-on: windows-2025
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: Build the setup
+        shell: bash
+        run: |
+          (cd web && npm install --no-audit --no-fund && node build.mjs)
+          v=$(git describe --tags --always --dirty)
+          t=$(git describe --tags --abbrev=0); t=${t#v}
+          VERSION=$v PKG_VERSION=${t:-0.0.0} packaging/desktop/build.sh windows
+      - name: Smoke test
+        shell: pwsh
+        run: |
+          $setup = (Get-ChildItem dist\desktop\Gecko-*-setup.exe | Select-Object -First 1).FullName
+          ./packaging/desktop/smoke/windows.ps1 -Setup $setup -Out out\windows
+      - name: Upload
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: gecko-windows
+          path: |
+            dist/desktop/*-setup.exe
+            dist/desktop/*.zip
+            out/windows
+          if-no-files-found: warn

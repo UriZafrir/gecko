@@ -7,7 +7,7 @@ export GOTOOLCHAIN ?= local
 
 PREFIX ?= $(HOME)/.local
 DESKTOP_DIR := $(PREFIX)/share/gecko/desktop
-.PHONY: all web build test dist packages install install-desktop desktop clean dev
+.PHONY: all web build test dist packages package-mac package-appimage package-windows install install-desktop desktop desktop-sandbox clean dev
 
 all: web build
 
@@ -33,6 +33,11 @@ dist: web
 # dist/packages. One platform: make packages PLATFORMS=linux
 packages: web
 	GO="$(GO)" VERSION="$(VERSION)" PKG_VERSION="$(PKG_VERSION)" LDFLAGS="$(LDFLAGS)" packaging/build.sh $(PLATFORMS)
+
+# Self-contained desktop apps (Electron window plus the gecko binary), in
+# dist/desktop: see docs/desktop-packages.md. The dmg needs macOS.
+package-mac package-appimage package-windows: web
+	GO="$(GO)" VERSION="$(VERSION)" PKG_VERSION="$(PKG_VERSION)" LDFLAGS="$(LDFLAGS)" packaging/desktop/build.sh $(@:package-%=%)
 
 install: all
 	install -d $(PREFIX)/bin

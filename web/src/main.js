@@ -3275,6 +3275,12 @@ class App {
 
 // Colors first, so the page never flashes the default theme.
 if (window.geckoDesktop) document.documentElement.classList.add('desktop', 'desktop-' + window.geckoDesktop.platform);
+// The desktop app's build ("a1b2c3d · Oct 17 02:15") on the Gecko title, as
+// in its About panel.
+if (window.geckoDesktop?.build) {
+  const brand = document.querySelector('#side .brand > span');
+  if (brand) brand.title = `Gecko desktop ${window.geckoDesktop.build}`;
+}
 paintTheme(
   resolveTheme(initialTheme()),
   window.geckoDesktop?.transparent ? store('opacity', 0.9) : 1,
