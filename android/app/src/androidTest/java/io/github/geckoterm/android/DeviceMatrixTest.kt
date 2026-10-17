@@ -223,10 +223,11 @@ class DeviceMatrixTest {
                 Thread.sleep(800)
                 mouseTab = js("gecko.activeId()") != shellId
                 js("gecko.focusSession($shellId)")
-                Thread.sleep(600)
-                // Back to the marker for the layout checks.
+                // The wheel's scrolling coasts a little: let it end, then back
+                // to the marker for the layout checks.
+                Thread.sleep(1500)
                 scrollTo("line 150 of the scrollback")
-                Thread.sleep(400)
+                Thread.sleep(1000)
             }
             "keyboard" -> {
                 // A hardware keyboard's typing, with the terminal focused.
