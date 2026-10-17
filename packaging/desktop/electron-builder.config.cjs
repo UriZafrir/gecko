@@ -47,6 +47,9 @@ module.exports = {
     extraFiles: [{ from: path.join(bins, 'linux-${arch}', 'gecko'), to: 'usr/bin/gecko' }],
     desktop: { entry: { StartupWMClass: 'gecko', Name: 'Gecko', Comment: 'Terminal multiplexer for coding agents' } },
   },
+  // The static AppImage runtime: no libfuse2 needed (Ubuntu 22.04+ and
+  // Fedora don't install it).
+  toolsets: { appimage: '1.0.3' },
   appImage: {
     // AppRun adds --no-sandbox itself only where the sandbox can't start.
     executableArgs: [],
