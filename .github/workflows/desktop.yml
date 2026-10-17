@@ -1,0 +1,163 @@
+# The desktop apps (docs/desktop-packages.md): an unsigned universal macOS
+# dmg, a Linux AppImage and a Windows setup.exe, each smoke-tested on its own
+# runner with a fresh GECKO_HOME: bundled daemon up, UI loads, a session
+# outlives the window. Installers, screenshots and video frames are uploaded.
+name: Desktop
+
+on:
+  push:
+    branches: [feature/desktop-apps]
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tour:
+        description: Record the feature tour videos on macOS and Windows (packaging/desktop/tour)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mac:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: Build the dmg
+        run: make package-mac
+      - name: Smoke test
+        run: packaging/desktop/smoke/mac.sh dist/desktop/Gecko-*-mac-universal.dmg out/mac
+      - name: Feature tour
+        if: github.event_name == 'workflow_dispatch' && inputs.tour
+        timeout-minutes: 15
+        run: packaging/desktop/tour/mac.sh out/tour
+      - name: Upload
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: gecko-mac
+          path: |
+            dist/desktop/*.dmg
+            out/mac
+          if-no-files-found: warn
+      - name: Upload the tour
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.tour
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tour-mac
+          path: out/tour
+          if-no-files-found: warn
+
+  appimage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: Build the AppImage
+        run: make package-appimage
+      - name: Smoke test
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb imagemagick fuse3 >/dev/null
+          packaging/desktop/smoke/appimage.sh dist/desktop/Gecko-*.AppImage out/appimage
+      - name: Upload
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: gecko-appimage
+          path: |
+            dist/desktop/*.AppImage
+            out/appimage
+          if-no-files-found: warn
+
+  windows:
+    runs-on: windows-2025
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: Build the setup
+        shell: bash
+        run: |
+          (cd web && npm install --no-audit --no-fund && node build.mjs)
+          v=$(git describe --tags --always --dirty)
+          t=$(git describe --tags --abbrev=0); t=${t#v}
+          VERSION=$v PKG_VERSION=${t:-0.0.0} packaging/desktop/build.sh windows
+      - name: Smoke test
+        shell: pwsh
+        run: |
+          $setup = (Get-ChildItem dist\desktop\Gecko-*-setup.exe | Select-Object -First 1).FullName
+          ./packaging/desktop/smoke/windows.ps1 -Setup $setup -Out out\windows
+      - name: Feature tour
+        if: github.event_name == 'workflow_dispatch' && inputs.tour
+        timeout-minutes: 15
+        shell: pwsh
+        run: ./packaging/desktop/tour/windows.ps1 -Out out\tour
+      - name: Upload the tour
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.tour
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tour-windows
+          path: out/tour
+          if-no-files-found: warn
+      - name: Upload
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: gecko-windows
+          path: |
+            dist/desktop/*-setup.exe
+            dist/desktop/*.zip
+            out/windows
+          if-no-files-found: warn
+
+  # A v* tag: the installers go to a draft GitHub release for that tag.
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [mac, appimage, windows]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: gecko-*
+          path: rel
+      - name: Attach to the draft release for this tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          R: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release view "$TAG" -R "$R" >/dev/null 2>&1 ||
+            gh release create "$TAG" -R "$R" --draft --verify-tag --title "Gecko $TAG" \
+              --notes "Installers built by the Desktop and Linux packages workflows. Draft: review before publishing." ||
+            sleep 10
+          find rel -type f \( -name '*.dmg' -o -name '*.AppImage' -o -name '*-setup.exe' -o -name '*.zip' \) -print0 | xargs -0 gh release upload "$TAG" -R "$R" --clobber

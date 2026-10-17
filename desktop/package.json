@@ -8,8 +8,10 @@
     "start": "electron ."
   },
   "devDependencies": {
-    "electron": "^44.5.1"
+    "electron": "44.5.1"
   },
   "productName": "Gecko",
-  "desktopName": "gecko.desktop"
+  "desktopName": "gecko.desktop",
+  "author": "Gecko contributors",
+  "homepage": "https://github.com/eternaleclipse/gecko"
 }

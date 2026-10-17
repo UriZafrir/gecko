@@ -5,6 +5,9 @@ web/dist/*
 !web/dist/.keep
 desktop/node_modules/
 desktop/icon.png
+desktop/build-id.json
+packaging/desktop/node_modules/
 
 # Claude Code
 .claude/
+packaging/desktop/tour/node_modules/
