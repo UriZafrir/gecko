@@ -7,6 +7,10 @@ name: Linux packages
 on:
   push:
     branches: [feature/desktop-apps]
+    paths-ignore:
+      - packaging/desktop/smoke/**
+      - packaging/desktop/tour/**
+      - .github/workflows/desktop.yml
   workflow_dispatch:
     inputs:
       publish-apt:
