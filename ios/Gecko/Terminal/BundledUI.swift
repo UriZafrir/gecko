@@ -104,13 +104,18 @@ enum BridgeScript {
       i.src = 'gecko-asset://ui/icon.svg';
       // What touches reach the page (the last few events, and the most fingers at once).
       var t = window.__geckoTouch = { max: 0, log: [] };
-      ['touchstart', 'touchmove', 'touchend', 'touchcancel', 'gesturestart', 'gestureend'].forEach(function (k) {
+      ['touchstart', 'touchmove', 'touchend', 'touchcancel', 'gesturestart', 'gesturechange', 'gestureend'].forEach(function (k) {
         window.addEventListener(k, function (e) {
           var n = e.touches ? e.touches.length : -1;
           if (n > t.max) t.max = n;
           var last = t.log[t.log.length - 1];
           if (last && last.k === k && last.n === n) last.c++; else t.log.push({ k: k, n: n, c: 1 });
           if (t.log.length > 12) t.log.shift();
+          if (e.touches && n === 2) {
+            var d = Math.round(Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY));
+            if (k === 'touchstart') t.d0 = d; else t.d1 = d;
+          }
+          if (k === 'gesturechange') t.scale = Math.round(e.scale * 100) / 100;
         }, { capture: true, passive: true });
       });
     })();
@@ -142,7 +147,7 @@ enum BridgeScript {
         r.keybar = getComputedStyle(document.getElementById('keybar')).display;
         r.asset = window.__geckoAsset || '';
         var t = window.__geckoTouch;
-        if (t) r.touch = t.max + ' ' + t.log.map(function (x) { return x.k.replace('touch', '') + x.n + 'x' + x.c; }).join(',');
+        if (t) r.touch = t.max + ' ' + t.log.map(function (x) { return x.k.replace('touch', '') + x.n + 'x' + x.c; }).join(','); + ' d ' + t.d0 + '>' + t.d1 + ' scale ' + t.scale;
         if (g.touchStats) r.gesture = g.touchStats.kind + ' ' + (g.touchStats.what || '');
         r.agents = g.allAgents().map(function (a) { return a.state.status; });
         r.ctrl = !!g.mods.ctrl; r.palette = !!g.paletteOpen; r.textview = !!g.textViewOpen;

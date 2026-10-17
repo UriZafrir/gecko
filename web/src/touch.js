@@ -356,23 +356,43 @@ export function attachPane(app, p) {
     }
   }, { capture: true, passive: false });
 
+  // Preview: scale the drawn terminal around the fingers; the real size
+  // (and the refit) comes when they lift.
+  const pinchPreview = () => {
+    const size = pinchFont(g.size, g.d0, g.d1);
+    const r = el.getBoundingClientRect();
+    el.style.transformOrigin = `${g.c0.x - r.left}px ${g.c0.y - r.top}px`;
+    el.style.transform = `scale(${size / g.size})`;
+    el.dataset.pinch = size;
+  };
+
+  // iOS: WebKit's own reading of a pinch. Where the touch points don't show
+  // the fingers spreading (the Simulator's synthesized touches), its scale
+  // does; real fingers already decided it from the touches.
+  el.addEventListener('gesturechange', (ev) => {
+    if (!g || g.kind !== 'two' || !(ev.scale > 0)) return;
+    if (!g.byScale && g.what) return;
+    if (!(g.d0 > 0)) g.d0 = 100; // the touches on one spot: any gap scales the same
+    const d1 = g.d0 * ev.scale;
+    if (!g.byScale && Math.abs(d1 - g.d0) < 24) return;
+    g.byScale = true;
+    g.what = 'pinch';
+    g.d1 = d1;
+    pinchPreview();
+    if (ev.cancelable) ev.preventDefault();
+  }, { capture: true, passive: false });
+
   el.addEventListener('touchmove', (ev) => {
     if (!g) return;
     if (g.kind === 'two') {
       if (ev.touches.length < 2) return claim(ev);
       const a = point(ev.touches[0]), b = point(ev.touches[1]);
-      g.d1 = distance(a, b);
+      if (!g.byScale) g.d1 = distance(a, b);
       g.c1 = midpoint(a, b);
       g.samples.push({ t: ev.timeStamp, ...g.c1 });
       if (!g.what) g.what = twoFinger(g.d0, g.d1, g.c1.x - g.c0.x, g.c1.y - g.c0.y);
       if (g.what === 'pinch') {
-        // Preview: scale the drawn terminal around the fingers; the real
-        // size (and the refit) comes when they lift.
-        const size = pinchFont(g.size, g.d0, g.d1);
-        const r = el.getBoundingClientRect();
-        el.style.transformOrigin = `${g.c0.x - r.left}px ${g.c0.y - r.top}px`;
-        el.style.transform = `scale(${size / g.size})`;
-        el.dataset.pinch = size;
+        pinchPreview();
       } else if (g.what === 'swipe') {
         el.style.transform = `translateX(${(g.c1.x - g.c0.x) * 0.35}px)`;
       }
