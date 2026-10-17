@@ -276,6 +276,9 @@ reading stay; the terminal refits.
   chips, no status line): phones in either orientation, a folded
   foldable, half of a split screen. Wider and taller ones (a tablet, an
   unfolded foldable in landscape, a desktop window) keep the sidebar.
+- A phone held sideways hides the status bar (swipe down from the top to
+  see it for a moment) and slims the keys row, so the terminal keeps more
+  rows. Tablets, open foldables and split windows keep both.
 - The drawer opens with a swipe in from the left edge, from the screen
   edge too when a camera cutout sits there (landscape); the back gesture
   still works from the rest of that edge.

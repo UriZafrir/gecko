@@ -174,6 +174,7 @@ class TerminalActivity : AppCompatActivity() {
         })
 
         applyKeepScreenOn()
+        fitBars()
         // Recreated (rotation, process restart): just the machine again; the
         // web UI restores its own state. A share or a tab was handled already.
         val again = savedInstanceState?.getString(EXTRA_MACHINE)
@@ -195,8 +196,31 @@ class TerminalActivity : AppCompatActivity() {
     // stays (and with it the session and the scroll position) and refits.
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         super.onConfigurationChanged(newConfig)
+        fitBars()
         keys.resize()
         keys.setHardwareKeyboard(hasHardwareKeyboard())
+    }
+
+    override fun onMultiWindowModeChanged(inMultiWindow: Boolean, newConfig: android.content.res.Configuration) {
+        super.onMultiWindowModeChanged(inMultiWindow, newConfig)
+        fitBars()
+        keys.resize()
+    }
+
+    /**
+     * A phone on its side has little height: the status bar's row goes to
+     * the terminal (a swipe down from the top shows it for a moment) and the
+     * keys row is slimmer. Tablets, unfolded foldables and split windows
+     * keep both.
+     */
+    private fun fitBars() {
+        val c = resources.configuration
+        val short = shortLandscape(c.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE, c.screenHeightDp, isInMultiWindowMode)
+        keys.compact = short
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            if (short) hide(WindowInsetsCompat.Type.statusBars()) else show(WindowInsetsCompat.Type.statusBars())
+        }
     }
 
     /**
@@ -647,6 +671,10 @@ class TerminalActivity : AppCompatActivity() {
 
         /** The page needs color-mix() (111), dvh units (108) and ES2022. */
         const val MIN_WEBVIEW = 111
+
+        /** A phone held sideways (not a tablet, not a split window): see fitBars. */
+        fun shortLandscape(landscape: Boolean, heightDp: Int, multiWindow: Boolean) =
+            !multiWindow && landscape && heightDp in 1 until 480
 
         /** The origin of the machine on show, for requests on web view threads. */
         @Volatile var currentOrigin: String? = null
