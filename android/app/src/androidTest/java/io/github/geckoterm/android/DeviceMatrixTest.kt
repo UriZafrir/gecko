@@ -266,7 +266,7 @@ class DeviceMatrixTest {
               pane:{l:pr.left,r:pr.right,t:pr.top,b:pr.bottom},screen:{l:screen.left,r:screen.right,t:screen.top,b:screen.bottom},
               cols:t.cols,rows:t.rows,active:gecko.activeId(),scrolled:b.viewportY<b.baseY,
               marker:rows.some(x=>x.includes('line 150 of the')),
-              drawer:document.body.classList.contains('drawer'),
+              drawer:document.body.classList.contains('drawer'),touch:gecko.touch,
               rtl:getComputedStyle(document.documentElement).direction})
         })()""")
         val o = JSONObject(org.json.JSONTokener(raw).nextValue() as String)
@@ -278,6 +278,7 @@ class DeviceMatrixTest {
         val pane = o.getJSONObject("pane"); val scr = o.getJSONObject("screen")
         if (scr.getDouble("r") > pane.getDouble("r") + 2 || scr.getDouble("r") > w + 1) p += "terminal wider than its pane (${scr.getDouble("r")} > ${pane.getDouble("r")})"
         if (scr.getDouble("b") > h + 1) p += "terminal below the window"
+        if (!o.getBoolean("touch")) p += "touch handling off (the WebView reports no coarse pointer)"
         if (o.getInt("rows") < 5) p += "only ${o.getInt("rows")} rows"
         if (o.getInt("cols") < 20) p += "only ${o.getInt("cols")} columns"
         if (o.getString("active").trim('"') != shell.trim('"')) p += "a different tab is active"
