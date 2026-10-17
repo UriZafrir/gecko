@@ -23,6 +23,7 @@ import {
   MIN_FLING, flingTau, flingStep, flingDistance, boost, place, stretch, squeeze, spring, springDone, absorb,
   thumbSize, thumbTop, thumbLine, addSample, sampleStats, cells, cursorFling, wheelPlan, wheelDue,
 } from './gestures.js';
+import { compactLayout } from './util.js';
 
 const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -31,7 +32,7 @@ const noFling = (why, cancelled, flung) => ({
   flung: !!flung,
   why: [flung ? '' : why || 'slower than a fling', cancelled ? 'the browser cancelled the touch' : ''].filter(Boolean).join('; '),
 });
-const phoneLayout = () => matchMedia('(max-width: 719px)').matches;
+const phoneLayout = compactLayout;
 const point = (t) => ({ x: t.clientX, y: t.clientY });
 
 // How far in from the left edge a drawer swipe may start (CSS px). The
@@ -586,6 +587,10 @@ export function attachPage(app) {
     if (!g) return;
     const at = point(ev.touches[0]);
     const dx = at.x - g.start.x, dy = at.y - g.start.y;
+    // From the edge, the touch is the drawer's from its first move: left to
+    // the browser while the direction is still unclear, it starts a pan of
+    // its own and cancels the touch (seen on WebView 113).
+    if (!g.dir && g.kind === 'open' && ev.cancelable) ev.preventDefault();
     if (!g.dir) {
       g.dir = classify(dx, dy);
       if (g.dir === 'v') { // a vertical drag: not ours (the drawer's list scrolls)

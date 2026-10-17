@@ -71,6 +71,38 @@ class ExtraKeys @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = n
         paint()
     }
 
+    /**
+     * The system's text size, up to 1.5x: past that a row of keys would be
+     * all scrolling. The keys grow with it.
+     */
+    private fun textScale() = resources.configuration.fontScale.coerceIn(1f, 1.5f)
+
+    private fun size(v: TextView, k: Key) {
+        val s = textScale()
+        v.setTextSize(TypedValue.COMPLEX_UNIT_DIP, (if (k.label.length > 2) 13f else 16f) * s)
+        v.minWidth = dp(((if (k.wide) 46 else 38) * s).toInt())
+        v.setPadding(dp(6), 0, dp(6), 0)
+        v.layoutParams = LayoutParams(LayoutParams.WRAP_CONTENT, dp((38 * s).toInt())).apply { marginEnd = dp(4) }
+    }
+
+    /** After a change of text size (the activity keeps running through it). */
+    fun resize() {
+        for (i in 0 until row.childCount) {
+            val v = row.getChildAt(i) as TextView
+            size(v, KEYS.first { it.name == v.tag })
+        }
+        size(menu, Key("menu", "⋮"))
+        requestLayout()
+    }
+
+    /**
+     * With a hardware keyboard, its own Esc, Tab, Ctrl and arrows: only the
+     * menu stays, at the end of the row.
+     */
+    fun setHardwareKeyboard(on: Boolean) {
+        scroll.visibility = if (on) INVISIBLE else VISIBLE
+    }
+
     private fun dp(n: Int) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, n.toFloat(), resources.displayMetrics).toInt()
 
     @SuppressLint("ClickableViewAccessibility")
@@ -82,12 +114,9 @@ class ExtraKeys @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = n
             isFocusable = false
             isFocusableInTouchMode = false
             typeface = if (k.label.length > 1 && k.label[0].isLetter()) Typeface.DEFAULT else Typeface.MONOSPACE
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, if (k.label.length > 2) 13f else 16f)
-            minWidth = dp(if (k.wide) 46 else 38)
-            setPadding(dp(6), 0, dp(6), 0)
             tag = k.name
         }
-        v.layoutParams = LayoutParams(LayoutParams.WRAP_CONTENT, dp(38)).apply { marginEnd = dp(4) }
+        size(v, k)
         var repeating: Runnable? = null
         v.setOnTouchListener { view, ev ->
             when (ev.actionMasked) {

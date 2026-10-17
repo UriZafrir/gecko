@@ -122,15 +122,45 @@ class TerminalActivity : AppCompatActivity() {
         // strip there (Android grants at most 200dp of height per edge), in
         // the middle of the terminal. Back still works from the rest of the
         // edge and with the button.
+        // The strip is the root's, from the screen edge: in landscape the page
+        // starts after a camera cutout, and a swipe from the edge begins
+        // there, beside the page (passed on to it below).
         if (Build.VERSION.SDK_INT >= 29) {
-            web.addOnLayoutChangeListener { v, _, top, _, bottom, _, _, _, _ ->
+            web.addOnLayoutChangeListener { _, left, top, right, bottom, _, _, _, _ ->
                 val d = resources.displayMetrics.density
+                // A persistent sidebar (wide, not short): no drawer, so no swipe.
+                if ((right - left) / d > 760 && (bottom - top) / d > 500) {
+                    root.systemGestureExclusionRects = emptyList()
+                    return@addOnLayoutChangeListener
+                }
+                val at = IntArray(2).also { web.getLocationInWindow(it) }
+                val rootAt = IntArray(2).also { root.getLocationInWindow(it) }
+                val webTop = at[1] - rootAt[1]
                 val h = (200 * d).toInt().coerceAtMost(bottom - top)
-                val y = ((bottom - top) - h) / 2
-                v.systemGestureExclusionRects = listOf(android.graphics.Rect(0, y, (32 * d).toInt(), y + h))
+                val y = webTop + ((bottom - top) - h) / 2
+                root.systemGestureExclusionRects = listOf(android.graphics.Rect(0, y, at[0] - rootAt[0] + (32 * d).toInt(), y + h))
             }
         }
+        // Touches beside the page (over a cutout's inset at the left or
+        // right edge) go to the page's edge, so the drawer swipe works from
+        // the screen edge.
+        root.setOnTouchListener { v, ev ->
+            val at = IntArray(2).also { web.getLocationInWindow(it) }
+            val rootAt = IntArray(2).also { v.getLocationInWindow(it) }
+            val dx = (at[0] - rootAt[0]).toFloat()
+            val dy = (at[1] - rootAt[1]).toFloat()
+            if (ev.actionMasked == android.view.MotionEvent.ACTION_DOWN && (ev.y < dy || ev.y > dy + web.height)) return@setOnTouchListener false
+            val e = android.view.MotionEvent.obtain(ev)
+            e.offsetLocation(-dx, -dy)
+            if (e.x < 0) e.setLocation(0f, e.y)
+            if (e.x > web.width - 1) e.setLocation((web.width - 1).toFloat(), e.y)
+            val handled = web.dispatchTouchEvent(e)
+            e.recycle()
+            handled || ev.actionMasked != android.view.MotionEvent.ACTION_DOWN
+        }
 
+        keys.setHardwareKeyboard(hasHardwareKeyboard())
+        getSystemService(android.hardware.input.InputManager::class.java)?.registerInputDeviceListener(keyboards, null)
         keys.onKey = { pressKey(it) }
         keys.onMenu = { showMenu(it) }
         findViewById<Button>(R.id.retry).setOnClickListener { load() }
@@ -161,6 +191,27 @@ class TerminalActivity : AppCompatActivity() {
         machine?.let { outState.putString(EXTRA_MACHINE, it.id) }
     }
 
+    // Rotation, folding, a window resize, dark mode, text size: the page
+    // stays (and with it the session and the scroll position) and refits.
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        keys.resize()
+        keys.setHardwareKeyboard(hasHardwareKeyboard())
+    }
+
+    /**
+     * A keyboard plugged in or paired (not the phone's own buttons, nor
+     * a built-in one that only some devices and emulators report).
+     */
+    private fun hasHardwareKeyboard(): Boolean {
+        val im = getSystemService(android.hardware.input.InputManager::class.java) ?: return false
+        return im.inputDeviceIds.any { id ->
+            val d = im.getInputDevice(id) ?: return@any false
+            !d.isVirtual && d.keyboardType == android.view.InputDevice.KEYBOARD_TYPE_ALPHABETIC &&
+                (Build.VERSION.SDK_INT < 29 || d.isExternal)
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         Gecko.foregroundMachine = machine?.id
@@ -172,7 +223,14 @@ class TerminalActivity : AppCompatActivity() {
         super.onPause()
     }
 
+    private val keyboards = object : android.hardware.input.InputManager.InputDeviceListener {
+        override fun onInputDeviceAdded(id: Int) = keys.setHardwareKeyboard(hasHardwareKeyboard())
+        override fun onInputDeviceRemoved(id: Int) = keys.setHardwareKeyboard(hasHardwareKeyboard())
+        override fun onInputDeviceChanged(id: Int) = keys.setHardwareKeyboard(hasHardwareKeyboard())
+    }
+
     override fun onDestroy() {
+        getSystemService(android.hardware.input.InputManager::class.java)?.unregisterInputDeviceListener(keyboards)
         web.destroy()
         super.onDestroy()
     }
@@ -244,7 +302,7 @@ class TerminalActivity : AppCompatActivity() {
 
     /** Starts Gecko on this phone (in its service, so it keeps running), then shows it. */
     private fun loadLocal() {
-        errorView.visibility = View.GONE
+        errorView.visibility = View.GONE; keys.visibility = View.VISIBLE
         PhoneService.start(this)
         Thread {
             val ok = LocalGecko.start(this)
@@ -260,10 +318,29 @@ class TerminalActivity : AppCompatActivity() {
         }.start()
     }
 
+    /** The system WebView's major version, when it's older than the page needs. */
+    private fun oldWebView(): String? {
+        val v = androidx.webkit.WebViewCompat.getCurrentWebViewPackage(this)?.versionName ?: return null
+        val major = v.substringBefore('.').toIntOrNull() ?: return null
+        return if (major < MIN_WEBVIEW) v else null
+    }
+
     private fun load() {
+        oldWebView()?.let { v ->
+            showError(getString(R.string.webview_old, v))
+            findViewById<Button>(R.id.retry).apply {
+                setText(R.string.webview_update)
+                setOnClickListener {
+                    val pkg = androidx.webkit.WebViewCompat.getCurrentWebViewPackage(this@TerminalActivity)?.packageName ?: "com.google.android.webview"
+                    try { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("market://details?id=$pkg"))) }
+                    catch (e: Exception) { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://play.google.com/store/apps/details?id=$pkg"))) }
+                }
+            }
+            return
+        }
         val m = machine ?: return
         if (m.id == LocalGecko.ID) return loadLocal()
-        errorView.visibility = View.GONE
+        errorView.visibility = View.GONE; keys.visibility = View.VISIBLE
         if (m.token.isEmpty()) return showError(getString(R.string.err_no_token))
         val link = try { LinkParser.parse(m.url) } catch (e: LinkException) { return showError(e.message ?: "") }
         origin = LinkParser.origin(m.url)
@@ -326,6 +403,7 @@ class TerminalActivity : AppCompatActivity() {
         pageTrusted = false
         findViewById<TextView>(R.id.error_text).text = text
         errorView.visibility = View.VISIBLE
+        keys.visibility = View.GONE // nothing to type into
     }
 
     private fun leave() {
@@ -370,6 +448,9 @@ class TerminalActivity : AppCompatActivity() {
                 menu.add(0, MENU_SSH_KEY, 12, R.string.ssh_key_title)
                 menu.add(0, MENU_STOP, 13, R.string.phone_stop_long)
             }
+            if (Gecko.prefs(this@TerminalActivity).getBoolean(Gecko.BACKGROUND, false) && KeepAlive.needsHelp(this@TerminalActivity)) {
+                menu.add(0, MENU_KEEPALIVE, 80, R.string.keepalive_menu)
+            }
             menu.add(0, MENU_TOUCH, 90, R.string.touch_diagnostics)
             menu.add(0, MENU_BUILD, 100, BuildId.small(this@TerminalActivity, BuildId.current))
             setOnMenuItemClickListener { item ->
@@ -378,6 +459,7 @@ class TerminalActivity : AppCompatActivity() {
                     MENU_LINKS -> ShareUi.showLinks(this@TerminalActivity)
                     MENU_SSH_KEY -> SshKeyUi.show(this@TerminalActivity)
                     MENU_TOUCH -> showTouchDiagnostics()
+                    MENU_KEEPALIVE -> KeepAlive.show(this@TerminalActivity)
                     MENU_BUILD -> BuildId.copy(this@TerminalActivity)
                     MENU_STOP -> {
                         PhoneService.stop(this@TerminalActivity)
@@ -449,6 +531,7 @@ class TerminalActivity : AppCompatActivity() {
         }
         WatchService.start(this)
         toastInPage(getString(R.string.background_on))
+        KeepAlive.offerOnce(this)
     }
 
     /** "Notify me when agents need input" in the web UI's palette. */
@@ -465,6 +548,7 @@ class TerminalActivity : AppCompatActivity() {
             startBackgroundAfterGrant = false
             WatchService.start(this)
             toastInPage(getString(R.string.background_on))
+            KeepAlive.offerOnce(this)
             return
         }
         if (Gecko.prefs(this).getBoolean(Gecko.BACKGROUND, false)) return
@@ -559,6 +643,10 @@ class TerminalActivity : AppCompatActivity() {
         private const val MENU_SSH_KEY = 104
         private const val MENU_TOUCH = 105
         private const val MENU_BUILD = 106
+        private const val MENU_KEEPALIVE = 107
+
+        /** The page needs color-mix() (111), dvh units (108) and ES2022. */
+        const val MIN_WEBVIEW = 111
 
         /** The origin of the machine on show, for requests on web view threads. */
         @Volatile var currentOrigin: String? = null

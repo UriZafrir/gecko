@@ -255,6 +255,37 @@ agents' state. Its silent notification says what it reaches right now
 with a second line while Gecko runs on this phone, and **Stop watching**. Without it you are notified only while Gecko is open, and
 see what you missed in the agent dock when you come back.
 
+Some phone makers stop apps on their own, background services included:
+Xiaomi (MIUI, HyperOS), OnePlus, Oppo, Realme, Vivo, Huawei and Honor, and
+Samsung puts apps it thinks unused to sleep. When you turn on **Notify in
+background**, Gecko asks once to be left out of battery optimization, and on
+those phones says which switches to flip (autostart, "no restrictions",
+Samsung's sleeping apps), with a button to that screen where the phone has
+one and **More help** for [dontkillmyapp.com](https://dontkillmyapp.com).
+While it still helps, **Background notifications** in the **⋮** menu shows it
+again.
+
+## Screens, folds and windows
+
+The app keeps one page through everything that changes the screen:
+rotating, folding or unfolding, split screen and desktop windows, dark
+mode, the system text size. The session, the tab and the line you were
+reading stay; the terminal refits.
+
+- Narrow or short windows get the compact layout (drawer, slim agent
+  chips, no status line): phones in either orientation, a folded
+  foldable, half of a split screen. Wider and taller ones (a tablet, an
+  unfolded foldable in landscape, a desktop window) keep the sidebar.
+- The drawer opens with a swipe in from the left edge, from the screen
+  edge too when a camera cutout sits there (landscape); the back gesture
+  still works from the rest of that edge.
+- The extra keys follow the system text size (up to 1.5x). With a
+  keyboard plugged in or paired, only the menu stays.
+- Android 10 (API 29) and newer are tested; the app installs from Android 8
+  (minSdk 26). The page needs an Android System WebView 111 or newer; Play
+  updates it on its own, and an older one gets a screen that says so with an
+  **Update WebView** button.
+
 ## Limits
 
 On the phone's own terminal:

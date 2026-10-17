@@ -1,5 +1,15 @@
 export const isMac = /Mac|iPhone|iPad/.test(navigator.platform) || /Mac OS/.test(navigator.userAgent);
-export const isTouch = matchMedia('(pointer: coarse)').matches;
+// Touch: a coarse pointer, or in the Android app any touchscreen (some
+// Android WebViews call their touchscreen a fine pointer when a mouse-like
+// device is also present: an emulator, a phone with a mouse or a stylus).
+export const isTouch = matchMedia('(pointer: coarse)').matches ||
+  (!!window.GeckoAndroid && navigator.maxTouchPoints > 0);
+// The compact layout (drawer, chip dock, no status line): narrow windows, and
+// windows too short for the desktop one (a phone in landscape). Under 720 px
+// wide, so an iPad mini in portrait keeps the sidebar. Keep in sync with the
+// "phones" block in style.css.
+export const COMPACT = '(max-width: 719px), (max-height: 500px)';
+export const compactLayout = () => matchMedia(COMPACT).matches;
 // The Gecko Android or iOS app's bridge (see android/ and ios/), when
 // running inside one. Both have the same calls; on iOS they answer later
 // (paste returns a promise) and notify also works while the page shows.

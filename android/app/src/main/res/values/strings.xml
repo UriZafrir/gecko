@@ -99,4 +99,20 @@
     <string name="ssh_key_failed">Couldn\'t make this phone\'s SSH key: %1$s</string>
     <string name="share_copy_key">Copy</string>
     <string name="ssh_key_share">Share</string>
+    <string name="keepalive_title">Keep notifications coming</string>
+    <string name="keepalive_text">To reach you while the phone sleeps, Gecko\'s background connection needs to be left out of battery optimization. Gecko only keeps one small connection open.</string>
+    <string name="keepalive_text_exempt">Battery optimization already leaves Gecko alone.</string>
+    <string name="keepalive_samsung">On Samsung phones: Settings, Apps, Gecko, Battery: Unrestricted. Also make sure Gecko isn\'t in Battery, Background usage limits, Sleeping or Deep sleeping apps.</string>
+    <string name="keepalive_xiaomi">On Xiaomi, Redmi and POCO phones: turn on Autostart for Gecko, and set Battery saver to No restrictions (Settings, Apps, Gecko). Locking Gecko in the recent apps helps too.</string>
+    <string name="keepalive_oneplus">On OnePlus phones: Settings, Apps, Gecko, Battery: allow background activity and set it to Unrestricted (or Don\'t optimize). Turn on Auto launch if your phone has it.</string>
+    <string name="keepalive_oppo">On Oppo and Realme phones: allow Auto launch for Gecko, and in Settings, Apps, Gecko, Battery: allow background activity.</string>
+    <string name="keepalive_vivo">On Vivo and iQOO phones: allow Gecko to run in the background (Battery, Background power consumption) and turn on Autostart.</string>
+    <string name="keepalive_huawei">On Huawei and Honor phones: Settings, Battery, App launch: set Gecko to Manage manually and turn on Auto launch, Secondary launch and Run in background.</string>
+    <string name="keepalive_allow">Allow</string>
+    <string name="keepalive_open">Open settings</string>
+    <string name="keepalive_later">Not now</string>
+    <string name="keepalive_more">More help</string>
+    <string name="keepalive_menu">Background notifications</string>
+    <string name="webview_old">This phone\'s Android System WebView is version %1$s. Gecko needs version 111 or newer (Android keeps it up to date from the Play Store).</string>
+    <string name="webview_update">Update WebView</string>
 </resources>
