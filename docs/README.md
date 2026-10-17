@@ -5,6 +5,7 @@
 - [More machines](machines.md): adding hosts over SSH, any other transport, or a relay
 - [Accounts and the relay](cloud.md): the spec, keys, approvals and the threat model
 - [Phone and tablet](mobile.md): using Gecko from your phone
+- [Android app](android.md): the native app, its notifications and extra keys
 - [Themes](themes.md): every theme, with screenshots
 - [Keyboard](keyboard.md): shortcuts on macOS, Linux and Windows
 - [Configuration](config.md): config files, workspace templates, notifications

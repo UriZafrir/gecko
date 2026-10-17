@@ -23,8 +23,10 @@ import (
 //	4: listdir
 //	5: updatehost, settings sync
 //	6: tmux windows and actions
-//	7: cloud (account, devices, approvals); host kind, machine id and path
-const Version = 7
+//	7: agents in tmux panes and from terminal titles (ssh, mosh)
+//	8: ping (latency), host rtt; WebTransport for browsers
+//	9: cloud (account, devices, approvals); host kind, machine id and path
+const Version = 9
 
 // Data frame kinds.
 const (
@@ -81,10 +83,22 @@ type Msg struct {
 	Name   string     `json:"name,omitempty"`
 	Target string     `json:"target,omitempty"`
 	Data   string     `json:"data,omitempty"`
+	// probehost / installhost: the password for that machine, kept in the
+	// daemon's memory for that one connection and handed to ssh through the
+	// askpass helper; askpass replies carry it too. Never logged or saved.
+	Secret string `json:"secret,omitempty"`
+	// probehost: also put this device's public key in the machine's
+	// ~/.ssh/authorized_keys over the same login.
+	InstallKey bool `json:"installKey,omitempty"`
 
 	// replies / pushes
-	OK        bool          `json:"ok,omitempty"`
-	Missing   bool          `json:"missing,omitempty"` // probehost: reachable but gecko not installed
+	OK      bool `json:"ok,omitempty"`
+	Missing bool `json:"missing,omitempty"` // probehost: reachable but gecko not installed
+	// probehost: why it failed ("needs-password", "host-key-unknown",
+	// "host-key-changed", "no-gecko-build"), and whether this device has a
+	// key it can offer to install.
+	Kind      string        `json:"kind,omitempty"`
+	CanUseKey bool          `json:"canUseKey,omitempty"`
 	Error     string        `json:"error,omitempty"`
 	Session   *SessionInfo  `json:"session,omitempty"`
 	Sessions  []SessionInfo `json:"sessions,omitempty"`
@@ -126,6 +140,9 @@ const (
 	TSetSettings = "setsettings" // text = the whole settings object to save (and broadcast)
 	TTmux        = "tmux"        // host, name (action), target, data (arg), id (tab, for switch-client) -> reply
 	TRmHost      = "rmhost"      // name
+	TTrustHost   = "trusthost"   // target, data (the fingerprint the user saw) -> adds the host key to known_hosts
+	TAskpass     = "askpass"     // text (one-time id), data (prompt) -> reply{secret}; local socket only (gecko-askpass)
+	TShare       = "share"       // text: "on", "off" or "" (status), target: address to listen on -> reply{text: JSON ShareState}; local socket only
 	TCloud       = "cloud"       // name (status|approve|deny|revoke|reload|logout), data (code, device) -> reply{cloud}; also a push of {cloud}
 	TReset       = "reset"       // push: sub, offset, prefix
 	TExit        = "exit"        // push: sub - session ended, no more data
@@ -133,7 +150,22 @@ const (
 	TClosed      = "closed"      // push: id removed
 	TState       = "state"       // push: hosts, tmux, templates
 	TSessions    = "sessions"    // push: full session list (on connect/reconnect of a host)
+	// TPing asks for an immediate empty reply, so a client can measure the
+	// round trip and notice a connection that stopped answering. Services
+	// before protocol 8 answer it with an error reply, which works as a
+	// pong just the same.
+	TPing = "ping" // -> reply
 )
+
+// ShareState is the listener for other devices that the Android app turns
+// on ("Allow other devices"): where it listens and its own token, which is
+// new every time it is turned on.
+type ShareState struct {
+	On     bool     `json:"on"`
+	Listen string   `json:"listen,omitempty"`
+	Token  string   `json:"token,omitempty"`
+	URLs   []string `json:"urls,omitempty"`
+}
 
 // GitStatus is a repository's working-tree state (what a powerline prompt shows).
 type GitStatus struct {
@@ -252,6 +284,7 @@ type TmuxWindow struct {
 	Active  bool   `json:"active,omitempty"`
 	Panes   int    `json:"panes,omitempty"`
 	Command string `json:"command,omitempty"`
+	Agent   string `json:"agent,omitempty"` // coding agent in its active pane
 }
 
 // HostInfo describes a machine Gecko can run sessions on.
@@ -265,6 +298,9 @@ type HostInfo struct {
 	Version int    `json:"version,omitempty"`
 	Error   string `json:"error,omitempty"`
 	OS      string `json:"os,omitempty"`
+	// RTT is the last measured round trip from this hub to that machine,
+	// in milliseconds (0 = not measured yet, or the local machine).
+	RTT int `json:"rtt,omitempty"`
 	// Kind is how Gecko reaches it: local, ssh or cloud (through the relay).
 	Kind    string `json:"kind,omitempty"`
 	Machine string `json:"machine,omitempty"` // id in the account, when signed in

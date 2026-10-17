@@ -117,7 +117,7 @@ func Run(cfg *config.Config, listen string) error {
 			if err != nil {
 				return
 			}
-			go server.Serve(h, proto.NewStreamConn(c, c, c))
+			go server.ServeLocal(h, proto.NewStreamConn(c, c, c))
 		}
 	}
 	go accept(ln)
@@ -130,6 +130,7 @@ func Run(cfg *config.Config, listen string) error {
 	srv := &http.Server{Addr: cfg.Listen, Handler: web.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	webErr := make(chan error, 1)
 	var hl net.Listener
+	startWT := func() {}
 	if cfg.Listen != "off" {
 		if hand != nil && hand.TCPFd != 0 {
 			hl, err = net.FileListener(os.NewFile(hand.TCPFd, "web"))
@@ -139,6 +140,20 @@ func Run(cfg *config.Config, listen string) error {
 		if err != nil {
 			log.Printf("web UI disabled: %v", err)
 		} else {
+			startWT = func() {
+				// WebTransport (QUIC) on the same address and port number,
+				// UDP. GECKO_WEBTRANSPORT=off leaves browsers on the WebSocket.
+				if os.Getenv("GECKO_WEBTRANSPORT") == "off" {
+					log.Printf("webtransport off (GECKO_WEBTRANSPORT)")
+				} else if pc, err := net.ListenPacket("udp", hl.Addr().String()); err != nil {
+					log.Printf("webtransport disabled: %v", err)
+				} else if err := web.StartWT(pc); err != nil {
+					pc.Close()
+					log.Printf("webtransport disabled: %v", err)
+				}
+			}
+			startWT()
+			defer web.CloseWT()
 			_ = os.WriteFile(filepath.Join(config.StateDir(), "web"), []byte(hl.Addr().String()), 0o600)
 			log.Printf("gecko %s on %s: web UI at http://%s/", session.Version, cfg.Name, hl.Addr())
 			go func() { webErr <- srv.Serve(hl) }()
@@ -148,11 +163,22 @@ func Run(cfg *config.Config, listen string) error {
 
 	// `gecko upgrade`: replace this process with the (new) binary on disk,
 	// keeping every session and both listening sockets.
+	share := &sharer{hub: h}
+	defer share.stop()
+	h.Share = share.set
+
 	h.Upgrade = func() error {
+		// Close QUIC sessions properly first: unlike TCP, nothing tells a
+		// browser that a UDP socket went away with the old process.
+		web.CloseWT()
+		var err error
 		if extra != nil {
-			return upgrade(m, h, extra, hl) // the one at the current path
+			err = upgrade(m, h, extra, hl) // the one at the current path
+		} else {
+			err = upgrade(m, h, ln, hl)
 		}
-		return upgrade(m, h, ln, hl)
+		startWT() // still here, so the upgrade failed
+		return err
 	}
 
 	sig := make(chan os.Signal, 1)

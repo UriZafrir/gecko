@@ -56,7 +56,8 @@ func DefaultShell() string {
 	if s := os.Getenv("SHELL"); s != "" {
 		return s
 	}
-	for _, s := range []string{"/bin/zsh", "/bin/bash", "/bin/sh"} {
+	// Android has no /bin; its shell is /system/bin/sh (mksh).
+	for _, s := range []string{"/bin/zsh", "/bin/bash", "/bin/sh", "/system/bin/sh"} {
 		if _, err := os.Stat(s); err == nil {
 			return s
 		}

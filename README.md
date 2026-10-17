@@ -12,7 +12,7 @@
 <p align="center">
   <img alt="Go" src="https://img.shields.io/badge/Go-1.22+-00ADD8?logo=go&logoColor=white">
   <img alt="Platforms" src="https://img.shields.io/badge/Linux%20%C2%B7%20macOS%20%C2%B7%20Windows-a3be8c">
-  <img alt="Mobile" src="https://img.shields.io/badge/phone-PWA-d08770">
+  <img alt="Mobile" src="https://img.shields.io/badge/phone-PWA%20%C2%B7%20Android-d08770">
   <img alt="Agents" src="https://img.shields.io/badge/agents-Claude%20Code%20%C2%B7%20Codex%20%C2%B7%20Gemini%20%C2%B7%20Aider-88c0d0">
 </p>
 
@@ -21,6 +21,7 @@
   <a href="docs/install.md">Install</a> ·
   <a href="docs/machines.md">Machines</a> ·
   <a href="docs/mobile.md">Phone</a> ·
+  <a href="docs/android.md">Android</a> ·
   <a href="docs/themes.md">Themes</a> ·
   <a href="docs/keyboard.md">Keyboard</a> ·
   <a href="docs/config.md">Config</a> ·

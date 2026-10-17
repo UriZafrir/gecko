@@ -49,3 +49,7 @@ they are copied over on first run.
 - **`notify.webhook`** is POSTed when an agent starts waiting for you, so you
   hear about it with no Gecko window open. With ntfy.sh, that means a phone push.
 
+- **`listen`** is the web UI's address (TCP). Gecko also listens for
+  WebTransport (QUIC) on UDP at the same address and port number, so a
+  firewall rule for the web UI needs both. `"off"` turns both off, and
+  `GECKO_WEBTRANSPORT=off` in the service's environment turns off just QUIC.

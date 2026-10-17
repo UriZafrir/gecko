@@ -1,5 +1,16 @@
 export const isMac = /Mac|iPhone|iPad/.test(navigator.platform) || /Mac OS/.test(navigator.userAgent);
-export const isTouch = matchMedia('(pointer: coarse)').matches;
+// Touch: a coarse pointer, or in the Android app any touchscreen (some
+// Android WebViews call their touchscreen a fine pointer when a mouse-like
+// device is also present: an emulator, a phone with a mouse or a stylus).
+export const isTouch = matchMedia('(pointer: coarse)').matches ||
+  (!!window.GeckoAndroid && navigator.maxTouchPoints > 0);
+// The compact layout (drawer, chip dock, no status line): narrow windows, and
+// windows too short for the desktop one (a phone in landscape). Keep in
+// sync with the "phones" block in style.css.
+export const COMPACT = '(max-width: 760px), (max-height: 500px)';
+export const compactLayout = () => matchMedia(COMPACT).matches;
+// The Gecko Android app's bridge (see android/), when running inside it.
+export const android = window.GeckoAndroid || null;
 
 export const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -27,6 +38,9 @@ export function shortPath(p) {
 // Copy text, falling back to execCommand where the async clipboard API is
 // unavailable (plain-http LAN access from a phone).
 export async function copyText(text) {
+  if (android) {
+    try { android.copy(String(text)); return true; } catch {}
+  }
   try {
     if (window.isSecureContext && navigator.clipboard) {
       await navigator.clipboard.writeText(text);
@@ -47,6 +61,9 @@ export async function copyText(text) {
 }
 
 export async function readClipboard() {
+  if (android) {
+    try { return android.paste(); } catch {}
+  }
   if (window.isSecureContext && navigator.clipboard?.readText) {
     try { return await navigator.clipboard.readText(); } catch {}
   }

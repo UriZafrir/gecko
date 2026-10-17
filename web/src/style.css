@@ -137,6 +137,9 @@ code { font: 0.92em var(--mono); }
 .agents.work { color: var(--accent); }
 .agi { width: 13px; height: 13px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; }
 .agi .f { fill: currentColor; stroke: none; }
+/* A workspace's agents: their logo (or the robot) in the chip's color. */
+.agents .alogo { margin-right: 1px; fill: currentColor; }
+.agents .agi.s-working { animation: logo-fade 2s ease-in-out infinite; }
 
 .ws ul, .hostlist { list-style: none; margin: 0; padding: 0; }
 .tab-row {
@@ -277,9 +280,11 @@ body.reordering, body.reordering * { cursor: grabbing !important; }
 .alogo.s-needs-input { fill: var(--need); }
 .alogo.s-idle { fill: var(--idle); }
 .alogo.s-idle.a-claude { fill: #d97757; } /* Claude's own orange */
+.alogo.w-agent.a-claude { fill: #d97757; }
 .agent .alogo { width: 15px; height: 15px; margin: 0; flex: none; }
 @keyframes logo-fade { 50% { opacity: 0.2; } }
-@media (prefers-reduced-motion: reduce) { .alogo.s-working { animation: none; } }
+/* The fade runs with reduced motion too (Remove animations, battery
+   saver): a change of opacity showing a status, not movement. */
 /* In the sidebar and the tab bar the tab number is a small plain figure
    (in the sidebar, under the workspace's fold arrow); its color carries
    the tab's state. */
@@ -393,6 +398,24 @@ body.side-hidden #ws-title {
 .pane .xterm, .pane .xterm-viewport, .pane .xterm-screen { background: var(--surface-term) !important; }
 .pane .xterm-viewport { scrollbar-width: thin; }
 
+/* Phones and tablets (touch.js): the scrollback moves by the pixel and
+   stretches past the ends, so the pane clips it; the fast-scroll thumb
+   replaces xterm's scrollbar. */
+.pane.touchpane { overflow: hidden; touch-action: none; } /* every touch is ours (touch.js) */
+.pane.touchpane .xterm-scrollable-element > .scrollbar { display: none !important; }
+.pane.touchpane .xterm-screen { will-change: transform; }
+.fastscroll {
+  position: absolute; top: 0; right: 0; bottom: 0; width: 36px; z-index: 5;
+  pointer-events: none; opacity: 0; transition: opacity 0.3s ease-out;
+}
+.fastscroll.show { opacity: 1; transition-duration: 0.12s; }
+.fastscroll i {
+  position: absolute; top: 0; right: 2px; width: 5px; min-height: 8px; border-radius: 3px;
+  background: var(--muted); opacity: 0.7; transition: width 0.12s, background-color 0.12s;
+}
+.fastscroll.drag i { width: 9px; background: var(--accent); opacity: 0.9; }
+@media (prefers-reduced-motion: reduce) { .fastscroll, .fastscroll i { transition: none; } }
+
 #empty { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; overflow-y: auto; }
 .hello { max-width: 34rem; }
 .hello h1 { font-size: 26px; font-weight: 650; letter-spacing: -0.02em; margin: 0 0 8px; }
@@ -468,6 +491,8 @@ input[type=text], input[type=search], textarea {
 .replies button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .replies button b { font: 600 11px var(--mono); color: var(--faint); }
 .replies button.esc { color: var(--muted); }
+/* Phones only (below): folds the dock to a count. */
+.dock-fold { display: none; }
 .replies button:hover { box-shadow: inset 0 0 0 1px var(--need); color: var(--need); }
 
 /* ------------------------------------------------------------ status line */
@@ -498,6 +523,12 @@ input[type=text], input[type=search], textarea {
 }
 #statusline .sl-action:hover { background: color-mix(in srgb, var(--accent) 15%, transparent); }
 #statusline .notice { color: var(--need); max-width: 30ch; overflow: hidden; text-overflow: ellipsis; }
+#statusline .net { display: inline-flex; align-items: center; gap: 6px; flex: none; }
+#statusline .net .ms { font-variant-numeric: tabular-nums; }
+#statusline .net .via { color: var(--faint); font-size: 10.5px; letter-spacing: 0.04em; margin-right: 5px; }
+#statusline .net .slow, .host .rtt.slow { color: var(--need); }
+#statusline .net .bad, .host .rtt.bad { color: var(--red); }
+.host .rtt { font-size: 11px; color: var(--faint); font-variant-numeric: tabular-nums; flex: none; }
 .conn-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
 .conn-dot.offline, .conn-dot.connecting { background: var(--need); }
 .conn-dot.unauthorized { background: var(--red); }
@@ -575,6 +606,12 @@ input[type=text], input[type=search], textarea {
 .setup input { font-size: 14px; padding: 8px 10px; }
 .setup details summary { cursor: pointer; font-size: 13px; color: var(--muted); }
 .setup details label { margin-top: 8px; }
+.setup-status code { overflow-wrap: anywhere; }
+.setup-auth { display: flex; flex-direction: column; gap: 10px; }
+.setup-auth[hidden] { display: none; }
+.setup label.check { flex-direction: row; align-items: center; gap: 8px; color: var(--text); }
+.setup label.check[hidden] { display: none; }
+.setup label.check input { width: auto; padding: 0; }
 .setup-status { font-size: 13px; line-height: 1.5; min-height: 1.5em; }
 .setup-status:empty { display: none; }
 .setup-status.good { color: var(--accent); }
@@ -625,9 +662,13 @@ input, textarea, [contenteditable] { cursor: text; user-select: text; -webkit-us
 
 #scrim { display: none; }
 
-/* ------------------------------------------------------------ phones */
+/* ------------------------------------------------------------ phones
 
-@media (max-width: 760px) {
+   Compact: narrow windows (phones, split screen, a folded foldable), and
+   windows too short for the desktop's sidebar, dock and status line (a
+   phone in landscape). Keep in sync with COMPACT in util.js. */
+
+@media (max-width: 760px), (max-height: 500px) {
   #app, body.side-hidden #app { grid-template-columns: 1fr; }
   body.side-hidden #side { display: flex; }
   #side {
@@ -642,12 +683,46 @@ input, textarea, [contenteditable] { cursor: text; user-select: text; -webkit-us
     font-weight: 650; color: var(--accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   #tabbar { height: 44px; }
+  /* Compact: the drawer has the workspace, the machine and the folders. */
+  #ws-title, #new-tab .where, #tabs .tab .git, #tabs .tab .where { display: none; }
   .tab { padding-left: 12px; max-width: 46vw; }
   .tab .x { display: none; }
   .tab.cur .x { display: block; }
   .pane { inset: 4px 2px 0 4px; }
   #statusline { display: none; }
-  .agent { min-width: 70vw; }
+  /* ...except for "Make it a Gecko machine" after an ssh. */
+  #statusline:has(.sl-action) { display: flex; justify-content: center; height: 34px; }
+  #statusline:has(.sl-action) .l > :not(.sl-action), #statusline:has(.sl-action) .r > :not(.sl-action) { display: none; }
+  #statusline .sl-action { padding: 4px 12px; }
+  /* The agents: one slim row of chips, scrolling sideways; a chip opens to
+     its last line and answers; the row folds to a count. */
+  #dock { gap: 6px; padding: 5px 6px; align-items: flex-start; scrollbar-width: none; }
+  #dock::-webkit-scrollbar { display: none; }
+  .dock-fold {
+    display: inline-flex; align-items: center; gap: 6px; flex: none; height: 30px; padding: 0 10px; border-radius: 15px;
+    font: 13px var(--ui); color: var(--muted); box-shadow: inset 0 0 0 1px var(--line);
+  }
+  .dock-fold b { font-weight: 650; color: var(--text); }
+  .dock-fold.s-working b { color: var(--accent); }
+  .dock-fold.s-needs-input { color: var(--need); box-shadow: inset 0 0 0 1.5px var(--need); }
+  .dock-fold.s-needs-input b { color: var(--need); }
+  #dock:not(.folded) .dock-fold { width: 30px; padding: 0; justify-content: center; }
+  #dock:not(.folded) .dock-fold span { display: inline-block; transform: rotate(90deg); font-size: 16px; }
+  #dock.folded { padding: 4px 6px; }
+  #dock.folded .agent { display: none; }
+  .agent {
+    min-width: 0; max-width: 64vw; height: 30px; padding: 0 12px 0 9px; column-gap: 6px;
+    grid-template-rows: 30px; border: 1px solid var(--line); border-radius: 15px;
+  }
+  .agent .who { font-size: 13px; }
+  .agent .what, .agent .replies { display: none; }
+  .agent.s-working { border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
+  .agent.s-needs-input { border-color: var(--need); background: color-mix(in srgb, var(--need) 14%, var(--surface-panel)); }
+  .agent.cur { background: var(--surface-raise); }
+  .agent.s-needs-input.cur { background: color-mix(in srgb, var(--need) 22%, var(--surface-panel)); }
+  .agent.open { height: auto; min-width: calc(100vw - 54px); max-width: calc(100vw - 54px); grid-template-rows: 28px auto auto; padding: 0 10px 8px 9px; border-radius: 12px; }
+  .agent.open .what { display: block; }
+  .agent.open .replies { display: flex; }
   .replies button { min-width: 34px; height: 30px; }
   .tab-row, .host-main { padding-top: 7px; padding-bottom: 7px; }
   .host-row .x { opacity: 1; }
@@ -841,9 +916,18 @@ html.skin-mission .logo { filter: grayscale(1) brightness(1.7) contrast(1.1); }
 html.has-image:not(.desktop), html.has-image:not(.desktop) body { background: var(--bg); }
 html.has-image.desktop body { background: transparent; }
 html.has-image #side, html.has-image #main {
-  position: relative; isolation: isolate; overflow: hidden; background: transparent !important;
+  isolation: isolate; overflow: hidden; background: transparent !important;
   -webkit-backdrop-filter: none; backdrop-filter: none;
 }
+/* The photo layers (::before) are positioned in these. Only beside the
+   terminal, though: on phones the sidebar is a fixed drawer (see "phones"),
+   and making it relative put it back in the grid as a row of its own above
+   the terminal, splitting the screen in two. */
+html.has-image #main { position: relative; }
+@media (min-width: 761px) and (min-height: 501px) { html.has-image #side { position: relative; } }
+/* The drawer slides over the terminal: under its blurred photo, whose
+   edges fade out, it needs a solid floor or the terminal shows through. */
+@media (max-width: 760px), (max-height: 500px) { html.has-image:not(.desktop) #side { background: var(--panel) !important; } }
 html.has-image #side::before, html.has-image #main::before {
   content: ""; position: absolute; z-index: -1; pointer-events: none;
   opacity: var(--win-opacity, 1);
@@ -1305,3 +1389,6 @@ html.layout-watch .pane .xterm-viewport::-webkit-scrollbar { display: none; }
 #watchface .p-bl, #watchface .p-br { top: calc(50% + 30px); }
 /* A dialog (like Approve) covers the prompt that opened it. */
 body:has(#modal:not([hidden])) #cloud-prompt { display: none; }
+
+/* The Android app draws its own extra keys row above the keyboard. */
+html.android #keybar { display: none !important; }

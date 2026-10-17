@@ -171,6 +171,11 @@ func (c *Config) CloudEnabled() bool {
 
 // DefaultName is the short host name.
 func DefaultName() string {
+	if IsAndroid() {
+		if n := androidName(); n != "" {
+			return n
+		}
+	}
 	h, _ := os.Hostname()
 	h, _, _ = strings.Cut(h, ".")
 	if h == "" {

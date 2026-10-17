@@ -1,0 +1,277 @@
+package io.github.geckoterm.android
+
+import android.content.Context
+import android.os.Build
+import android.util.Log
+import org.json.JSONObject
+import java.io.File
+import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.net.NetworkInterface
+import java.net.ServerSocket
+import java.net.Socket
+import java.util.concurrent.TimeUnit
+
+/**
+ * Gecko's own daemon, running on this phone: the same program as on a
+ * computer, built for Android and shipped in the APK as libgecko.so (native
+ * libraries are the only files an app may execute). It runs as a child of
+ * the app, kept alive by [PhoneService], with its files in the app's
+ * private storage and /system/bin/sh as the shell.
+ */
+object LocalGecko {
+    const val ID = "local"
+    const val SHARE_PORT = 7682
+    private const val TAG = "GeckoLocal"
+    private const val PORT = 7681
+
+    @Volatile private var process: Process? = null
+
+    fun binary(ctx: Context) = File(ctx.applicationInfo.nativeLibraryDir, "libgecko.so")
+    fun available(ctx: Context) = binary(ctx).canExecute()
+
+    // Canonical paths (/data/data/..., not the /data/user/0 link), as the
+    // shell reports its directory, so the prompt can shorten home to ~.
+    private fun home(ctx: Context) = File(ctx.filesDir.canonicalFile, "home")
+    private fun geckoHome(ctx: Context) = File(ctx.filesDir.canonicalFile, "gecko")
+    private fun state(ctx: Context) = File(geckoHome(ctx), "state")
+    fun log(ctx: Context) = File(state(ctx), "daemon.log")
+
+    /** The environment shells get: Android's usual PATH, a home and a temp dir the app owns. */
+    fun environment(ctx: Context): Map<String, String> {
+        val tmp = File(ctx.cacheDir.canonicalFile, "tmp").apply { mkdirs() }
+        // Android's name for the app's user: u<user>_a<app> (what `id -un` says)
+        val uid = android.os.Process.myUid()
+        val user = "u${uid / 100000}_a${uid % 100000 - 10000}"
+        return mapOf(
+            "ENV" to rcFile(ctx).path,
+            "USER" to user,
+            "LOGNAME" to user,
+            "GECKO_RESOLV_CONF" to resolvConf(ctx).path,
+            // Gecko for linux/amd64 and arm64 is inside (lib/<abi>/libgecko.so),
+            // to install on machines added from the phone.
+            "GECKO_APK" to ctx.applicationInfo.sourceDir,
+            "HOME" to home(ctx).path,
+            "TMPDIR" to tmp.path,
+            "GECKO_HOME" to geckoHome(ctx).path,
+            "SHELL" to "/system/bin/sh",
+            "TERM" to "xterm-256color",
+            "LANG" to "en_US.UTF-8",
+            "PATH" to bin(ctx).path + ":" + (System.getenv("PATH")?.takeIf { it.isNotEmpty() }
+                ?: "/product/bin:/apex/com.android.runtime/bin:/apex/com.android.art/bin:/system_ext/bin:/system/bin:/system/xbin:/odm/bin:/vendor/bin:/vendor/xbin"),
+        )
+    }
+
+    /**
+     * The shell's startup file (mksh reads $ENV), written once and then the
+     * user's: Android's defaults, and a prompt with the directory, ~ for home.
+     */
+    private fun rcFile(ctx: Context): File {
+        val f = File(home(ctx), ".mkshrc")
+        if (!f.exists()) {
+            f.parentFile?.mkdirs()
+            f.writeText(
+                "# Startup file of the shell in Gecko on this phone (mksh). Change it as you like.\n" +
+                    "[ -r /system/etc/mkshrc ] && . /system/etc/mkshrc\n" +
+                    "HOSTNAME=\$(getprop ro.product.model)\n" +
+                    "PS1='\${|\n\tlocal e=\$?\n\t(( e )) && REPLY+=\"\$e|\"\n\treturn \$e\n}\${PWD/#\$HOME/\\~} \$ '\n",
+            )
+        }
+        return f
+    }
+
+    /** ssh, ssh-keygen and scp for the shell (and for Gecko's own ssh to other machines): links to gecko, which acts as each. */
+    fun bin(ctx: Context) = File(ctx.filesDir.canonicalFile, "bin")
+
+    private fun linkTools(ctx: Context) {
+        val dir = bin(ctx).apply { mkdirs() }
+        val target = binary(ctx).path
+        for (name in listOf("ssh", "ssh-keygen", "scp", "gecko")) {
+            val link = File(dir, name)
+            try {
+                val current = try { android.system.Os.readlink(link.path) } catch (e: Exception) { null }
+                if (current == target) continue
+                link.delete()
+                android.system.Os.symlink(target, link.path)
+            } catch (e: Exception) {
+                Log.w(TAG, "link $name: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * The phone's DNS servers and search domains, for gecko's ssh (a static
+     * build has no resolver of its own on Android). Rewritten when the
+     * network changes (see PhoneService).
+     */
+    fun resolvConf(ctx: Context) = File(geckoHome(ctx), "resolv.conf")
+
+    fun writeResolvConf(ctx: Context) {
+        try {
+            val cm = ctx.getSystemService(android.net.ConnectivityManager::class.java)
+            val lp = cm.getLinkProperties(cm.activeNetwork) ?: return
+            val sb = StringBuilder("# Written by the Gecko app: this phone's DNS, for ssh\n")
+            for (a in lp.dnsServers) sb.append("nameserver ").append(a.hostAddress).append('\n')
+            lp.domains?.split(',', ' ')?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() }?.let { sb.append("search ").append(it.joinToString(" ")).append('\n') }
+            geckoHome(ctx).mkdirs()
+            resolvConf(ctx).writeText(sb.toString())
+        } catch (e: Exception) {
+            Log.w(TAG, "resolv.conf: ${e.message}")
+        }
+    }
+
+    /** This phone's SSH public key, made on first use (~/.ssh/id_ed25519). Blocking. */
+    fun sshPublicKey(ctx: Context): String {
+        val key = File(home(ctx), ".ssh/id_ed25519")
+        if (!key.exists()) {
+            val p = command(ctx, "ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "gecko@" + Build.MODEL.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-'), "-f", key.path)
+                .redirectErrorStream(true).start()
+            val out = p.inputStream.bufferedReader().readText()
+            p.waitFor(20, TimeUnit.SECONDS)
+            if (p.exitValue() != 0) throw IllegalStateException(out.trim().ifEmpty { "ssh-keygen failed" })
+        }
+        return File(key.path + ".pub").readText().trim()
+    }
+
+    private fun command(ctx: Context, vararg args: String): ProcessBuilder {
+        home(ctx).mkdirs()
+        geckoHome(ctx).mkdirs()
+        linkTools(ctx)
+        val pb = ProcessBuilder(listOf(binary(ctx).path) + args).directory(home(ctx))
+        pb.environment().putAll(environment(ctx))
+        return pb
+    }
+
+    /** The local web address once the daemon listens (the daemon writes it to state/web). */
+    fun address(ctx: Context): String? {
+        val f = File(state(ctx), "web")
+        val a = try { f.readText().trim() } catch (e: Exception) { return null }
+        return a.ifEmpty { null }
+    }
+
+    fun token(ctx: Context): String = try { File(geckoHome(ctx), "token").readText().trim() } catch (e: Exception) { "" }
+
+    /** Whether the daemon answers on its web address. */
+    fun running(ctx: Context): Boolean {
+        val a = address(ctx) ?: return false
+        val host = a.substringBeforeLast(':')
+        val port = a.substringAfterLast(':').toIntOrNull() ?: return false
+        return try {
+            Socket().use { it.connect(InetSocketAddress(host, port), 300); true }
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /** Starts the daemon unless it runs already, and waits until it listens. Blocking. */
+    @Synchronized
+    fun start(ctx: Context): Boolean {
+        if (running(ctx)) return true
+        if (!available(ctx)) {
+            Log.e(TAG, "no gecko binary for ${Build.SUPPORTED_ABIS.joinToString()}")
+            return false
+        }
+        File(state(ctx), "web").delete()
+        writeResolvConf(ctx)
+        ctx.getExternalFilesDir(null) // /sdcard/Android/data/<app>/files: shared storage the shell may use
+        // 7681 like on a computer, so the web UI's saved state (per address)
+        // stays; another port if something else has it.
+        val port = if (free(PORT)) PORT else 0
+        val logFile = log(ctx).apply { parentFile?.mkdirs() }
+        if (logFile.length() > 1_000_000) logFile.delete()
+        val p = command(ctx, "daemon", "--listen", "127.0.0.1:$port")
+            .redirectErrorStream(true)
+            .redirectOutput(ProcessBuilder.Redirect.appendTo(logFile))
+            .start()
+        process = p
+        val until = System.currentTimeMillis() + 10_000
+        while (System.currentTimeMillis() < until) {
+            if (!p.isAlive) return false
+            if (running(ctx)) return true
+            Thread.sleep(100)
+        }
+        return running(ctx)
+    }
+
+    private fun free(port: Int) = try {
+        ServerSocket(port, 1, InetAddress.getByName("127.0.0.1")).close()
+        true
+    } catch (e: Exception) {
+        false
+    }
+
+    /** Ends the daemon and with it every shell on the phone. */
+    @Synchronized
+    fun stop(ctx: Context) {
+        try {
+            command(ctx, "stop").redirectErrorStream(true).start().waitFor(5, TimeUnit.SECONDS)
+        } catch (e: Exception) {
+            Log.w(TAG, "stop: ${e.message}")
+        }
+        process?.let { p ->
+            if (!p.waitFor(3, TimeUnit.SECONDS)) p.destroyForcibly()
+        }
+        process = null
+        File(state(ctx), "web").delete()
+    }
+
+    /** This phone as a machine for the web view; null until the daemon runs. */
+    fun machine(ctx: Context): Machine? {
+        val a = address(ctx) ?: return null
+        val t = token(ctx).ifEmpty { return null }
+        return Machine(id = ID, name = ctx.getString(R.string.this_phone), url = "http://$a/", token = t)
+    }
+
+    /** The listener for other devices (`gecko share`). Blocking. */
+    fun share(ctx: Context, on: Boolean): Share {
+        val args = if (on) arrayOf("share", "--json", "on", "0.0.0.0:$SHARE_PORT") else arrayOf("share", "--json", "off")
+        val p = command(ctx, *args).start()
+        val out = p.inputStream.bufferedReader().readText()
+        val err = p.errorStream.bufferedReader().readText()
+        p.waitFor(10, TimeUnit.SECONDS)
+        if (p.exitValue() != 0) throw IllegalStateException(err.trim().removePrefix("gecko: ").ifEmpty { "gecko share failed" })
+        return Share.parse(out)
+    }
+
+    fun shareState(ctx: Context): Share = try {
+        val p = command(ctx, "share", "--json").start()
+        val out = p.inputStream.bufferedReader().readText()
+        p.waitFor(10, TimeUnit.SECONDS)
+        if (p.exitValue() == 0) Share.parse(out) else Share(false, "", "")
+    } catch (e: Exception) {
+        Share(false, "", "")
+    }
+
+    data class Share(val on: Boolean, val listen: String, val token: String) {
+        val port: Int get() = listen.substringAfterLast(':').toIntOrNull() ?: SHARE_PORT
+
+        /** Links for each address other devices can reach: Wi-Fi, Ethernet, Tailscale. */
+        fun links(addresses: List<String>): List<String> =
+            if (!on) emptyList() else addresses.map { "http://$it:$port/?token=$token" }
+
+        companion object {
+            fun parse(json: String): Share {
+                val o = JSONObject(json.trim())
+                return Share(o.optBoolean("on"), o.optString("listen"), o.optString("token"))
+            }
+        }
+    }
+
+    /** This phone's private IPv4 addresses (Wi-Fi, Ethernet, Tailscale), Tailscale last. */
+    fun lanAddresses(): List<String> {
+        val out = ArrayList<Pair<String, Boolean>>()
+        try {
+            for (ni in NetworkInterface.getNetworkInterfaces()) {
+                if (!ni.isUp || ni.isLoopback) continue
+                for (a in ni.inetAddresses) {
+                    val ip = a.hostAddress ?: continue
+                    if (a !is java.net.Inet4Address || !NetPolicy.privateAddress(a) || ip.startsWith("127.")) continue
+                    out += ip to ip.startsWith("100.")
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "interfaces: ${e.message}")
+        }
+        return out.sortedBy { it.second }.map { it.first }.distinct()
+    }
+}
