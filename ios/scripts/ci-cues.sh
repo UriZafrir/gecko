@@ -8,6 +8,15 @@ g=$1 cues=$2
 mkdir -p "$cues"
 gk() { GECKO_HOME=$GECKO_STUDIO_HOME "$g" "$@"; }
 
+# The newest studio-mac tab of that name (earlier tests may have left one).
+newest() {
+  gk ls --json | python3 -c '
+import json, sys
+d = [s for s in json.load(sys.stdin) or [] if s.get("host") == "studio-mac" and s.get("name") == sys.argv[1]]
+d.sort(key=lambda s: s.get("created", 0))
+print(d[-1]["id"] if d else sys.argv[1])' "$1"
+}
+
 step() {
   case "$1" in
     add-host)
@@ -19,7 +28,7 @@ step() {
     managed)
       # An agent on the computer driving Gecko, typed into the logs tab so
       # the phone shows each command and what it prints.
-      gk send logs "gecko new -n agent-task -C ~ && sleep 3 && gecko send agent-task 'echo hello from an agent; uname -sm' && sleep 2 && gecko capture agent-task | tail -n 4 && gecko agents --json | head -c 400; echo"
+      gk send "$(newest logs)" "gecko new -w tour -n agent-task -C ~ && sleep 3 && gecko send agent-task 'echo hello from an agent; uname -sm' && sleep 2 && gecko capture agent-task | tail -n 4 && gecko agents --json | head -c 400; echo"
       ;;
   esac
 }

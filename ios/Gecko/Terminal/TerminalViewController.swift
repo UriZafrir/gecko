@@ -18,6 +18,10 @@ final class TerminalViewController: UIViewController, WKNavigationDelegate, WKUI
     /// The next main-frame navigation to the machine is the app's own page.
     private var expectingOwnLoad = false
     private var pageLoaded = false
+    /// Loads of the page so far, for the watchdog (loadBundled).
+    private var loads = 0
+    /// Where loading is (UI tests read it when the page can't answer).
+    private var stage = "start"
     /// The connected Gecko's build, from its /api/info ("" when it's too old to say).
     private var daemonBuild: String?
     private var pendingSession: String?
@@ -140,6 +144,8 @@ final class TerminalViewController: UIViewController, WKNavigationDelegate, WKUI
     /// Checks the machine (private network or https, and its token), then shows its Gecko.
     func load() {
         errorView.isHidden = true
+        loads = 0
+        stage = "checking the machine"
         if machine.token.isEmpty { return showError("This machine's token couldn't be read on this phone. Scan its QR code again.") }
         guard let link = try? LinkParser.parse(machine.url) else { return showError("This machine's address can't be read. Add it again.") }
         let m = machine
@@ -207,7 +213,24 @@ final class TerminalViewController: UIViewController, WKNavigationDelegate, WKUI
             return
         }
         expectingOwnLoad = true
+        loads += 1
+        stage = "loading \(loads)"
         web.loadHTMLString(html, baseURL: base)
+        // Seen on the Simulator: a load that never starts or finishes (a
+        // blank page). Load it again once, then say so.
+        let n = loads
+        DispatchQueue.main.asyncAfter(deadline: .now() + 12) { [weak self] in
+            guard let self, self.loads == n else { return }
+            self.eval("!!window.gecko") { r in
+                guard (r as? Bool) != true, self.loads == n else { return }
+                if n < 2 {
+                    self.loadBundled()
+                } else {
+                    self.stage = "stuck"
+                    self.showError("Gecko's page didn't load. Check the connection, then try again.")
+                }
+            }
+        }
     }
 
     private func showError(_ text: String) {
@@ -373,6 +396,7 @@ final class TerminalViewController: UIViewController, WKNavigationDelegate, WKUI
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         pageLoaded = true
+        stage = "finished"
         webView.hideInputAccessoryBar()
         webView.scrollView.pinchGestureRecognizer?.isEnabled = false
         if let s = pendingSession {
@@ -498,8 +522,12 @@ final class TerminalViewController: UIViewController, WKNavigationDelegate, WKUI
     @objc private func updateProbe() {
         runTestScripts()
         eval(BridgeScript.probe) { [weak self] r in
-            guard let s = r as? String else { return }
-            self?.probe?.accessibilityLabel = s
+            guard let self else { return }
+            guard let s = r as? String else {
+                self.probe?.accessibilityLabel = "{\"stage\": \"\(self.stage)\"}"
+                return
+            }
+            self.probe?.accessibilityLabel = s
         }
     }
 }

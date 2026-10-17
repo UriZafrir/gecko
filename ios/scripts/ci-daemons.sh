@@ -12,7 +12,7 @@
 # GECKO_OLD_LINK, GECKO_BUILDBOX_LINK, GECKO_REMOTE (ssh or bridge) and
 # GECKO_STUDIO_HOME to $GITHUB_ENV.
 # ci-daemons.sh reset <gecko>: ends every studio-mac tab and opens the first
-# three again (a clean start for the feature tour).
+# three again in a workspace named tour (a clean start for the feature tour).
 set -eu
 abs() { (cd "$(dirname "$1")" && echo "$(pwd)/$(basename "$1")"); }
 tmp=${RUNNER_TEMP:-/tmp}
@@ -20,11 +20,11 @@ home=$tmp/gecko-home
 # The ports (another base to try the script on a machine running Gecko).
 p1=${GECKO_CI_PORT:-7681} p2=$((${GECKO_CI_PORT:-7681} + 1)) p3=$((${GECKO_CI_PORT:-7681} + 2))
 
-tabs() { # gecko
+tabs() { # gecko [workspace]
   cd "$tmp/work/parser"
-  GECKO_HOME=$home "$1" new -n shell -C "$tmp/work/parser" > /dev/null
-  GECKO_HOME=$home "$1" new -n build -C "$tmp/work" > /dev/null
-  GECKO_HOME=$home "$1" new -n logs -C "$tmp/work" > /dev/null
+  GECKO_HOME=$home "$1" new ${2:+-w "$2"} -n shell -C "$tmp/work/parser" > /dev/null
+  GECKO_HOME=$home "$1" new ${2:+-w "$2"} -n build -C "$tmp/work" > /dev/null
+  GECKO_HOME=$home "$1" new ${2:+-w "$2"} -n logs -C "$tmp/work" > /dev/null
 }
 
 if [ "$1" = reset ]; then
@@ -42,7 +42,9 @@ print(" ".join(s["id"] + "@" + s.get("tty", "") for s in d if s.get("host") == "
   done
   [ "${GECKO_REMOTE:-}" = ssh ] && { GECKO_HOME=$home "$g" host rm build-box > /dev/null 2>&1 || true; }
   sleep 1
-  tabs "$g"
+  # In a workspace of their own, so the tour's tab bar has just these
+  # (whatever the earlier tests left behind).
+  tabs "$g" tour
   GECKO_HOME=$home "$g" ls
   exit 0
 fi
