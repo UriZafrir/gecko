@@ -1,0 +1,28 @@
+<!doctype html>
+<!-- A window to put behind Gecko in the tour's transparency chapter, so what
+     shows through the window is easy to recognise. -->
+<html>
+<head>
+<meta charset="utf-8">
+<title>Notes behind Gecko</title>
+<style>
+  html, body { margin: 0; height: 100%; }
+  body { background: #fdf6e3; color: #222; font: 600 3.3vw/1.35 system-ui, "Segoe UI", "DejaVu Sans", sans-serif; padding: 28px 36px; box-sizing: border-box; overflow: hidden; }
+  h1 { margin: 0 0 18px; font-size: 6.6vw; line-height: 1.1; color: #c2185b; }
+  .row { display: flex; gap: 14px; margin: 18px 0; }
+  .row span { flex: 1; height: 9vh; border-radius: 14px; }
+  p { margin: 10px 0; }
+  .a { color: #1565c0; } .b { color: #2e7d32; } .c { color: #ef6c00; }
+</style>
+</head>
+<body>
+  <h1>A window behind Gecko</h1>
+  <p class="a">Shopping list: coffee, oat milk, two lemons, basil</p>
+  <div class="row"><span style="background:#e53935"></span><span style="background:#fdd835"></span><span style="background:#43a047"></span><span style="background:#1e88e5"></span><span style="background:#8e24aa"></span></div>
+  <p class="b">Meeting at 3pm: ship the desktop app</p>
+  <p class="c">Call the plumber about the kitchen sink</p>
+  <p>The quick brown fox jumps over the lazy dog</p>
+  <div class="row"><span style="background:#8e24aa"></span><span style="background:#1e88e5"></span><span style="background:#43a047"></span><span style="background:#fdd835"></span><span style="background:#e53935"></span></div>
+  <p class="a">If you can read this through Gecko, transparency works</p>
+</body>
+</html>
