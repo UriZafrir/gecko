@@ -60,6 +60,15 @@ Usage:
   gecko upgrade              restart the daemon with this binary, keeping every session
   gecko stop                 stop the daemon (ends all local sessions)
   gecko service install|uninstall   start the daemon at login (done on first run)
+
+Account (optional; see docs/cloud.md):
+  gecko login [--relay URL] [--account name]   sign this machine in to an account on a relay
+  gecko whoami               the account, its machines and who is waiting for approval
+  gecko approve <code>       let a new machine join (the code it shows); gecko deny <code>
+  gecko revoke <machine>     remove a machine from the account; its links close
+  gecko logout               leave the account and delete this machine's keys
+  gecko relay [--listen a]   run a relay (self-hosted)
+
   gecko bridge               (internal) connect stdio to the daemon; used over ssh
   gecko version
 
@@ -144,6 +153,20 @@ func main() {
 		err = cmdUpgrade(args)
 	case "service":
 		err = cmdService(args)
+	case "login":
+		err = cmdLogin(args)
+	case "logout":
+		err = cmdLogout()
+	case "whoami", "devices":
+		err = cmdWhoami()
+	case "approve":
+		err = cmdApprove(args)
+	case "deny":
+		err = cmdDeny(args)
+	case "revoke":
+		err = cmdRevoke(args)
+	case "relay":
+		err = cmdRelay(args)
 	default:
 		err = fmt.Errorf("unknown command %q (see gecko help)", cmd)
 	}

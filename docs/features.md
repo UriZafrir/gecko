@@ -31,6 +31,13 @@
   `gecko bridge` there over SSH, and that machine's own daemon owns its
   sessions. A dropped connection just reconnects and resumes, much like mosh,
   for every tab at once.
+- **[One account for every machine](machines.md#through-the-relay-accounts)**
+  (optional). `gecko login` on each machine and they find each other through
+  a relay you run (`gecko relay`), with no SSH, open ports or VPN. A new
+  machine joins only when one already signed in approves it, and terminal
+  data is end-to-end encrypted: the relay can't read it. Revoke a machine
+  from any other and its connections close within seconds. Without
+  `gecko login` nothing changes and Gecko makes no network calls.
 - **Latency you can see, recovery you don't notice.** The status line shows
   the round trip to the Gecko service, measured with a small ping every 2
   seconds ("QUIC 23 ms"), in the warning color from 100 ms and in red from

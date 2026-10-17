@@ -57,7 +57,7 @@ func fakeRemote(t *testing.T, delay, limit int) (*Remote, func()) {
 	t.Setenv("GECKO_FAKE_DELAY", strconv.Itoa(delay))
 	t.Setenv("GECKO_FAKE_PINGS", strconv.Itoa(limit))
 	h := New(&config.Config{Name: "here"}, session.NewManager(session.Options{Host: "here", Shell: "/bin/sh", ScriptsDir: t.TempDir()}))
-	r := NewRemote("there", []string{os.Args[0], "-test.run=^$"}, "", h)
+	r := NewRemote("there", "", KindSSH, SSHDial("there", []string{os.Args[0], "-test.run=^$"}), h)
 	go r.Run()
 	return r, func() { r.Close(); h.Close() }
 }

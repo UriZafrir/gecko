@@ -5,6 +5,7 @@ go 1.22.5
 require (
 	github.com/UserExistsError/conpty v0.1.4
 	github.com/creack/pty v1.1.24
+	github.com/flynn/noise v1.1.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/quic-go/quic-go v0.47.0
 	github.com/quic-go/webtransport-go v0.8.0

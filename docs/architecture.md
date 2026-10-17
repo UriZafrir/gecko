@@ -10,8 +10,8 @@
                  gecko daemon  (this machine)
         ┌───────────────┼──────────────────────────────┐
    local PTYs     hub ── ssh host gecko bridge ──► gecko daemon (devbox)
-   + headless VT        └ ssh … gecko bridge ────► gecko daemon (gpu-box)
-   + ring buffer
+   + headless VT        ├ ssh … gecko bridge ────► gecko daemon (gpu-box)
+   + ring buffer        └ relay + Noise ─────────► gecko daemon (vm, signed in)
    + process / tmux / agent inspection (of its own sessions)
 ```
 
@@ -19,6 +19,9 @@
   (`kind | id | offset | bytes`) run over WebTransport or WebSockets, the
   local socket, and SSH stdio. A remote daemon looks exactly like the local
   one.
+- **The relay is one more transport** for the same protocol: a signed-in
+  daemon dials out to it, and the protocol runs inside a Noise session the
+  relay can't read ([details](cloud.md)).
 - **Every session has a 4 MiB ring buffer** with absolute byte offsets.
   Attaching replays it, and reattaching sends only the missing bytes. If a
   client fell too far behind, it gets a reset plus the terminal modes it needs
@@ -89,14 +92,16 @@ an address change is handled by the fast reconnect above instead, which
 takes about as long as the ping timeout. Newer quic-go (Go 1.24+) supports
 it.
 
-**Between machines** nothing changed: the hub reaches other machines with
-`gecko bridge` over SSH (TCP), and resumes every stream after a drop. The
-hub pings each link the same way every 2 seconds, shows the round trip on
+**Between machines** the transport is unchanged: the hub reaches other
+machines with `gecko bridge` over SSH (TCP), or through the relay for
+machines in the same account ([details](cloud.md)), and resumes every
+stream after a drop. The hub pings each link the same way every 2 seconds, shows the round trip on
 the machine in the sidebar, and redials a link that hasn't answered for 15
 seconds. A mosh-style UDP link between machines is a possible next step.
 
 Code map: `cmd/gecko` (CLI), `internal/session` (PTYs, inspection, agent
 status), `internal/hub` (federation, remote reconnect), `internal/server`
 (protocol, HTTP/WebSocket, WebTransport), `internal/vt`, `internal/inspect`,
-`internal/shellint`, `internal/tmux`, `web/` (client).
+`internal/shellint`, `internal/tmux`, `internal/cloud` (accounts, keys,
+Noise links), `internal/relay` (`gecko relay`), `web/` (client).
 
