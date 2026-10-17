@@ -32,6 +32,32 @@
   <img src="docs/img/hero.png" alt="Gecko in the Tokyo Night theme with workspaces on two machines, Claude Code working and Codex waiting for approval in the agent dock">
 </p>
 
+## What it does
+
+- **Sessions outlive everything.** A small daemon owns every shell and agent.
+  Close the window, lose Wi-Fi or upgrade Gecko, and tabs keep running and
+  resume from the last byte. The daemon starts at login.
+- **Agents at a glance.** Claude Code, Codex, Gemini, Aider and others are
+  recognised in a tab, inside tmux panes, and over ssh or mosh from their
+  terminal titles. The dock shows which are working and which need you.
+- **Every machine.** Add hosts by their SSH destination. Or turn on sticky
+  sessions: sign in to one account on each machine and they reach each other
+  through a relay you run, end-to-end encrypted, with no open ports.
+  See [Machines](docs/machines.md) and [Accounts and the relay](docs/cloud.md).
+- **Latency you can see.** The status line shows the round trip and the
+  transport (WebTransport over QUIC, or WebSocket), and each machine shows its
+  own hop. A dead connection is noticed in about 3 seconds and redialed at
+  once. See [Connection and transport](docs/architecture.md#connection-and-transport).
+- **[Android app](docs/android.md).** The full UI on phones, foldables and
+  tablets: terminal keys, touch scrolling and selection, notifications you can
+  answer when an agent needs you, a built-in ssh client, and a terminal on the
+  phone itself.
+
+Coming: an iOS app, more desktop packages (macOS dmg, AppImage, snap, Arch)
+and Termux integration.
+
+[All features](docs/features.md)
+
 ## Quick Start
 
 ```sh
