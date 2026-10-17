@@ -71,7 +71,7 @@ final class TerminalDemo: GeckoUITestCase {
         // One finger sideways moves the cursor.
         tapTerminal()
         app.typeText("echo sideways")
-        let x0 = int("cursorX")
+        let x0 = waitProbe("the line typed", timeout: 5) { ($0["screen"] as? String ?? "").contains("% echo sideways") }["cursorX"] as? Int ?? -1
         drag(from: terminalPoint(0.7, 0.5), to: terminalPoint(0.35, 0.5), hold: 0.02, velocity: .slow)
         waitProbe("the cursor moved left", timeout: 5) { ($0["cursorX"] as? Int ?? x0) < x0 }
         beat()

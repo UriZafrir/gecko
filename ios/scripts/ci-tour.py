@@ -50,12 +50,19 @@ def part(prefix, tmp, n, fontfile):
             t, _, text = line.rstrip("\n").partition("\t")
             if text:
                 chapters.append((max(0.0, float(t) - start), text))
-    end = duration(video)
+    # From just before the first caption (the Simulator's home screen
+    # before the app starts isn't worth watching).
+    skip = max(0.0, chapters[0][0] - 1.5) if chapters else 0.0
+    chapters = [(t - skip, text) for t, text in chapters]
+    end = duration(video) - skip
     w, h = size(video)
     turn = "pad" in os.path.basename(prefix) and h > w
     filters = []
     if turn:
+        # Upright, then the left part (the sidebar and the start of the
+        # terminal) larger, so it can be read on a phone.
         filters.append("transpose=2")
+        filters.append("crop=trunc(iw*0.68/2)*2:ih:0:0")
     area = H - BAR
     filters.append(f"scale={W}:{area}:force_original_aspect_ratio=decrease")
     filters.append(f"pad={W}:{H}:(ow-iw)/2:({area}-ih)/2:color={BG}")
@@ -70,7 +77,7 @@ def part(prefix, tmp, n, fontfile):
             f":x=(w-text_w)/2:y={area}+({BAR}-text_h)/2:enable='between(t,{t:.2f},{until:.2f})'"
         )
     out = os.path.join(tmp, f"part-{n}.mp4")
-    subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-i", video, "-an", "-r", "30", "-vf", ",".join(filters),
+    subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-ss", f"{skip:.2f}", "-i", video, "-an", "-r", "30", "-vf", ",".join(filters),
                     "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "veryfast", "-crf", "23", out], check=True)
     return out
 

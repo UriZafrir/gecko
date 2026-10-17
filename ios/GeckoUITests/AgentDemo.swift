@@ -10,6 +10,8 @@ final class AgentDemo: GeckoUITestCase {
         waitOnline()
         beat()
         tapTerminal()
+        key("ctrl-c").tap() // a clean line, whatever an earlier test left on it
+        beat(0.5)
         app.typeText("claude\n")
         waitProbe("the agent at work", timeout: 15) { ($0["agents"] as? [String] ?? []).contains("working") }
         key("hide-keyboard").tap()

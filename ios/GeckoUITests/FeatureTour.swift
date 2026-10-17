@@ -294,7 +294,8 @@ final class FeatureTour: GeckoUITestCase {
     }
 
     private func focusTab(host: String, name: String) -> String {
-        "(function(){var s=Array.from(gecko.sessions.values()).find(function(x){return x.host===\(quoted(host))&&x.name===\(quoted(name));});if(s)gecko.focusSession(s.id);})()"
+        // The newest of that name (the job opens them again for the tour).
+        "(function(){var s=Array.from(gecko.sessions.values()).filter(function(x){return x.host===\(quoted(host))&&x.name===\(quoted(name));}).sort(function(a,b){return (b.created||0)-(a.created||0);})[0];if(s)gecko.focusSession(s.id);})()"
     }
 
     /// Types into the open palette one letter at a time (so the video shows

@@ -39,6 +39,7 @@ print(" ".join(s["id"] for s in d if s.get("host") == "studio-mac"))'); do
   [ "${GECKO_REMOTE:-}" = ssh ] && { GECKO_HOME=$home "$g" host rm build-box > /dev/null 2>&1 || true; }
   sleep 1
   tabs "$g"
+  GECKO_HOME=$home "$g" ls
   exit 0
 fi
 
