@@ -118,7 +118,7 @@ jobs:
       - name: Source and binary package, offline
         run: |
           export DEBIAN_FRONTEND=noninteractive
-          apt-get update -qq && apt-get install -y -qq devscripts debhelper golang-go lintian fakeroot >/dev/null
+          apt-get update -qq && apt-get install -y -qq devscripts debhelper golang-1.24-go lintian fakeroot >/dev/null
           v=${{ needs.build.outputs.version }}
           mkdir build && cd build
           cp ../pkgs/gecko-$v-src.tar.gz gecko_$v.orig.tar.gz
@@ -200,7 +200,8 @@ jobs:
           cd work/gecko-bin
           # The release isn't on GitHub yet: build from the CI tarball.
           sed -i "s|^source_x86_64=.*|source_x86_64=(\"gecko-$v-linux-x86_64.tar.gz\")|" PKGBUILD
-          su builder -c 'makepkg --noconfirm'
+          # Runtime dependencies come with pacman -U below.
+          su builder -c 'makepkg --noconfirm --nodeps'
           diff <(su builder -c 'makepkg --printsrcinfo' | grep -v source_x86_64) <(grep -v source_x86_64 ../../packaging/arch/gecko-bin/.SRCINFO) && echo ".SRCINFO up to date"
           namcap ../../packaging/arch/gecko-bin/PKGBUILD | tee ../../out/namcap.txt
           namcap gecko-bin-*.pkg.tar.zst | tee -a ../../out/namcap.txt
@@ -250,7 +251,6 @@ jobs:
           sudo snap install snapcraft --classic
           mkdir -p out
           sudo packaging/snap/build.sh ${{ needs.build.outputs.version }} 2>&1 | tee out/snapcraft.txt
-          sudo snapcraft lint dist/packages/gecko_*.snap 2>&1 | tee out/snapcraft-lint.txt || true
           cp dist/packages/gecko_*.snap out/
       - name: Install and smoke test
         run: |

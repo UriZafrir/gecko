@@ -5,6 +5,9 @@
 # not built here; see docs/linux-packages.md.
 include /usr/share/dpkg/pkg-info.mk
 
+# Ubuntu 24.04's default Go is 1.22.2; go.mod wants 1.22.5. golang-1.24-go
+# is in noble-updates (and newer series, and Debian 13).
+export PATH := /usr/lib/go-1.24/bin:$(PATH)
 export CGO_ENABLED = 0
 export GOFLAGS = -mod=vendor -trimpath
 export GOPROXY = off

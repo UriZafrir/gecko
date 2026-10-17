@@ -111,8 +111,9 @@ serves other pages, put the apt repository in a subdirectory.
 
 Launchpad builds from a source package, without network. The orig tarball
 from `packaging/linux/source-tarball.sh` has the Go modules vendored and the
-web client already built, and `packaging/debian` builds `gecko` with Ubuntu's
-Go (24.04 and later have Go 1.22).
+web client already built, and `packaging/debian` builds `gecko` with
+`golang-1.24-go` (in Ubuntu 24.04's updates and later series; 24.04's default
+Go, 1.22.2, is older than go.mod's 1.22.5).
 
 The trade-off: the PPA carries only **gecko** (CLI and daemon). Electron
 can't be built on Launchpad (its build needs network and many hours), and
@@ -126,7 +127,7 @@ You need:
 1. A Launchpad account with your OpenPGP key registered and the Ubuntu Code of
    Conduct signed (Launchpad > your profile).
 2. A PPA, e.g. `ppa:<you>/gecko` (Launchpad > Create a new PPA).
-3. `devscripts`, `debhelper`, `golang-go` and `dput` on an Ubuntu machine.
+3. `devscripts`, `debhelper`, `golang-1.24-go` and `dput` on an Ubuntu machine.
 4. A license (above): PPAs are for free software.
 
 Publish (per Ubuntu series, here noble; repeat with `oracular` etc. and a

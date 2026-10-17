@@ -11,6 +11,7 @@ PORT=17697
 export GECKO_HOME=$(mktemp -d)/gecko-home
 mkdir -p "$GECKO_HOME" && chmod 700 "$GECKO_HOME"
 printf '{"listen":"127.0.0.1:%s","name":"smoke"}\n' $PORT >"$GECKO_HOME/config.json"
+echo '{"theme":"tokyo-night"}' >"$GECKO_HOME/settings.json" # screenshots use Tokyo Night
 fail=0
 log() { echo "[$(date +%T)] $*" | tee -a "$OUT/smoke.log"; }
 check() { if eval "$2"; then log "PASS $1"; else log "FAIL $1"; fail=1; fi; }

@@ -11,6 +11,7 @@ mkdir -p "$OUT" && OUT=$(cd "$OUT" && pwd)
 export GECKO_HOME=$RUNNER_TEMP/gecko-home DISPLAY=:99
 rm -rf "$GECKO_HOME" && mkdir -p "$GECKO_HOME" && chmod 700 "$GECKO_HOME"
 printf '{"listen":"127.0.0.1:%s","name":"appimage-ci"}\n' $PORT >"$GECKO_HOME/config.json"
+echo '{"theme":"tokyo-night"}' >"$GECKO_HOME/settings.json" # demos use Tokyo Night
 fail=0
 log() { echo "[$(date +%T)] $*" | tee -a "$OUT/smoke.log"; }
 check() { if eval "$2"; then log "PASS $1"; else log "FAIL $1"; fail=1; fi; }

@@ -13,6 +13,8 @@ $env:GECKO_HOME = Join-Path $env:RUNNER_TEMP "gecko-home"
 Remove-Item -Recurse -Force $env:GECKO_HOME -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $env:GECKO_HOME | Out-Null
 "{`"listen`":`"127.0.0.1:$Port`",`"name`":`"windows-ci`"}" | Set-Content -Encoding ascii "$env:GECKO_HOME\config.json"
+# Demos use the Tokyo Night theme.
+'{"theme":"tokyo-night"}' | Set-Content -Encoding ascii "$env:GECKO_HOME\settings.json"
 $script:fail = 0
 function Log($m) { $l = "[{0}] {1}" -f (Get-Date -Format HH:mm:ss), $m; Write-Host $l; Add-Content "$Out\smoke.log" $l }
 function Check($name, [scriptblock]$b) { if (& $b) { Log "PASS $name" } else { Log "FAIL $name"; $script:fail = 1 } }
