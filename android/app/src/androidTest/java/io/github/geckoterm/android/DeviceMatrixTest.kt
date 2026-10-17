@@ -13,6 +13,7 @@ import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
+import kotlin.math.abs
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -62,10 +63,34 @@ class DeviceMatrixTest {
                 val r = JSONObject().put("ok", shown).put("size", "WebView $webview")
                     .put("problems", if (shown) "" else "no update screen for WebView $webview")
                     .put("note", "WebView $webview is older than ${TerminalActivity.MIN_WEBVIEW}: Gecko shows how to update it")
-                results.put("01-old-webview", r)
+                results.put("01-old-webview", r.put("shape", "portrait"))
                 android.util.Log.i(TAG, "$name / old-webview: ${if (shown) "ok" else "PROBLEMS"} (WebView $webview)")
+                // And on its side: the screen rotates and still fits.
+                device.setOrientationLandscape()
+                val wm = ctx.getSystemService(android.view.WindowManager::class.java)
+                val dm = android.util.DisplayMetrics()
+                val until = System.currentTimeMillis() + 10_000
+                while (System.currentTimeMillis() < until) {
+                    @Suppress("DEPRECATION") wm.defaultDisplay.getRealMetrics(dm)
+                    if (dm.widthPixels > dm.heightPixels) break
+                    Thread.sleep(250)
+                }
+                Thread.sleep(1500)
+                val shot = File(out, "$name-02-old-webview.png")
+                device.takeScreenshot(shot)
+                val bm = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                android.graphics.BitmapFactory.decodeFile(shot.path, bm)
+                val wide = bm.outWidth > bm.outHeight
+                val shown2 = device.hasObject(androidx.test.uiautomator.By.text(ctx.getString(R.string.webview_update)))
+                val ok2 = wide && shown2
+                results.put("02-old-webview", JSONObject().put("ok", ok2).put("size", "WebView $webview").put("shape", if (wide) "landscape" else "portrait")
+                    .put("problems", listOfNotNull(if (wide) null else "the screenshot is portrait (${bm.outWidth}x${bm.outHeight})", if (shown2) null else "no update screen in landscape").joinToString("; ")))
+                android.util.Log.i(TAG, "$name / old-webview landscape: ${if (ok2) "ok" else "PROBLEMS"}")
+                device.setOrientationNatural()
+                device.unfreezeRotation()
                 File(out, "$name.json").writeText(results.toString(1))
                 assertEquals("update screen for WebView $webview", true, shown)
+                assertEquals("old WebView screen in landscape", true, ok2)
             }
             return
         }
@@ -97,9 +122,21 @@ class DeviceMatrixTest {
                         android.util.Log.i(TAG, "$name / $step: skipped ($applied)")
                         continue
                     }
-                    Thread.sleep(2500)
+                    Thread.sleep(1500)
+                    // Not before the window has its new shape and the page and
+                    // terminal have refitted to it: a shot taken mid-rotation
+                    // shows the old layout squeezed into the new frame.
+                    val shape = settle(step)
                     val problems = check(shell, step).toMutableList()
-                    device.takeScreenshot(File(out, "$name-$key.png"))
+                    problems += shape.problems
+                    val shot = File(out, "$name-$key.png")
+                    device.takeScreenshot(shot)
+                    // The picture itself, the whole display: landscape when the step says so.
+                    val bm = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    android.graphics.BitmapFactory.decodeFile(shot.path, bm)
+                    val shotShape = if (bm.outWidth > bm.outHeight) "landscape" else "portrait"
+                    if (step in SHAPES && shotShape != step) problems += "the screenshot is $shotShape (${bm.outWidth}x${bm.outHeight})"
+                    r.put("shape", shape.shape)
                     when (step) {
                         "keyboard" -> {
                             val seen = js("window.__seen||''").let { org.json.JSONTokener(it).nextValue() as String }
@@ -143,8 +180,7 @@ class DeviceMatrixTest {
     /** Puts the device in this shape; null when done, else why it can't. */
     private fun apply(step: String, states: Map<String, Int>): String? {
         when (step) {
-            "portrait" -> device.setOrientationPortrait()
-            "landscape" -> device.setOrientationLandscape()
+            "portrait", "landscape" -> turn(step == "landscape")
             "folded", "unfolded", "half" -> {
                 val id = states.entries.firstOrNull { (n, _) ->
                     !n.contains("REAR") && !n.contains("CONCURRENT") && when (step) {
@@ -187,16 +223,25 @@ class DeviceMatrixTest {
             "split-side", "split-top", "window" -> {
                 // A smaller window, as in split screen or a desktop window.
                 val tid = taskId() ?: return "no task id"
+                val wide = device.displayWidth > device.displayHeight
+                // 6: multi-window (split screen), 5: freeform (a desktop window).
+                val before = js("innerWidth+'x'+innerHeight")
+                sh("am start --windowingMode ${if (step == "window") 5 else 6} -n $PKG/.TerminalActivity")
+                Thread.sleep(1200)
+                // Relaunching the activity in a new windowing mode can let the
+                // display turn back to its natural orientation: keep the shape
+                // the previous step had, and size the window from it.
+                if ((device.displayWidth > device.displayHeight) != wide) {
+                    if (wide) device.setOrientationLandscape() else device.setOrientationPortrait()
+                    Thread.sleep(1500)
+                    if ((device.displayWidth > device.displayHeight) != wide) return "the display turned ${if (wide) "portrait" else "landscape"} on entering split screen"
+                }
                 val (w, h) = device.displayWidth to device.displayHeight
                 val bounds = when (step) {
                     "split-side" -> Rect(0, 0, w / 2, h)
                     "split-top" -> Rect(0, 0, w, h / 2)
                     else -> Rect(w / 8, h / 8, w * 7 / 8, h * 6 / 8)
                 }
-                // 6: multi-window (split screen), 5: freeform (a desktop window).
-                val before = js("innerWidth+'x'+innerHeight")
-                sh("am start --windowingMode ${if (step == "window") 5 else 6} -n $PKG/.TerminalActivity")
-                Thread.sleep(1200)
                 val res = sh("cmd activity task resize $tid ${bounds.left} ${bounds.top} ${bounds.right} ${bounds.bottom}")
                 if (res.contains("rror") || res.contains("nknown")) return "resize: $res"
                 Thread.sleep(1500)
@@ -208,6 +253,28 @@ class DeviceMatrixTest {
                 Thread.sleep(800)
                 sh("am start --windowingMode 1 -n $PKG/.TerminalActivity")
                 Thread.sleep(1500)
+                // Android 12 to 14 keep a task forced into split screen by am
+                // start in multi-window mode (the window full size, but the
+                // display then follows the portrait-only launcher behind and
+                // won't turn). Leaving split screen by hand doesn't do that;
+                // here the task is closed and the app opened again, in full
+                // screen, which reloads the page.
+                if (act().isInMultiWindowMode) {
+                    val tid = taskId()
+                    val was = recreated
+                    sh("am stack remove $tid")
+                    Thread.sleep(1500)
+                    sh("am start -n $PKG/.TerminalActivity")
+                    Thread.sleep(3000)
+                    act()
+                    waitFor("window.gecko&&gecko.conn.status==='online'&&gecko.firstSync===true&&gecko.activePane()&&screen().length>0", 60)
+                    Thread.sleep(1500)
+                    scrollTo("line 150 of the scrollback")
+                    note = "Android ${android.os.Build.VERSION.RELEASE} kept the task in multi-window mode after am start; opened it again in full screen" +
+                        if (recreated != was) "" else " (same activity)"
+                    if (act().isInMultiWindowMode) return "still in multi-window mode after opening it again"
+                }
+                dismissTips()
             }
             "mouse" -> {
                 // A mouse or trackpad: the wheel scrolls the scrollback, a click picks a tab.
@@ -223,9 +290,17 @@ class DeviceMatrixTest {
                 Thread.sleep(800)
                 mouseTab = js("gecko.activeId()") != shellId
                 js("gecko.focusSession($shellId)")
-                // The wheel's scrolling coasts a little: let it end, then back
-                // to the marker for the layout checks.
-                Thread.sleep(1500)
+                // The wheel's scrolling coasts a little: let it end (the
+                // position still for a while), then back to the marker for
+                // the layout checks.
+                var still = 0
+                var y = ""
+                val coastUntil = System.currentTimeMillis() + 6000
+                while (still < 3 && System.currentTimeMillis() < coastUntil) {
+                    Thread.sleep(250)
+                    val now = js("gecko.activePane().term.buffer.active.viewportY")
+                    if (now == y) still++ else { still = 0; y = now }
+                }
                 scrollTo("line 150 of the scrollback")
                 Thread.sleep(1000)
             }
@@ -245,12 +320,165 @@ class DeviceMatrixTest {
         return null
     }
 
+    private fun displayWide(): Boolean {
+        val dm = android.util.DisplayMetrics()
+        @Suppress("DEPRECATION") ctx.getSystemService(android.view.WindowManager::class.java).defaultDisplay.getRealMetrics(dm)
+        return dm.widthPixels > dm.heightPixels
+    }
+
+    /**
+     * Turns the display to this shape. UiAutomator freezes the rotation it
+     * asks for, but on Android 12 to 14, after the split-screen steps (a
+     * window forced into split screen with am start, then back to full
+     * screen), the display keeps following the launcher behind (portrait
+     * only) and ignores it. Then the rotation is locked through the window
+     * manager and, if needed, pinned to it over what apps ask for; the
+     * result says so.
+     */
+    private var fixed = false
+
+    /**
+     * The launcher's split-screen tip ("Drag in another app for split
+     * screen", Got it) that Android 14 shows after the split steps: a
+     * portrait-only window over ours, so while it's up the display won't
+     * turn. A person taps Got it; so does the test.
+     */
+    private fun dismissTips() {
+        val got = device.findObject(androidx.test.uiautomator.By.text(java.util.regex.Pattern.compile("(?i)got it"))) ?: return
+        if (got.applicationPackage == PKG) return
+        got.click()
+        Thread.sleep(800)
+        note = (if (note.isEmpty()) "" else "$note; ") + "tapped Got it on the launcher's split-screen tip"
+    }
+
+    private fun waitShape(landscape: Boolean, ms: Long): Boolean {
+        val end = System.currentTimeMillis() + ms
+        while (System.currentTimeMillis() < end) { if (displayWide() == landscape) return true; Thread.sleep(200) }
+        return false
+    }
+
+    private fun turn(landscape: Boolean) {
+        dismissTips()
+        if (landscape) device.setOrientationLandscape() else device.setOrientationPortrait()
+        val until = System.currentTimeMillis() + 4000
+        while (System.currentTimeMillis() < until) {
+            if (displayWide() == landscape) return
+            Thread.sleep(200)
+        }
+        dismissTips()
+        if (waitShape(landscape, 3000)) return
+        val diag = sh("dumpsys window displays").lines().map { it.trim() }
+            .filter { it.startsWith("mRotation") || it.contains("mUserRotation") || it.contains("FixedToUserRotation") || it.contains("mIgnoreOrientationRequest") }
+            .joinToString(" ").take(240)
+        @Suppress("DEPRECATION") val now = ctx.getSystemService(android.view.WindowManager::class.java).defaultDisplay.rotation
+        locked = true
+        // A quarter turn either way changes the shape. Asking again for the
+        // rotation already asked for changes nothing, so go through the
+        // current one first, then each quarter turn, then pin it to the
+        // user rotation (ignoring what apps ask for).
+        val tried = mutableListOf<String>()
+        fun lock(r: Int) {
+            if (android.os.Build.VERSION.SDK_INT >= 34) sh("wm user-rotation lock $r")
+            else { sh("settings put system accelerometer_rotation 0"); sh("settings put system user_rotation $r") }
+        }
+        fun waitWide(ms: Long): Boolean {
+            val end = System.currentTimeMillis() + ms
+            while (System.currentTimeMillis() < end) { if (displayWide() == landscape) return true; Thread.sleep(200) }
+            return false
+        }
+        for (r in listOf((now + 1) % 4, (now + 3) % 4)) {
+            lock(now); Thread.sleep(400); lock(r); tried += "rotation $r"
+            if (waitWide(3000)) break
+        }
+        if (displayWide() != landscape && android.os.Build.VERSION.SDK_INT >= 29) {
+            sh("wm fixed-to-user-rotation enabled"); fixed = true; tried += "fixed to the user rotation"
+            waitWide(3000)
+        }
+        val rot = tried.joinToString(", then ")
+        note = "UiAutomator's rotation didn't take ($diag); tried $rot through the window manager: ${if (displayWide() == landscape) "that took" else "still not turned"}"
+    }
+
     private fun restore(states: Map<String, Int>) {
         try { device.unfreezeRotation() } catch (_: Exception) {}
+        if (fixed) sh("wm fixed-to-user-rotation default")
+        if (locked) { if (android.os.Build.VERSION.SDK_INT >= 34) sh("wm user-rotation free") else sh("settings put system accelerometer_rotation 1") }
         sh("settings put system font_scale 1.0")
         sh("cmd uimode night no")
         sh("settings put global debug.force_rtl 0")
         if (states.isNotEmpty()) sh("cmd device_state state reset")
+    }
+
+    private class Shape(val shape: String, val problems: List<String>)
+
+    /**
+     * Waits (up to 15 s) until the window has the shape this step asks for
+     * (portrait or landscape, from the real window size, not the rotation
+     * asked for: a device whose natural orientation is landscape turns the
+     * other way), the page fills the web view, the web view fills the window
+     * but for the system bars and cutouts, and the terminal has refitted:
+     * the same sizes twice in a row. Then says what still isn't so.
+     */
+    private fun settle(step: String): Shape {
+        val until = System.currentTimeMillis() + 15_000
+        var last = ""
+        var stable = 0
+        var p: List<String> = emptyList()
+        var shape = ""
+        while (System.currentTimeMillis() < until) {
+            val m = measure()
+            shape = if (m.winW > m.winH) "landscape" else "portrait"
+            p = buildList {
+                if (step in SHAPES && shape != step) add("the window is $shape (${m.winW}x${m.winH} px) after asking for $step")
+                if (step in SHAPES && (m.pageW > m.pageH) != (step == "landscape")) add("the page is ${m.pageW}x${m.pageH} css px, not $step")
+                if (step in SHAPES && (m.dispW > m.dispH) != (step == "landscape")) add("the display is ${m.dispW}x${m.dispH} px, not $step")
+                // Squeezed: the page drawn at an old (portrait) width inside a landscape web view, or the reverse.
+                if (abs(m.pageW * m.dpr - m.webW) > 2 * m.dpr + 1 || abs(m.pageH * m.dpr - m.webH) > 2 * m.dpr + 1)
+                    add("the page (${m.pageW}x${m.pageH} css px at ${m.dpr}x) doesn't fill the web view (${m.webW}x${m.webH} px)")
+                // Letterboxed: the web view narrower than the window, beyond the bars and cutouts.
+                if (abs(m.webW + m.padL + m.padR - m.winW) > 2) add("the web view (${m.webW} px + insets ${m.padL}/${m.padR}) doesn't fill the window's width (${m.winW} px)")
+                // The window short of the display while it isn't split or windowed.
+                if (!m.multi && (abs(m.winW - m.dispW) > 2 || abs(m.winH - m.dispH) > 2)) add("the window (${m.winW}x${m.winH}) is letterboxed on the display (${m.dispW}x${m.dispH})")
+                // The terminal refitted to its pane: no more than two cells to spare across.
+                if (m.spareCols > 3.5) add("the terminal leaves ${"%.1f".format(m.spareCols)} columns of its pane empty (not refitted)")
+            }
+            val key = "${m.winW}x${m.winH} ${m.pageW}x${m.pageH} ${m.cols}x${m.rows} ${p.size}"
+            if (key == last) { if (++stable >= 2 && p.isEmpty()) break } else stable = 0
+            last = key
+            Thread.sleep(300)
+        }
+        Thread.sleep(400)
+        return Shape(shape, p)
+    }
+
+    private class Measure(
+        val dispW: Int, val dispH: Int, val winW: Int, val winH: Int, val webW: Int, val webH: Int,
+        val padL: Int, val padR: Int, val multi: Boolean,
+        val pageW: Double, val pageH: Double, val dpr: Double, val cols: Int, val rows: Int, val spareCols: Double,
+    )
+
+    private fun measure(): Measure {
+        val a = act()
+        val o = JSONObject(org.json.JSONTokener(js("""(()=>{const p=gecko.activePane(),t=p.term,pr=p.el.getBoundingClientRect(),
+            s=t.element.querySelector('.xterm-screen').getBoundingClientRect();
+            return JSON.stringify({w:innerWidth,h:innerHeight,dpr:devicePixelRatio,cols:t.cols,rows:t.rows,spare:(pr.width-s.width)/(s.width/t.cols)})})()""")).nextValue() as String)
+        val n = IntArray(9)
+        var multi = false
+        val latch = CountDownLatch(1)
+        a.runOnUiThread {
+            try {
+                val dm = android.util.DisplayMetrics()
+                @Suppress("DEPRECATION") a.windowManager.defaultDisplay.getRealMetrics(dm)
+                val root = a.findViewById<android.view.View>(R.id.root)
+                n[0] = dm.widthPixels; n[1] = dm.heightPixels
+                n[2] = a.window.decorView.width; n[3] = a.window.decorView.height
+                n[4] = a.web.width; n[5] = a.web.height
+                n[6] = root.paddingLeft; n[7] = root.paddingRight
+                multi = a.isInMultiWindowMode
+            } finally { latch.countDown() }
+        }
+        latch.await(5, TimeUnit.SECONDS)
+        return Measure(n[0], n[1], n[2], n[3], n[4], n[5], n[6], n[7], multi,
+            o.getDouble("w"), o.getDouble("h"), o.getDouble("dpr"), o.getInt("cols"), o.getInt("rows"), o.getDouble("spare"))
     }
 
     /** What's wrong with the layout now. */
@@ -350,6 +578,7 @@ class DeviceMatrixTest {
         return x!!
     }
     private var recreated = 0
+    private var locked = false
     private var note = ""
     private var mouseBefore = ""
     private var mouseAfter = ""
@@ -379,5 +608,7 @@ class DeviceMatrixTest {
     companion object {
         const val TAG = "DeviceMatrix"
         const val PKG = "io.github.geckoterm.android"
+        /** Steps that ask for a shape: the window, page and screenshot must have it. */
+        val SHAPES = setOf("portrait", "landscape")
     }
 }

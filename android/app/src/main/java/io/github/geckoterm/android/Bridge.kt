@@ -74,6 +74,10 @@ class Bridge(private val activity: TerminalActivity) {
         return true
     }
 
+    /** Whether the page is this phone's own Gecko (not a computer's). */
+    @JavascriptInterface
+    fun onThisPhone(): Boolean = trusted() && activity.onThisPhone
+
     /** Whether this UI is the one shipped in the app (see BundledUi). */
     @JavascriptInterface
     fun bundled(): Boolean = trusted() && activity.bundled.available
