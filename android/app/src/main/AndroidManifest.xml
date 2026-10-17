@@ -10,6 +10,12 @@
     <!-- Asked only after the user turns on background notifications. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <!-- Gecko in Termux: start gecko there with Termux's RUN_COMMAND (asked at runtime). -->
+    <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
+
+    <queries>
+        <package android:name="com.termux" />
+    </queries>
 
     <!-- Tokens are sealed with a Keystore key that a backup can't carry. -->
     <application
@@ -52,8 +58,18 @@
             android:screenOrientation="fullSensor"
             tools:replace="screenOrientation" />
 
+        <activity
+            android:name=".TermuxActivity"
+            android:exported="false"
+            android:launchMode="singleTop" />
+
         <receiver
             android:name=".AnswerReceiver"
+            android:exported="false" />
+
+        <!-- Termux's answers to commands (through a PendingIntent of ours). -->
+        <receiver
+            android:name=".Termux$ResultReceiver"
             android:exported="false" />
 
         <service

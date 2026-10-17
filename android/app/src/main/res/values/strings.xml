@@ -115,4 +115,57 @@
     <string name="keepalive_menu">Background notifications</string>
     <string name="webview_old">This phone\'s Android System WebView is version %1$s. Gecko needs version 111 or newer (Android keeps it up to date from the Play Store).</string>
     <string name="webview_update">Update WebView</string>
+
+    <!-- Gecko in Termux (TermuxActivity) -->
+    <string name="termux">Termux</string>
+    <string name="termux_row_idle">Gecko in Termux, with its packages. Tap to start.</string>
+    <string name="termux_row_running">Running in Termux · %1$s</string>
+    <string name="termux_menu">Use Termux</string>
+    <string name="termux_stop">Stop Gecko in Termux</string>
+    <string name="termux_open">Open Termux</string>
+    <string name="termux_setup">Setup steps</string>
+    <string name="termux_stopped">Gecko in Termux stopped.</string>
+    <string name="termux_command_description">Started by the Gecko app</string>
+    <string name="termux_step">Step %1$d of 3</string>
+    <string name="termux_checking">Checking Termux…</string>
+    <string name="termux_starting">Starting Gecko in Termux…</string>
+    <string name="termux_opening">Opening Gecko in Termux…</string>
+    <string name="termux_starting_text">Gecko runs in Termux as a background task (Termux\'s notification counts it). It keeps running while you use other apps; stop it from the ⋮ menu next to Termux.</string>
+
+    <string name="termux_missing_title">Install Termux</string>
+    <string name="termux_missing_text">Termux is a Linux environment for Android with its own packages: git, tmux, Node, Python, Go, ssh and more. Gecko runs inside it and opens it here like any machine: tabs, agents, notifications and the extra keys all work.\n\nGet Termux from F-Droid or from its GitHub releases, then come back.</string>
+    <string name="termux_play_warning">The Termux on Google Play is a separate build, made differently from the F-Droid and GitHub ones, and Gecko\'s Linux build may not start there; Gecko is tested with those. Termux builds from different places can\'t be mixed: their add-ons have to come from the same place.</string>
+    <string name="termux_fdroid">F-Droid</string>
+    <string name="termux_github">GitHub releases</string>
+
+    <string name="termux_permission_title">Let Gecko start commands in Termux</string>
+    <string name="termux_permission_text">Gecko starts and stops its daemon in Termux, and asks it for its link, with Termux\'s permission \"Run commands in Termux environment\". Android asks you once.\n\nIt can run any command in Termux, as Termux. Gecko uses it only for gecko itself.</string>
+    <string name="termux_allow">Allow</string>
+    <string name="termux_blocked_title">Allow it in the app\'s settings</string>
+    <string name="termux_blocked_text">Android won\'t ask again. In Gecko\'s app info, open Permissions, then the additional permissions, and allow \"Run commands in Termux environment\".</string>
+    <string name="termux_app_settings">App settings</string>
+
+    <string name="termux_external_title">Allow apps in Termux, and install Gecko</string>
+    <string name="termux_external_text">Termux takes commands from other apps only when you allow it. Open Termux and run this line: it installs Gecko there (or updates it) and allows the Gecko app.</string>
+    <string name="termux_external_manual">Or by hand: add this line to ~/.termux/termux.properties, then run termux-reload-settings:</string>
+    <string name="termux_copy_open">Copy, open Termux</string>
+    <string name="termux_check_again">Check again</string>
+    <string name="termux_copied">Copied. In Termux, long-press and Paste, then Enter.</string>
+
+    <string name="termux_firstrun_title">Open Termux once</string>
+    <string name="termux_firstrun_text">Termux sets itself up the first time it opens. Open it, wait for its prompt, then come back here.</string>
+    <string name="termux_noanswer_title">Termux didn\'t answer</string>
+    <string name="termux_noanswer_text">Open Termux once, so Android lets it run, then try again. If it still doesn\'t answer, make sure Android doesn\'t restrict Termux\'s battery use.</string>
+
+    <string name="termux_gecko_missing_title">Install Gecko in Termux</string>
+    <string name="termux_gecko_missing_text">Termux works. Gecko isn\'t installed in it yet: this line installs it (no root needed). Run it in a Termux session, or let the app send it there.</string>
+    <string name="termux_install">Install in Termux</string>
+    <string name="termux_copy">Copy</string>
+    <string name="termux_installing_title">Installing Gecko in Termux</string>
+    <string name="termux_installing_text">The installer runs in a Termux session. When it says installed, come back here.</string>
+
+    <string name="termux_ready_title">Gecko is installed in Termux</string>
+    <string name="termux_start">Start</string>
+    <string name="termux_failed_title">Gecko didn\'t start in Termux</string>
+    <string name="termux_failed_log">Its log is in Termux, at ~/.gecko-terminal/state/daemon.log.</string>
 </resources>
