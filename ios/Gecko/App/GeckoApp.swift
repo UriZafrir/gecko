@@ -61,9 +61,10 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         if action.hasPrefix(Notifier.answerPrefix) {
             let key = String(action.dropFirst(Notifier.answerPrefix.count))
             let store = AppModel.makeStore()
-            guard let m = store.get(machineId), !m.token.isEmpty, !session.isEmpty else { return completionHandler() }
+            guard let m = store.get(machineId), !m.token.isEmpty, !session.isEmpty else { return DispatchQueue.main.async { completionHandler() } }
             Notifier.cancel(machineId: machineId, sessionId: session)
-            Answer.send(machine: m, sessionId: session, key: key) { completionHandler() }
+            // The system's handler must be called on the main thread (iOS 18 ends the app otherwise).
+            Answer.send(machine: m, sessionId: session, key: key) { DispatchQueue.main.async { completionHandler() } }
             return
         }
         if action == UNNotificationDefaultActionIdentifier {

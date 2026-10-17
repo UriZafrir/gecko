@@ -67,6 +67,8 @@ final class TerminalViewController: UIViewController, WKNavigationDelegate, WKUI
         // The page is the size of the view and scrolls its own terminals.
         web.scrollView.isScrollEnabled = false
         web.scrollView.bounces = false
+        // Pinch is the page's (the font size): the scroll view's own zoom would take the touches.
+        web.scrollView.pinchGestureRecognizer?.isEnabled = false
         web.scrollView.contentInsetAdjustmentBehavior = .never
         if #available(iOS 16.4, *) { web.isInspectable = true }
         web.accessibilityIdentifier = "terminal-web"
@@ -362,6 +364,7 @@ final class TerminalViewController: UIViewController, WKNavigationDelegate, WKUI
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         pageLoaded = true
         webView.hideInputAccessoryBar()
+        webView.scrollView.pinchGestureRecognizer?.isEnabled = false
         if let s = pendingSession {
             pendingSession = nil
             focus(session: s)

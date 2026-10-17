@@ -38,7 +38,7 @@ final class DevicesTour: GeckoUITestCase {
         // The keyboard, with the extra keys right on top of it.
         terminalPoint().tap()
         beat()
-        app.typeText("echo tour-$((40+2)) && ls -l /usr/bin | head -60\n")
+        app.typeText("ls -l /usr/bin | head -60; echo tour-$((40+2))\n")
         p = waitProbe("the command ran", timeout: 15) { ($0["screen"] as? String ?? "").contains("tour-42") }
         let id = p["active"] as? String ?? ""
         beat()
@@ -102,7 +102,7 @@ final class DevicesTour: GeckoUITestCase {
             beat(2)
             // Pick another app for the other side (Settings, on the home screen).
             let other = springboard.icons["Settings"]
-            if other.waitForExistence(timeout: 4) { other.tap() }
+            if other.waitForExistence(timeout: 4) && other.isHittable { other.tap() }
             beat(2.5)
             let p = probe()
             shot("07-split-view")

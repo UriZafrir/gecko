@@ -5,6 +5,7 @@
 # <out>/shots. Usage: ci-uitest.sh <xctestrun> <Class> <video> <out> [shot prefix]
 set -u
 xctestrun=$1 class=$2 video=$3 out=$4 prefix=${5:-}
+mkdir -p "$out" && out=$(cd "$out" && pwd)
 tag=$(echo "$class" | tr / -)$prefix
 mkdir -p "$out/shots" "$out/results"
 if [ "$video" != - ]; then

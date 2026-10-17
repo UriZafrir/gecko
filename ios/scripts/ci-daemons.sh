@@ -2,7 +2,8 @@
 # Starts the Gecko daemons the UI tests talk to, on this Mac (the Simulator
 # shares its network): this branch's gecko on 127.0.0.1:7681 and an older
 # one (protocol 6, from main) on 127.0.0.1:7682, each with its own GECKO_HOME
-# and token, a few tabs, and a stand-in for Claude Code on the PATH.
+# and token, a few tabs, the Tokyo Night theme, and a stand-in for Claude
+# Code on the PATH.
 # Usage: ci-daemons.sh <gecko> <older gecko> <out dir>; writes GECKO_LINK
 # and GECKO_OLD_LINK to $GITHUB_ENV.
 set -eu
@@ -19,6 +20,9 @@ export PATH="$tmp/fakebin:$PATH" SHELL=/bin/zsh GECKO_FAKE_WORK=14 BASH_SILENCE_
 touch "$HOME/.zshrc"
 
 start() { # bin home port log
+  # Every demo and screenshot in Tokyo Night (the web UI's settings, synced to each window).
+  mkdir -p "$2"
+  printf '{"theme":"tokyo-night"}\n' > "$2/settings.json"
   GECKO_HOME=$2 nohup "$1" daemon --listen "127.0.0.1:$3" > "$4" 2>&1 < /dev/null &
   i=0
   until [ -s "$2/token" ] && curl -fsS -H "Authorization: Bearer $(cat "$2/token")" "http://127.0.0.1:$3/api/info" > /dev/null 2>&1; do

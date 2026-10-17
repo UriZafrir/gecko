@@ -128,18 +128,7 @@ jobs:
         run: ios/scripts/ci-simulator.sh "${{ matrix.device }}"
       - name: Gecko daemons
         run: ios/scripts/ci-daemons.sh products/gecko products/gecko-old out
-      - name: Demo videos (01 connect, 02 terminal, 03 agent) and an older Gecko
-        if: matrix.demos
-        run: |
-          x=$(ls products/*.xctestrun | head -1)
-          s=0
-          ios/scripts/ci-uitest.sh "$x" ConnectDemo 01-connect out || s=1
-          ios/scripts/ci-uitest.sh "$x" TerminalDemo 02-terminal out || s=1
-          ios/scripts/ci-uitest.sh "$x" AgentDemo 03-agent out || s=1
-          ios/scripts/ci-uitest.sh "$x" OlderMachineTest - out || s=1
-          exit $s
       - name: Device tour (light, then dark with the largest text)
-        if: always()
         run: |
           x=$(ls products/*.xctestrun | head -1)
           s=0
@@ -149,8 +138,20 @@ jobs:
           ios/scripts/ci-uitest.sh "$x" DevicesTour/testTour - out dark-large- || s=1
           xcrun simctl ui "$SIM_ID" appearance light
           xcrun simctl ui "$SIM_ID" content_size large
-          ios/scripts/ci-uitest.sh "$x" DevicesTour/testSplitView - out || s=1
           exit $s
+      - name: Demo videos (01 connect, 02 terminal, 03 agent) and an older Gecko
+        if: always() && matrix.demos
+        run: |
+          x=$(ls products/*.xctestrun | head -1)
+          s=0
+          ios/scripts/ci-uitest.sh "$x" ConnectDemo 01-connect out || s=1
+          ios/scripts/ci-uitest.sh "$x" TerminalDemo 02-terminal out || s=1
+          ios/scripts/ci-uitest.sh "$x" AgentDemo 03-agent out || s=1
+          ios/scripts/ci-uitest.sh "$x" OlderMachineTest - out || s=1
+          exit $s
+      - name: Split View (iPad)
+        if: always() && contains(matrix.device, 'iPad')
+        run: ios/scripts/ci-uitest.sh "$(ls products/*.xctestrun | head -1)" DevicesTour/testSplitView - out
       - name: Collect
         if: always()
         run: |
