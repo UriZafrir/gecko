@@ -131,6 +131,7 @@ class GeckoUITestCase: XCTestCase {
         c.scheme = "gecko-uitest"
         c.host = "js"
         c.queryItems = [URLQueryItem(name: "c", value: script)]
+        guard #available(iOS 16.4, *) else { return XCTFail("the tour needs iOS 16.4 or newer") }
         app.open(c.url!)
         let open = springboard.buttons["Open"]
         if open.waitForExistence(timeout: 0.6) { open.tap() }
