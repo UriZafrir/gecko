@@ -10,6 +10,8 @@ data class AgentEvent(
     val needsInput: Boolean,
     /** The answers on screen: key to press ("1", "y", "enter") and what it says. */
     val choices: List<Pair<String, String>> = emptyList(),
+    /** The machine the tab runs on (as that Gecko names it). */
+    val host: String = "",
 )
 
 /**
@@ -24,10 +26,38 @@ class AgentWatch {
     /** Sessions whose notification should go away (the agent moved on, or the tab closed). */
     val resolved = ArrayList<String>()
 
+    /** The Gecko's own name (its hello) and the machines it reaches, connected ones (its state). */
+    var self = ""
+        private set
+    var connected: List<String> = emptyList()
+        private set
+
+    /** Whether the last message changed [self] or [connected]. */
+    var hostsChanged = false
+        private set
+
     fun onMessage(text: String): List<AgentEvent> {
         resolved.clear()
+        hostsChanged = false
         val m = try { JSONObject(text) } catch (e: Exception) { return emptyList() }
         return when (m.optString("t")) {
+            "hello" -> {
+                val h = m.optString("host")
+                hostsChanged = h != self
+                self = h
+                emptyList()
+            }
+            "state" -> {
+                val arr = m.optJSONArray("hosts")
+                val now = ArrayList<String>()
+                if (arr != null) for (i in 0 until arr.length()) {
+                    val h = arr.optJSONObject(i) ?: continue
+                    if (h.optString("status") == "connected" || h.optBoolean("local")) now += h.optString("name")
+                }
+                hostsChanged = now != connected
+                connected = now
+                emptyList()
+            }
             "sessions" -> {
                 val arr = m.optJSONArray("sessions")
                 val host = m.optString("host")
@@ -80,7 +110,7 @@ class AgentWatch {
                 if (key.isNotEmpty()) choices += key to c.optString("label").ifEmpty { key }
             }
         }
-        return listOf(AgentEvent(id, title, agent.optString("detail"), !finished, if (finished) emptyList() else choices))
+        return listOf(AgentEvent(id, title, agent.optString("detail"), !finished, if (finished) emptyList() else choices, s.optString("host")))
     }
 
     companion object {

@@ -56,12 +56,7 @@
     <string name="channel_agents_desc">A coding agent in a Gecko tab is waiting for your answer, or finished.</string>
     <string name="channel_service">Background connection</string>
     <string name="channel_service_desc">Shown while Gecko stays connected to notify you.</string>
-    <string name="service_title">Gecko is watching your agents</string>
-    <plurals name="service_text">
-        <item quantity="one">Connected to %d machine. You\'ll be notified when an agent needs you.</item>
-        <item quantity="other">Connected to %d machines. You\'ll be notified when an agent needs you.</item>
-    </plurals>
-    <string name="service_stop">Stop</string>
+    <string name="service_stop">Stop watching</string>
     <string name="notify_on">Gecko will notify you when an agent needs you.</string>
     <string name="notify_blocked">Notifications are off for Gecko. Turn them on in Android\'s settings.</string>
     <string name="background_on">Gecko stays connected in the background and notifies you when an agent needs you.</string>
@@ -71,8 +66,11 @@
     <string name="background_no">Only while open</string>
 
     <string name="this_phone">This phone</string>
+    <string name="this_phone_lower">this phone</string>
     <string name="phone_tap_to_start">A terminal on this phone. Tap to start it.</string>
     <string name="phone_running">Running on this phone</string>
+    <string name="note_phone_running">Gecko running on this phone</string>
+    <string name="note_phone_shared">Gecko running on this phone, open to other devices</string>
     <string name="phone_running_shared">Running on this phone, open to other devices</string>
     <string name="phone_starting">Starting…</string>
     <string name="phone_failed">Gecko couldn\'t start on this phone. Its log is in the app\'s files (gecko/state/daemon.log).</string>

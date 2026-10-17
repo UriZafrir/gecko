@@ -72,4 +72,16 @@ class AgentWatchTest {
         assertEquals("\r", Wire.keyText("enter"))
         assertEquals("y", Wire.keyText("y"))
     }
+
+    @Test fun hostsItReaches() {
+        val w = AgentWatch()
+        w.onMessage("""{"t":"hello","host":"pixel"}""")
+        assertEquals("pixel", w.self)
+        assertTrue(w.hostsChanged)
+        w.onMessage("""{"t":"state","hosts":[{"name":"pixel","local":true,"status":"connected"},{"name":"ubunty","status":"connected"},{"name":"nas","status":"connecting"}]}""")
+        assertEquals(listOf("pixel", "ubunty"), w.connected)
+        assertTrue(w.hostsChanged)
+        w.onMessage("""{"t":"state","hosts":[{"name":"pixel","local":true,"status":"connected"},{"name":"ubunty","status":"connected"}]}""")
+        assertTrue(!w.hostsChanged)
+    }
 }

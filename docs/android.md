@@ -248,9 +248,11 @@ Android stops the network of apps that aren't on screen (Android 15 cuts it
 off as soon as the app is in the background). So notifications while the app
 is closed need **Notify in background** (in the **⋮** menu of the extra keys
 or of the machine list): a foreground service keeps one small connection to
-each saved machine, which reads only the list of tabs and their agents' state,
-and shows a silent "Gecko is watching your agents" notification with a
-**Stop** button. Without it you are notified only while Gecko is open, and
+each saved machine, and to Gecko on this phone while it runs (so the machines
+added there are watched too), which reads only the list of tabs and their
+agents' state. Its silent notification says what it reaches right now
+("Watching agents on ubunty", "on 2 machines", or "Not connected, retrying"),
+with a second line while Gecko runs on this phone, and **Stop watching**. Without it you are notified only while Gecko is open, and
 see what you missed in the agent dock when you come back.
 
 ## Limits

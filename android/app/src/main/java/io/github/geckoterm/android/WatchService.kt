@@ -22,8 +22,10 @@ import java.util.concurrent.TimeUnit
 
 /**
  * "Notify in background": a foreground service that keeps one small
- * connection to each saved machine and posts a notification when an agent
- * there needs input. It only reads the tab list, never terminal output.
+ * connection to each saved machine, and to Gecko on this phone while it
+ * runs (which reaches the machines added there), and posts a notification
+ * when an agent needs input. It only reads the tab list, never terminal
+ * output. Its ongoing notification (StatusNote) says what it watches.
  */
 class WatchService : Service() {
     private val main = Handler(Looper.getMainLooper())
@@ -42,10 +44,18 @@ class WatchService : Service() {
             return START_NOT_STICKY
         }
         Notifier.channels(this)
-        val machines = Gecko.machines(this).list().filter { it.token.isNotEmpty() }
+        instance = this
+        if (StatusNote.watch == null) StatusNote.watch = StatusNote.Watch(emptyList(), 0)
         val type = if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0
-        ServiceCompat.startForeground(this, 1, status(machines.size), type)
-        // Follow the saved machines: new ones join, removed ones stop.
+        ServiceCompat.startForeground(this, StatusNote.ID, StatusNote.build(this), type)
+        sync()
+        return START_STICKY
+    }
+
+    /** Follows the saved machines and this phone's Gecko: new ones join, removed ones stop. */
+    fun sync() {
+        val machines = Gecko.machines(this).list().filter { it.token.isNotEmpty() } +
+            listOfNotNull(if (StatusNote.phone != null) LocalGecko.machine(this) else null)
         val want = machines.associateBy { it.id }
         for (id in watchers.keys - want.keys) watchers.remove(id)?.stop()
         for ((id, m) in want) {
@@ -55,29 +65,24 @@ class WatchService : Service() {
                 watchers[id] = Watcher(m).also { it.start() }
             }
         }
-        return START_STICKY
+        show()
+    }
+
+    /** What is watched now, in the notification. */
+    private fun show() {
+        val names = watchers.values.flatMap { it.names() }
+        StatusNote.watch = StatusNote.Watch(names, watchers.size)
+        StatusNote.post(this)
     }
 
     override fun onDestroy() {
+        if (instance === this) instance = null
         for (w in watchers.values) w.stop()
         watchers.clear()
         main.removeCallbacksAndMessages(null)
+        StatusNote.watch = null
+        StatusNote.repostSoon(this) // this phone's Gecko alone, if it runs
         super.onDestroy()
-    }
-
-    private fun status(n: Int): android.app.Notification {
-        val open = PendingIntent.getActivity(this, 0, Intent(this, TerminalActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
-        val stop = PendingIntent.getService(this, 1, Intent(this, WatchService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE)
-        return NotificationCompat.Builder(this, Notifier.SERVICE)
-            .setSmallIcon(R.drawable.ic_notify)
-            .setContentTitle(getString(R.string.service_title))
-            .setContentText(resources.getQuantityString(R.plurals.service_text, n, n))
-            .setOngoing(true)
-            .setContentIntent(open)
-            .addAction(0, getString(R.string.service_stop), stop)
-            .setPriority(NotificationCompat.PRIORITY_MIN)
-            .setGroup(Notifier.SERVICE)
-            .build()
     }
 
     private inner class Watcher(val machine: Machine) {
@@ -85,6 +90,18 @@ class WatchService : Service() {
         private var stopped = false
         private var backoff = 1000L
         private val watch = AgentWatch()
+        @Volatile private var open = false
+
+        /** The machines this connection reaches now (none while it is down). */
+        fun names(): List<String> {
+            if (!open) return emptyList()
+            val me = if (machine.id == LocalGecko.ID) getString(R.string.this_phone_lower) else machine.name
+            val hosts = watch.connected.ifEmpty { listOf(watch.self) }
+            return hosts.map { if (it == watch.self || it.isEmpty()) me else it }
+        }
+
+        /** The Gecko's own name, once connected. */
+        val self: String get() = if (open) watch.self else ""
 
         fun start() {
             if (stopped) return
@@ -104,11 +121,13 @@ class WatchService : Service() {
 
         fun stop() {
             stopped = true
+            open = false
             ws?.close(1000, null)
             ws = null
         }
 
         private fun retry() {
+            if (open) { open = false; main.post { if (!stopped) show() } }
             if (stopped) return
             main.postDelayed({ start() }, backoff)
             backoff = (backoff * 2).coerceAtMost(60_000)
@@ -117,13 +136,22 @@ class WatchService : Service() {
         private val listener = object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 backoff = 1000
+                open = true
+                main.post { if (!stopped) show() }
                 webSocket.send("""{"t":"hello","client":"android"}""")
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
-                val events = watch.onMessage(text)
+                val all = watch.onMessage(text)
                 val gone = watch.resolved.toList()
+                val changed = watch.hostsChanged
                 main.post {
+                    if (stopped) return@post
+                    if (changed) show()
+                    // Through this phone's Gecko, tabs of a machine also watched
+                    // directly are that connection's to tell about.
+                    val direct = if (machine.id == LocalGecko.ID) watchers.values.filter { it !== this@Watcher }.map { it.self }.toSet() else emptySet()
+                    val events = all.filter { it.host.isEmpty() || it.host !in direct }
                     for (id in gone) Notifier.cancel(this@WatchService, machine.id, id)
                     // The app in front, on this machine: the web UI shows it itself.
                     if (Gecko.foregroundMachine == machine.id) return@post
@@ -142,6 +170,9 @@ class WatchService : Service() {
 
     companion object {
         private const val TAG = "GeckoWatch"
+
+        /** The running service, to follow this phone's Gecko starting and stopping. */
+        @Volatile var instance: WatchService? = null
         const val ACTION_STOP = "stop"
 
         fun start(ctx: Context) {
