@@ -143,6 +143,17 @@ function daemonURL(gecko) {
   });
 }
 
+// The theme in GECKO_HOME/settings.json, so a window whose browser profile
+// has none cached yet (the first launch) paints it from the start.
+function savedTheme() {
+  try {
+    const t = JSON.parse(fs.readFileSync(path.join(geckoHome(), 'settings.json'), 'utf8')).theme;
+    return typeof t === 'string' && /^[\w-]+$/.test(t) ? t : '';
+  } catch {
+    return '';
+  }
+}
+
 // Where the last fitted window ended up (as `gecko open` does).
 function savedWindow() {
   try {
@@ -232,6 +243,7 @@ function createWindow() {
       sandbox: true,
       spellcheck: false,
       autoplayPolicy: 'no-user-gesture-required', // the startup chime
+      additionalArguments: savedTheme() ? [`--gecko-theme=${savedTheme()}`] : [],
     },
   });
   // Show the window once the page has painted its theme (the preload says
