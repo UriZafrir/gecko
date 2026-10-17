@@ -18,7 +18,9 @@
   agent.
 - **Agent-aware.** Gecko recognises Claude Code, Codex, Gemini, Aider,
   OpenCode, Goose, Amp, Cursor Agent, Copilot and others running in its tabs,
-  on any machine. The agent dock shows each one as *working*, *needs you* or
+  on any machine: in the tab itself, inside a tmux pane, or over ssh and mosh
+  (from the terminal title the agent sets). tmux windows in the sidebar show
+  the agent in their active pane. The agent dock shows each one as *working*, *needs you* or
   *idle*, with the line it is showing, and one-tap replies (`1`, `2`, `y`,
   `esc`, `⏎`). You get a notification when an agent stops for you.
 - **[Android app](android.md).** The same UI as a native app: scan the QR code

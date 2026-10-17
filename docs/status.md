@@ -29,4 +29,4 @@ still ends sessions, and so does a reboot. Ideas for later:
 - Split panes.
 - A native GPU renderer shell (Tauri or Wails) around the same client.
 - tmux control mode (`-CC`), so tmux windows become Gecko tabs.
-- iOS and Android wrappers with push notifications.
+- An iOS app (the [Android app](android.md) is here).

@@ -5,7 +5,7 @@
 This is the spec for the first phase of Sticky Sessions: machines sign in to
 an account on a relay, reach each other through it with no SSH and no
 inbound ports, and the relay never sees what they say to each other. It
-describes what is built on the `feature/sticky-sessions` branch. For how to
+describes what is built so far. For how to
 use it, see [More machines](machines.md#through-the-relay-accounts).
 
 Status: working code, tested on Linux, not reviewed by anyone outside the
