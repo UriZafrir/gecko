@@ -151,6 +151,13 @@ async function newTabOn(host) {
   return s;
 }
 
+// macOS: give Gecko the focus back after another app had it (the phone).
+async function front() {
+  if (platform !== 'mac') return;
+  await new Promise((resolve) => execFile('osascript', ['-e', 'tell application "System Events" to set frontmost of process "Gecko" to true'], () => resolve()));
+  await sleep(600);
+}
+
 async function setBounds(x, y, width, height) {
   await page.evaluate((b) => window.geckoDesktop?.setBounds(b), { x, y, width, height });
   await sleep(700);
@@ -235,6 +242,7 @@ async function pairing() {
     await sleep(3500);
   } finally {
     await phone?.close().catch(() => {});
+    await front();
     await setBounds(BX, BY, BW, BH);
     await page.evaluate(() => window.gecko.activePane()?.show());
   }
@@ -406,7 +414,9 @@ async function themes() {
 // over a window with big text that the platform script put behind Gecko
 // before the app started, then the opacity goes down step by step.
 async function transparency() {
-  const x = BX + Math.round(BW * 0.26), y = BY + Math.round(BH * 0.14);
+  // At least 780px wide, so the window keeps its desktop layout.
+  const x = BX + Math.min(Math.round(BW * 0.26), BW - 796), y = BY + Math.round(BH * 0.14);
+  await front();
   caption('6. Transparency: a window with notes and the wallpaper are behind Gecko');
   await setBounds(x, y, BX + BW - x - 16, BY + BH - y - 16);
   await page.evaluate(() => window.gecko.activePane()?.show());
@@ -418,7 +428,7 @@ async function transparency() {
     await sleep(1200);
     await steps(3);
     caption('85%: a hint of what is behind');
-    await sleep(2500);
+    await sleep(3200);
     await steps(3);
     caption('70%: the notes window and the wallpaper clearly show through');
     await sleep(3000);
@@ -428,21 +438,24 @@ async function transparency() {
     await page.keyboard.press('ArrowUp');
     await sleep(700);
     await page.keyboard.press('Enter');
-    caption('Kept at 60%. On a photo theme the picture fades as well');
+    caption('Kept at 60%. Now a photo theme: Cyberpunk');
     await sleep(1200);
     await palette('change theme');
     await sleep(800);
     await typeSlow('Cyberpunk', 90);
     await sleep(800);
     await page.keyboard.press('Enter');
-    await sleep(4500);
-    caption('And on Tokyo Night');
+    await sleep(600);
+    caption('Cyberpunk at 60%: the photo fades into what is behind the window');
+    await sleep(5000);
     await palette('change theme');
     await sleep(800);
     await typeSlow('Tokyo Night', 90);
     await sleep(800);
     await page.keyboard.press('Enter');
-    await sleep(4000);
+    await sleep(600);
+    caption('Tokyo Night at 60%');
+    await sleep(4500);
     caption('Back to solid');
     await palette('background opacity');
     await sleep(900);

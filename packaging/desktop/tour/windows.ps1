@@ -80,7 +80,7 @@ $env:TOUR_PHONE_PROFILE = Join-Path $env:RUNNER_TEMP "phone"
 $env:TOUR_PHONE_LABEL = "a second client (Chrome, sized like a phone)"
 $env:TOUR_REMOTE_NAME = "second"; $env:TOUR_REMOTE_ADDED = "1"
 $env:TOUR_REMOTE_LABEL = "a second Gecko daemon on this runner (own home and port), connected with gecko bridge"
-$env:TOUR_SEE_THROUGH = "Windows 11 blurs what is behind (acrylic)"
+$env:TOUR_SEE_THROUGH = "On Windows this is acrylic, which does not show on this Windows Server CI runner, so here the window only darkens"
 $env:TOUR_AGENTS = "0"
 $env:TOUR_OUTSIDE = "1"; $env:TOUR_GECKO = $G
 $env:TOUR_AGENTS_WHY = "skipped on Windows: the Windows daemon can't inspect processes yet, so it doesn't detect agents"

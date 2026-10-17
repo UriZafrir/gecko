@@ -82,7 +82,7 @@ for _ in $(seq 60); do curl -fs http://127.0.0.1:$CDP/json/version >/dev/null &&
 sleep 4
 osascript -e 'tell application "System Events" to tell process "Gecko" to set frontmost to true' 2>/dev/null
 
-TOUR_CDP=$CDP TOUR_PLATFORM=mac TOUR_CAPTIONS=$OUT/captions.txt TOUR_BOUNDS=0,25,1024,680 \
+TOUR_CDP=$CDP TOUR_PLATFORM=mac TOUR_CAPTIONS=$OUT/captions.txt TOUR_BOUNDS=0,25,1020,676 \
 	TOUR_PHONE_BROWSER=$([ -x "$CHROME" ] && echo "$CHROME") TOUR_PHONE_PROFILE=$RUNNER_TEMP/phone \
 	TOUR_PHONE_LABEL='a second client (Chrome, sized like a phone)' \
 	TOUR_REMOTE=localhost TOUR_REMOTE_NAME=$([ $REMOTE_ADDED = 1 ] && echo second || echo mac-ci-2) \
