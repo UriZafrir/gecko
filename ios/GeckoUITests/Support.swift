@@ -54,6 +54,16 @@ class GeckoUITestCase: XCTestCase {
         return last
     }
 
+    /// Like waitProbe, without failing: whether it came within the time.
+    func waitFor(_ timeout: TimeInterval, _ ok: ([String: Any]) -> Bool) -> Bool {
+        let until = Date().addingTimeInterval(timeout)
+        while Date() < until {
+            if ok(probe()) { return true }
+            Thread.sleep(forTimeInterval: 0.3)
+        }
+        return false
+    }
+
     func waitOnline(timeout: TimeInterval = 40) -> [String: Any] {
         waitProbe("the page to connect and sync", timeout: timeout) { p in
             (p["online"] as? String) == "online" && (p["sync"] as? Bool) == true
@@ -95,6 +105,14 @@ class GeckoUITestCase: XCTestCase {
         web.coordinate(withNormalizedOffset: CGVector(dx: dx, dy: dy))
     }
 
+    /// A tap on the terminal for the keyboard, and a moment for it to come
+    /// up (letters typed before it is up can be lost).
+    func tapTerminal() {
+        terminalPoint().tap()
+        _ = app.keyboards.firstMatch.waitForExistence(timeout: 5)
+        beat(0.5)
+    }
+
     /// A finger drag on the screen, from one spot to another.
     func drag(from a: XCUICoordinate, to b: XCUICoordinate, hold: TimeInterval = 0.05, velocity: XCUIGestureVelocity = .default) {
         a.press(forDuration: hold, thenDragTo: b, withVelocity: velocity, thenHoldForDuration: 0)
@@ -103,4 +121,61 @@ class GeckoUITestCase: XCTestCase {
     var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
     func key(_ name: String) -> XCUIElement { app.descendants(matching: .any)["key." + name] }
+
+    // MARK: the feature tour
+
+    /// Runs a script in the page (AppModel.uiTestURL), for steps a
+    /// synthesized finger can't do reliably, such as a button deep in the page.
+    func js(_ script: String) {
+        var c = URLComponents()
+        c.scheme = "gecko-uitest"
+        c.host = "js"
+        c.queryItems = [URLQueryItem(name: "c", value: script)]
+        app.open(c.url!)
+        let open = springboard.buttons["Open"]
+        if open.waitForExistence(timeout: 0.6) { open.tap() }
+    }
+
+    /// The video's caption from now on: the time and text, for the job's
+    /// captions (GECKO_CHAPTERS, a file on the Mac).
+    func chapter(_ caption: String) {
+        XCTContext.runActivity(named: "chapter: " + caption) { _ in }
+        guard let path = env["GECKO_CHAPTERS"], !path.isEmpty else { return }
+        let line = String(format: "%.2f\t%@\n", Date().timeIntervalSince1970, caption)
+        if let h = FileHandle(forWritingAtPath: path) {
+            h.seekToEndOfFile()
+            h.write(line.data(using: .utf8)!)
+            try? h.close()
+        } else {
+            try? line.write(toFile: path, atomically: true, encoding: .utf8)
+        }
+    }
+
+    /// Asks the job to do something on the Mac (ios/scripts/ci-cues.sh: a
+    /// file in GECKO_CUES), and waits until it is done. False without a job.
+    @discardableResult
+    func cue(_ name: String, timeout: TimeInterval = 60) -> Bool {
+        guard let dir = env["GECKO_CUES"], !dir.isEmpty else { return false }
+        let url = URL(fileURLWithPath: dir)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        try? "".write(to: url.appendingPathComponent(name), atomically: true, encoding: .utf8)
+        let done = url.appendingPathComponent(name + ".done").path
+        let until = Date().addingTimeInterval(timeout)
+        while Date() < until {
+            if FileManager.default.fileExists(atPath: done) { return true }
+            Thread.sleep(forTimeInterval: 0.3)
+        }
+        XCTFail("the job didn't do \(name)")
+        return false
+    }
+
+    /// The window is in landscape and the page fills it (not portrait with
+    /// the picture squeezed), before a landscape screenshot.
+    func assertLandscape(_ p: [String: Any], file: StaticString = #filePath, line: UInt = #line) {
+        let w = app.windows.firstMatch.frame
+        XCTAssertGreaterThan(w.width, w.height, "the window is landscape: \(w)", file: file, line: line)
+        let pw = CGFloat(p["width"] as? Int ?? 0), ph = CGFloat(p["height"] as? Int ?? 0)
+        XCTAssertGreaterThan(pw, ph, "the page is landscape: \(pw)x\(ph)", file: file, line: line)
+        XCTAssertGreaterThanOrEqual(pw, w.width * 0.85, "the page fills the window's width", file: file, line: line)
+    }
 }

@@ -36,10 +36,15 @@ final class DevicesTour: GeckoUITestCase {
         }
 
         // The keyboard, with the extra keys right on top of it.
-        terminalPoint().tap()
+        tapTerminal()
         beat()
         app.typeText("ls -l /usr/bin | head -60; echo tour-$((40+2))\n")
-        p = waitProbe("the command ran", timeout: 15) { ($0["screen"] as? String ?? "").contains("tour-42") }
+        let ran: ([String: Any]) -> Bool = { ($0["screen"] as? String ?? "").contains("tour-42") }
+        if !waitFor(10, ran) {
+            // Seen once on a just-booted Simulator: the line typed, its Return lost.
+            XCTContext.runActivity(named: "the Return was lost; pressing it again") { _ in app.typeText("\n") }
+        }
+        p = waitProbe("the command ran", timeout: 15, ran)
         let id = p["active"] as? String ?? ""
         beat()
         let kb = app.keyboards.firstMatch
@@ -53,10 +58,12 @@ final class DevicesTour: GeckoUITestCase {
         XCUIDevice.shared.orientation = .landscapeLeft
         beat(2)
         p = waitProbe("the same tab after rotating", timeout: 10) { ($0["active"] as? String) == id && ($0["online"] as? String) == "online" }
+        assertLandscape(p)
         shot("04-landscape-keyboard")
         key("hide-keyboard").tap()
         beat(1.5)
-        p = probe()
+        p = waitProbe("the page in landscape", timeout: 8) { ($0["width"] as? Int ?? 0) > ($0["height"] as? Int ?? 0) }
+        assertLandscape(p)
         shot("05-landscape")
         if isPad || ((p["width"] as? Int ?? 0) >= 720 && (p["height"] as? Int ?? 0) > 500) {
             XCTAssertEqual(p["sideFixed"] as? Bool, false, "wide: the sidebar beside the terminal")
@@ -86,8 +93,10 @@ final class DevicesTour: GeckoUITestCase {
         XCUIDevice.shared.orientation = .landscapeLeft
         launch(open: try link(), name: "studio-mac")
         allowNotificationsIfAsked()
-        waitOnline()
+        let p0 = waitProbe("the page in landscape", timeout: 40) { ($0["online"] as? String) == "online" && ($0["width"] as? Int ?? 0) > ($0["height"] as? Int ?? 0) }
+        assertLandscape(p0)
         beat()
+        shot("08-split-view-before")
         XCTContext.runActivity(named: "Split View") { _ in
             let dots = app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0)).withOffset(CGVector(dx: 0, dy: 12))
             dots.tap()
@@ -105,7 +114,9 @@ final class DevicesTour: GeckoUITestCase {
             if other.waitForExistence(timeout: 4) && other.isHittable { other.tap() }
             beat(2.5)
             let p = probe()
-            shot("07-split-view")
+            let screen = springboard.frame
+            XCTAssertGreaterThan(screen.width, screen.height, "the iPad is in landscape: \(screen)")
+            shot("09-split-view")
             XCTContext.runActivity(named: "split view width \(p["width"] ?? "?"), sidebar fixed \(p["sideFixed"] ?? "?")") { _ in }
             if let w = p["width"] as? Int, w < 720 {
                 XCTAssertEqual(p["sideFixed"] as? Bool, true, "a narrow window: the sidebar becomes a drawer")

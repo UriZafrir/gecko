@@ -10,7 +10,7 @@ final class OlderMachineTest: GeckoUITestCase {
         XCTAssertEqual(p["bundled"] as? Bool, true, "served from the app")
         XCTAssertLessThan(p["daemon"] as? Int ?? 99, 7, "the machine speaks an older protocol")
         XCTAssertEqual(p["outdated"] as? Bool, false, "no restart nag")
-        terminalPoint().tap()
+        tapTerminal()
         app.typeText("echo older-ok-$((6*7))\n")
         waitProbe("the shell there answers", timeout: 20) { ($0["screen"] as? String ?? "").contains("older-ok-42") }
         shot("04-older-gecko")

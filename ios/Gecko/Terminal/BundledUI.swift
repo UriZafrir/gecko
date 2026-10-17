@@ -133,6 +133,11 @@ enum BridgeScript {
         var tabs = [].slice.call(document.querySelectorAll('#tabs [role=tab]'));
         r.tabs = tabs.length;
         r.tab = tabs.findIndex(function (t) { return t.getAttribute('aria-selected') === 'true'; });
+        r.tabNames = tabs.map(function (t) { return (t.textContent || '').trim().slice(0, 40); });
+        r.theme = (g.settings && g.settings.theme) || '';
+        r.hosts = (g.hosts || []).map(function (h) { return h.name + ':' + h.status; });
+        r.sessions = Array.from(g.sessions.values()).map(function (s) { return s.host + '/' + (s.name || '') + '/' + s.id; });
+        r.dockOpen = g.dockOpen || '';
         var p = g.activePane();
         if (p) {
           var b = p.term.buffer.active, out = [];
@@ -148,7 +153,7 @@ enum BridgeScript {
         r.keybar = getComputedStyle(document.getElementById('keybar')).display;
         r.asset = window.__geckoAsset || '';
         var t = window.__geckoTouch;
-        if (t) r.touch = t.max + ' ' + t.log.map(function (x) { return x.k.replace('touch', '') + x.n + 'x' + x.c; }).join(',') + ' d ' + t.d0 + '>' + t.d1 + ' [' + t.dmin + '..' + t.dmax + '] scale ' + t.scale + ' native ' + window.__geckoNativePinch;
+        if (t) r.touch = t.max + ' ' + t.log.map(function (x) { return x.k.replace('touch', '') + x.n + 'x' + x.c; }).join(',') + ' d ' + t.d0 + '>' + t.d1 + ' [' + t.dmin + '..' + t.dmax + '] scale ' + t.scale;
         if (g.touchStats) r.gesture = g.touchStats.kind + ' ' + (g.touchStats.what || '') + (g.touchStats.kind === 'two' ? ' ' + g.touchStats.d0 + '>' + g.touchStats.d1 : '');
         r.agents = g.allAgents().map(function (a) { return a.state.status; });
         r.ctrl = !!g.mods.ctrl; r.palette = !!g.paletteOpen; r.textview = !!g.textViewOpen;

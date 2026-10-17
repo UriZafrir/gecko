@@ -33,7 +33,6 @@ const noFling = (why, cancelled, flung) => ({
   why: [flung ? '' : why || 'slower than a fling', cancelled ? 'the browser cancelled the touch' : ''].filter(Boolean).join('; '),
 });
 const phoneLayout = compactLayout;
-let pinchedAt = 0; // when the page last made out a two-finger pinch or swipe itself
 const point = (t) => ({ x: t.clientX, y: t.clientY });
 
 // How far in from the left edge a drawer swipe may start (CSS px). The
@@ -376,7 +375,9 @@ export function attachPane(app, p) {
     if (!g.byScale && g.what) return;
     if (!(g.d0 > 0)) g.d0 = 100; // the touches on one spot: any gap scales the same
     const d1 = g.d0 * ev.scale;
-    if (!g.byScale && Math.abs(d1 - g.d0) < 24) return;
+    // By how much the gap changed, not by how many pixels: the Simulator's
+    // fingers start a few pixels apart.
+    if (!g.byScale && Math.abs(Math.log(ev.scale)) < Math.log(1.15)) return;
     g.byScale = true;
     g.what = 'pinch';
     g.d1 = d1;
@@ -456,7 +457,6 @@ export function attachPane(app, p) {
       el.style.transformOrigin = '';
       delete el.dataset.pinch;
       app.touchStats = { kind: 'two', what, d0: Math.round(d0), d1: Math.round(d1), at: new Date().toLocaleTimeString() };
-      if (what) pinchedAt = performance.now();
       if (what === 'pinch') {
         const next = pinchFont(size, d0, d1);
         if (next !== size) app.setFont(next);
@@ -559,20 +559,6 @@ export function attachPane(app, p) {
 }
 
 // Gestures outside the terminal: the tab bar, the left edge, the drawer.
-// iOS app: the system's own reading of a pinch on the web view (its scale
-// when the fingers lifted). It counts only when the page didn't see that
-// two fingers itself (as with the Simulator's synthesized touches).
-export function nativePinch(app, scale) {
-  if (!(scale > 0) || Math.abs(Math.log(scale)) < Math.log(1.15)) return;
-  setTimeout(() => {
-    if (performance.now() - pinchedAt < 800) return;
-    const size = app.termFontSize();
-    const next = pinchFont(size, 100, 100 * scale);
-    if (next !== size) app.setFont(next);
-    pinchedAt = performance.now();
-  }, 250);
-}
-
 export function attachPage(app) {
   const side = document.getElementById('side');
   const tabs = document.getElementById('tabs');

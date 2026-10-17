@@ -49,6 +49,16 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// UI tests only: gecko-uitest://js?c=<script> runs a script in the page,
+    /// for the steps of the feature tour a synthesized finger can't do
+    /// reliably (a button deep in the page). Ignored outside UI tests.
+    func uiTestURL(_ url: URL) {
+        guard Self.uiTest, url.scheme == "gecko-uitest", url.host == "js",
+              let c = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "c" })?.value
+        else { return }
+        terminal?.eval(c)
+    }
+
     func reload() {
         machines = store.list().sorted { $0.lastUsed > $1.lastUsed }
         WatchHub.shared.sync(store.list())

@@ -9,7 +9,7 @@ final class AgentDemo: GeckoUITestCase {
         allowNotificationsIfAsked()
         waitOnline()
         beat()
-        terminalPoint().tap()
+        tapTerminal()
         app.typeText("claude\n")
         waitProbe("the agent at work", timeout: 15) { ($0["agents"] as? [String] ?? []).contains("working") }
         key("hide-keyboard").tap()
@@ -40,7 +40,7 @@ final class AgentDemo: GeckoUITestCase {
                 if banner.exists { banner.tap() } else { app.activate() }
                 waitOnline()
                 waitProbe("the agent waiting", timeout: 10) { ($0["agents"] as? [String] ?? []).contains("needs-input") }
-                terminalPoint().tap()
+                tapTerminal()
                 app.typeText("1")
                 waitProbe("the answer reached the agent", timeout: 20) { ($0["screen"] as? String ?? "").contains("Updated parser.go") }
             }

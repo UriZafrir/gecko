@@ -40,8 +40,8 @@ unfolded foldables get the desktop layout with the sidebar. It has:
   button at the start folds the row to a count ("2 agents · 1 needs you").
 - A key bar: esc, tab, sticky ctrl/alt, arrows, `^C`, pgup/pgdn, select,
   paste.
-- Wider windows (tablets, iPad mini included, and large phones in landscape)
-  keep the sidebar beside the terminal, as on a computer.
+- Wider and taller windows (tablets, iPad mini included) keep the sidebar
+  beside the terminal, as on a computer.
 - A **compose** box for writing prompts with your keyboard's autocorrect.
   Multi-line text goes to agents as a single bracketed paste.
 - Voice typing straight into the terminal (Android): what the keyboard

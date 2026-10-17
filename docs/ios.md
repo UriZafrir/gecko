@@ -33,7 +33,13 @@ the UI tests on iPhone SE (3rd generation), iPhone 16, iPhone 16 Pro Max,
 iPad mini, iPad Air 11-inch and iPad Pro 13-inch against Gecko daemons it
 starts in the job (this version, and an older one from `main`), and keeps
 the app, videos, screenshots, a contact sheet per device and the test
-results as artifacts.
+results as artifacts. A feature tour (`FeatureTour.swift`, iPhone 16 and
+iPad Pro 13-inch) records `05-tour.mp4` with a caption per chapter; a
+second Gecko on the same Mac plays build-box, added over ssh to the
+runner itself, and `ios/scripts/ci-cues.sh` does the computer's side
+(`gecko host add`, an agent running `gecko new`, `send`, `capture`). Its
+few page steps go through a `gecko-uitest:` link that the app obeys only
+when the UI tests started it (`GECKO_UITEST=1`).
 
 ## Connect
 
@@ -63,9 +69,10 @@ https (`tailscale serve 7681`).
 
 - **The full Gecko UI**, between the notch or Dynamic Island and the home
   indicator: workspaces, the agent dock, the palette, every theme. Phones in
-  portrait (and windows narrower than 720 points, such as iPad Split View
-  and Slide Over) get the drawer; iPads and large phones in landscape keep
-  the sidebar beside the terminal. Rotating keeps the session and the tab.
+  portrait and landscape (and windows narrower than 720 points or shorter
+  than 501, such as iPad Split View and Slide Over) get the drawer and the
+  compact tab bar; iPads keep the sidebar beside the terminal, an iPad mini
+  in portrait too. Rotating keeps the session and the tab.
 - **The keyboard never covers the terminal**: the page ends above it and the
   terminal refits.
 - **Extra keys** right above the keyboard, and at the bottom while it is

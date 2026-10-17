@@ -12,7 +12,7 @@ final class TerminalDemo: GeckoUITestCase {
         beat()
 
         // Tap for the keyboard; the extra keys ride on top of it.
-        terminalPoint().tap()
+        tapTerminal()
         beat()
         app.typeText("ls -l /usr/bin\n")
         waitProbe("ls output", timeout: 15) { ($0["baseY"] as? Int ?? 0) > 40 }
@@ -60,12 +60,16 @@ final class TerminalDemo: GeckoUITestCase {
         p = waitProbe("a bigger font", timeout: 5) { ($0["font"] as? Int ?? font) > font }
         beat()
         shot("02-pinched")
+        let bigger = p["font"] as? Int ?? font
         web.pinch(withScale: 0.6, velocity: -1.2)
-        waitProbe("the font back", timeout: 5) { ($0["font"] as? Int ?? 99) <= font }
+        // Smaller again. The Simulator's synthesized fingers don't scale by
+        // exactly what was asked, so the size is put back after.
+        waitProbe("a smaller font", timeout: 5) { ($0["font"] as? Int ?? 99) < bigger }
+        if int("font") != font { js("gecko.setFont(\(font))") }
         beat()
 
         // One finger sideways moves the cursor.
-        terminalPoint().tap()
+        tapTerminal()
         app.typeText("echo sideways")
         let x0 = int("cursorX")
         drag(from: terminalPoint(0.7, 0.5), to: terminalPoint(0.35, 0.5), hold: 0.02, velocity: .slow)

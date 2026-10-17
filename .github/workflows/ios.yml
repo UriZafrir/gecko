@@ -149,6 +149,18 @@ jobs:
           ios/scripts/ci-uitest.sh "$x" AgentDemo 03-agent out || s=1
           ios/scripts/ci-uitest.sh "$x" OlderMachineTest - out || s=1
           exit $s
+      - name: Feature tour (05, the iPhone part and the iPad part)
+        if: always() && (matrix.demos || matrix.slug == 'ipad-pro-13')
+        run: |
+          ios/scripts/ci-daemons.sh reset products/gecko
+          ios/scripts/ci-cues.sh "$PWD/products/gecko" "$PWD/out/cues" > out/cues-runner.log 2>&1 &
+          cues=$!
+          x=$(ls products/*.xctestrun | head -1)
+          if [ "${{ matrix.demos }}" = true ]; then t=FeatureTour/testPhoneTour v=feature-tour; else t=FeatureTour/testPadTour v=pad-tour; fi
+          s=0
+          ios/scripts/ci-uitest.sh "$x" "$t" "$v" out || s=1
+          kill $cues 2> /dev/null || true
+          exit $s
       - name: Split View (iPad)
         if: always() && contains(matrix.device, 'iPad')
         run: ios/scripts/ci-uitest.sh "$(ls products/*.xctestrun | head -1)" DevicesTour/testSplitView - out
@@ -186,6 +198,10 @@ jobs:
             cp "$d/tour.mp4" "$d/device.txt" "tours/$n/" 2>/dev/null || true
           done
           ios/scripts/ci-report.sh tours report
+      - name: 05-tour.mp4 (the feature tour, with captions)
+        run: |
+          python3 ios/scripts/ci-tour.py report/05-tour.mp4 \
+            devices/device-iphone-16/feature-tour devices/device-ipad-pro-13/pad-tour
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: report

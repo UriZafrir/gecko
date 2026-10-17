@@ -31,6 +31,7 @@ struct RootView: View {
             }
         }
         .onChange(of: phase) { p in model.phaseChanged(p) }
+        .onOpenURL { model.uiTestURL($0) }
     }
 }
 

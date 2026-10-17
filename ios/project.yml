@@ -59,6 +59,10 @@ targets:
         BGTaskSchedulerPermittedIdentifiers:
           - io.github.geckoterm.ios.refresh
         ITSAppUsesNonExemptEncryption: false
+        # Used only by the UI tests (AppModel.uiTestURL); ignored otherwise.
+        CFBundleURLTypes:
+          - CFBundleURLName: io.github.geckoterm.ios.uitest
+            CFBundleURLSchemes: [gecko-uitest]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.github.geckoterm.ios
