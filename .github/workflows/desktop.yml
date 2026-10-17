@@ -8,6 +8,11 @@ on:
   push:
     branches: [feature/desktop-apps]
   workflow_dispatch:
+    inputs:
+      tour:
+        description: Record the feature tour videos on macOS and Windows (packaging/desktop/tour)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -34,6 +39,10 @@ jobs:
         run: make package-mac
       - name: Smoke test
         run: packaging/desktop/smoke/mac.sh dist/desktop/Gecko-*-mac-universal.dmg out/mac
+      - name: Feature tour
+        if: github.event_name == 'workflow_dispatch' && inputs.tour
+        timeout-minutes: 15
+        run: packaging/desktop/tour/mac.sh out/tour
       - name: Upload
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -42,6 +51,13 @@ jobs:
           path: |
             dist/desktop/*.dmg
             out/mac
+          if-no-files-found: warn
+      - name: Upload the tour
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.tour
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tour-mac
+          path: out/tour
           if-no-files-found: warn
 
   appimage:
@@ -98,6 +114,18 @@ jobs:
         run: |
           $setup = (Get-ChildItem dist\desktop\Gecko-*-setup.exe | Select-Object -First 1).FullName
           ./packaging/desktop/smoke/windows.ps1 -Setup $setup -Out out\windows
+      - name: Feature tour
+        if: github.event_name == 'workflow_dispatch' && inputs.tour
+        timeout-minutes: 15
+        shell: pwsh
+        run: ./packaging/desktop/tour/windows.ps1 -Out out\tour
+      - name: Upload the tour
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.tour
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tour-windows
+          path: out/tour
+          if-no-files-found: warn
       - name: Upload
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

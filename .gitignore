@@ -10,3 +10,4 @@ packaging/desktop/node_modules/
 
 # Claude Code
 .claude/
+packaging/desktop/tour/node_modules/
