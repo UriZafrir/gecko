@@ -88,7 +88,7 @@ IOS_SIM ?= iPhone 16
 ios: ios-web
 	cd ios && xcodegen generate
 	xcodebuild build -project ios/Gecko.xcodeproj -scheme Gecko -destination 'generic/platform=iOS Simulator' \
-		-derivedDataPath ios/build CODE_SIGNING_ALLOWED=NO
+		-derivedDataPath ios/build
 	@ls -d ios/build/Build/Products/Debug-iphonesimulator/Gecko.app
 
 ios-test: ios-web

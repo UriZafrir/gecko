@@ -6,7 +6,9 @@
 # Usage: ci-daemons.sh <gecko> <older gecko> <out dir>; writes GECKO_LINK
 # and GECKO_OLD_LINK to $GITHUB_ENV.
 set -eu
-new=$1 old=$2 out=$3
+abs() { (cd "$(dirname "$1")" && echo "$(pwd)/$(basename "$1")"); }
+mkdir -p "$3"
+new=$(abs "$1") old=$(abs "$2") out=$(abs "$3")
 root=$(cd "$(dirname "$0")" && pwd)
 tmp=${RUNNER_TEMP:-/tmp}
 mkdir -p "$out" "$tmp/fakebin" "$tmp/work/parser"
