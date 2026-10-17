@@ -4,6 +4,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/gecko-term/gecko/internal/inspect"
 	"github.com/gecko-term/gecko/internal/proto"
 	"github.com/gecko-term/gecko/internal/ptyx"
 	"github.com/gecko-term/gecko/internal/vt"
@@ -80,6 +81,10 @@ func (m *Manager) Adopt(states []State) []error {
 			m: m, pty: p, ring: ring, vt: vt.New(max(info.Cols, 1), max(info.Rows, 1), 5000),
 			subs: map[Sink]struct{}{}, info: info,
 			lastOutput: st.LastOutput, lastInput: st.LastInput, pendingCmd: st.PendingCmd,
+		}
+		// The agent the title showed, which isn't saved on its own.
+		if info.Agent != nil {
+			s.titleAgent, s.titleStatus, _ = inspect.TitleAgent(info.Title, info.Agent.Name)
 		}
 		// Rebuild the screen from the buffered output before wiring up the
 		// OSC/bell handlers, so replaying history doesn't re-fire them.

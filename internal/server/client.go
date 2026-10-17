@@ -37,6 +37,8 @@ type client struct {
 	hub   *hub.Hub
 	conn  proto.Conn
 	scope string
+	local bool   // on the daemon's own socket (the CLI, the Android app), not the web
+	kind  string // what it said it is in hello: web, cli, hub (another Gecko, through a bridge)
 
 	out   chan outMsg
 	done  chan struct{}
@@ -47,9 +49,15 @@ type client struct {
 }
 
 // Serve runs the protocol on conn until it closes.
-func Serve(h *hub.Hub, conn proto.Conn) {
+func Serve(h *hub.Hub, conn proto.Conn) { serve(h, conn, false) }
+
+// ServeLocal is Serve for a client on the daemon's own socket, which only
+// this user can open; a few requests are accepted only there.
+func ServeLocal(h *hub.Hub, conn proto.Conn) { serve(h, conn, true) }
+
+func serve(h *hub.Hub, conn proto.Conn, local bool) {
 	c := &client{hub: h, conn: conn, scope: hub.ScopeAll, out: make(chan outMsg, 8192),
-		done: make(chan struct{}), subs: map[string]func(){}}
+		done: make(chan struct{}), subs: map[string]func(){}, local: local}
 	go c.writer()
 	defer c.close()
 	for {
@@ -71,7 +79,7 @@ func Serve(h *hub.Hub, conn proto.Conn) {
 			continue
 		}
 		switch m.T {
-		case proto.TCreate, proto.TCapture, proto.TOpenWS, proto.TAddHost, proto.TRmHost, proto.TList, proto.TSearch, proto.TProbeHost, proto.TInstall, proto.TListDir, proto.TUpdateHost, proto.TTmux:
+		case proto.TCreate, proto.TCapture, proto.TOpenWS, proto.TAddHost, proto.TRmHost, proto.TList, proto.TSearch, proto.TProbeHost, proto.TInstall, proto.TListDir, proto.TUpdateHost, proto.TTmux, proto.TTrustHost:
 			// May wait on a remote host; don't stall input for other tabs.
 			go c.handle(m)
 		default:
@@ -170,6 +178,7 @@ func (c *client) handle(m *proto.Msg) {
 	h := c.hub
 	switch m.T {
 	case proto.THello:
+		c.kind = m.Client
 		if m.Scope == hub.ScopeLocal {
 			c.scope = hub.ScopeLocal
 		}
@@ -347,6 +356,22 @@ func (c *client) handle(m *proto.Msg) {
 				log.Printf("upgrade failed: %v", err)
 			}
 		}()
+	case proto.TShare:
+		if !c.local || c.kind == "hub" {
+			c.reply(m, nil, errors.New("sharing can only be changed on the device itself"))
+			return
+		}
+		if h.Share == nil {
+			c.reply(m, nil, errors.New("this Gecko can't share itself with other devices"))
+			return
+		}
+		st, err := h.Share(m.Text, m.Target)
+		if err != nil {
+			c.reply(m, nil, err)
+			return
+		}
+		b, _ := json.Marshal(st)
+		c.reply(m, &proto.Msg{Text: string(b)}, nil)
 	case proto.TOpenWS:
 		ss, err := h.OpenWorkspace(m.Name, m.Cols, m.Rows)
 		c.reply(m, &proto.Msg{Sessions: ss}, err)
@@ -361,14 +386,38 @@ func (c *client) handle(m *proto.Msg) {
 		if m.T == proto.TProbeHost {
 			ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 			defer cancel()
-			res, err := hostsetup.Probe(ctx, m.Target, m.Data, log)
-			c.reply(m, &proto.Msg{OS: res.OS + "/" + res.Arch, Text: res.Gecko, Missing: res.Missing}, err)
+			// The dialog confirms new host keys and asks for passwords itself.
+			res, err := hostsetup.ProbeWith(ctx, m.Target, hostsetup.Options{GeckoPath: m.Data, Secret: m.Secret, InstallKey: m.InstallKey, Strict: true}, log)
+			r := &proto.Msg{OS: res.OS + "/" + res.Arch, Text: res.Gecko, Missing: res.Missing, CanUseKey: hostsetup.CanUseKey()}
+			var se *hostsetup.Error
+			if errors.As(err, &se) {
+				r.Kind, r.Data = se.Kind, se.Fingerprint
+			}
+			c.reply(m, r, err)
 			return
 		}
 		goos, goarch, _ := strings.Cut(m.OS, "/")
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 		defer cancel()
-		c.reply(m, nil, hostsetup.Install(ctx, m.Target, hostsetup.Result{OS: goos, Arch: goarch}, log))
+		c.reply(m, nil, hostsetup.InstallWith(ctx, m.Target, hostsetup.Result{OS: goos, Arch: goarch}, hostsetup.Options{Secret: m.Secret}, log))
+	case proto.TTrustHost:
+		if c.scope == hub.ScopeLocal {
+			c.reply(m, nil, errors.New("machines can only be set up from the Gecko you are using directly, not through another one"))
+			return
+		}
+		c.reply(m, nil, hostsetup.TrustHost(m.Target, m.Data))
+	case proto.TAskpass:
+		// gecko-askpass, run by ssh for a check or install the daemon started.
+		if !c.local || c.kind != "cli" {
+			c.reply(m, nil, errors.New("not here"))
+			return
+		}
+		secret, ok := hostsetup.AskpassSecret(m.Text, m.Data)
+		if !ok {
+			c.reply(m, nil, errors.New("nothing to answer"))
+			return
+		}
+		c.reply(m, &proto.Msg{Secret: secret}, nil)
 	case proto.TRmHost:
 		c.reply(m, nil, h.RemoveHost(m.Name))
 	default:

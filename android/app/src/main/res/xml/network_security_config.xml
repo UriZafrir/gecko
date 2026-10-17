@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Gecko runs on your own machines, usually over plain http on a LAN or a
+  tailnet (100.64.0.0/10). A network security config can only list names
+  and single addresses, not ranges like 192.168.0.0/16, so cleartext is
+  allowed here and the app enforces the rule itself: before it connects,
+  NetPolicy checks that an http machine is this device, a private LAN
+  address, a Tailscale address, or a name that resolves only to those.
+  Everything else must use https.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

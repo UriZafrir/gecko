@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Gecko</string>
+    <string name="share_label">Paste in Gecko</string>
+    <string name="share_to">Paste in which machine?</string>
+
+    <string name="empty_title">Connect to a computer</string>
+    <string name="empty_text">On the computer running Gecko, open the palette and pick Open on another device. Scan the QR code it shows, or paste its link here.\n\nThe phone needs to reach that computer: the same Wi-Fi, or Tailscale.</string>
+    <string name="scan">Scan QR code</string>
+    <string name="paste_link">Paste link</string>
+    <string name="scan_image">Scan QR code from a picture</string>
+    <string name="scan_prompt">Point at the QR code in Gecko\'s Open on another device</string>
+    <string name="no_qr">There\'s no QR code in that picture that could be read.</string>
+    <string name="paste_title">Paste Gecko\'s link</string>
+    <string name="link_hint">http://192.168.1.20:7681/?token=…</string>
+    <string name="link_edit_hint">Link (paste a new one to change the token)</string>
+    <string name="add">Add</string>
+    <string name="add_open">Add and open</string>
+    <string name="save">Save</string>
+    <string name="save_anyway">Save anyway</string>
+    <string name="edit">Edit</string>
+    <string name="remove">Remove</string>
+    <string name="more">More</string>
+    <string name="name_title">Name this machine</string>
+    <string name="name_hint">Name</string>
+    <string name="edit_title">Edit machine</string>
+    <string name="remove_title">Remove %1$s?</string>
+    <string name="remove_text">Its tabs keep running on the computer. You can add it again by scanning its QR code.</string>
+    <string name="checking">Connecting to %1$s…</string>
+    <string name="updated">Updated the token for %1$s.</string>
+    <string name="unreachable_title">Couldn\'t reach %1$s</string>
+    <string name="unreachable_text">%1$s\n\nIs the phone on the same network or tailnet, and is Gecko listening on it (gecko daemon --listen 0.0.0.0:7681)? You can save it now and connect later.</string>
+    <string name="needs_link">%1$s · scan its QR code again</string>
+    <string name="machines">Machines</string>
+    <string name="retry">Try again</string>
+
+    <string name="err_link_no_token">That link has no access token in it. Use the link or QR code from Open on another device on the computer itself, or run gecko url there.</string>
+    <string name="err_no_token">This machine\'s token couldn\'t be read on this phone. Scan its QR code again.</string>
+    <string name="err_token">Gecko refused the token. It changes when Gecko is set up again: scan the QR code again.</string>
+    <string name="err_cleartext">%1$s isn\'t on a private network, so Gecko\'s token would cross the internet unencrypted. Use https there (for example tailscale serve 7681), or the machine\'s LAN or Tailscale address.</string>
+    <string name="err_unreachable">Can\'t reach %1$s.\n\n%2$s</string>
+    <string name="err_http">Gecko answered with an error: %1$d %2$s</string>
+    <string name="no_machine">Add a machine first.</string>
+
+    <string name="key_menu">More options</string>
+    <string name="menu_palette">Search and commands</string>
+    <string name="menu_keep_screen_on">Keep screen on</string>
+    <string name="menu_background">Notify in background</string>
+    <string name="menu_reload">Reload</string>
+    <string name="touch_diagnostics">Touch diagnostics</string>
+    <string name="copy">Copy</string>
+    <string name="build_copied">Build id copied</string>
+    <string name="build_id_desc">Build %1$s. Tap to copy.</string>
+
+    <string name="channel_agents">Agents that need you</string>
+    <string name="channel_agents_desc">A coding agent in a Gecko tab is waiting for your answer, or finished.</string>
+    <string name="channel_service">Background connection</string>
+    <string name="channel_service_desc">Shown while Gecko stays connected to notify you.</string>
+    <string name="service_stop">Stop watching</string>
+    <string name="notify_on">Gecko will notify you when an agent needs you.</string>
+    <string name="notify_blocked">Notifications are off for Gecko. Turn them on in Android\'s settings.</string>
+    <string name="background_on">Gecko stays connected in the background and notifies you when an agent needs you.</string>
+    <string name="background_title">Notify in the background too?</string>
+    <string name="background_text">Android stops apps it doesn\'t see on screen. To notify you while Gecko is closed, it keeps a small connection to your machines open and shows a notification that it does.</string>
+    <string name="background_yes">Stay connected</string>
+    <string name="background_no">Only while open</string>
+
+    <string name="this_phone">This phone</string>
+    <string name="this_phone_lower">this phone</string>
+    <string name="phone_tap_to_start">A terminal on this phone. Tap to start it.</string>
+    <string name="phone_running">Running on this phone</string>
+    <string name="note_phone_running">Gecko running on this phone</string>
+    <string name="note_phone_shared">Gecko running on this phone, open to other devices</string>
+    <string name="phone_running_shared">Running on this phone, open to other devices</string>
+    <string name="phone_starting">Starting…</string>
+    <string name="phone_failed">Gecko couldn\'t start on this phone. Its log is in the app\'s files (gecko/state/daemon.log).</string>
+    <string name="phone_title">Gecko on this phone</string>
+    <string name="phone_stop">Stop</string>
+    <string name="phone_stop_long">Stop Gecko on this phone</string>
+
+    <string name="share_toggle">Allow other devices</string>
+    <string name="share_title">Allow other devices?</string>
+    <string name="share_warning">Computers and phones on the same Wi-Fi or tailnet can then open this phone\'s terminal with a link that carries its own access token.\n\nAnyone who has the link can run commands here as the Gecko app: read and change its files and use the network. Not other apps\' data, not your photos and documents (Gecko has no storage permission), and nothing that needs root.\n\nGecko only answers private addresses (Wi-Fi, Ethernet, Tailscale), and only with the link. Turn it off when you\'re done: the link stops working, and the next one is new.</string>
+    <string name="share_allow">Allow</string>
+    <string name="share_failed">Couldn\'t open this phone to other devices: %1$s</string>
+    <string name="share_off">Other devices can no longer connect. The old link stopped working.</string>
+    <string name="share_links_title">Link for other devices</string>
+    <string name="share_scan">Open this on your computer, or scan it, on the same network or tailnet. Treat it like a password.</string>
+    <string name="share_no_network">This phone isn\'t on Wi-Fi or Tailscale right now, so other devices can\'t reach it.</string>
+    <string name="share_not_on">Other devices aren\'t allowed. Turn on Allow other devices first.</string>
+    <string name="share_footer">Turn it off when you\'re done; that makes this link useless.</string>
+    <string name="share_turn_off">Turn off</string>
+    <string name="share_copy">Copy link</string>
+    <string name="copied">Copied</string>
+    <string name="done">Done</string>
+
+    <string name="ssh_key_title">SSH key</string>
+    <string name="ssh_key_text">This phone\'s public key. Add it to ~/.ssh/authorized_keys on a machine to log in there without a password, from the terminal on this phone (ssh) and when you add the machine to Gecko. Its private key stays in the app.</string>
+    <string name="ssh_key_failed">Couldn\'t make this phone\'s SSH key: %1$s</string>
+    <string name="share_copy_key">Copy</string>
+    <string name="ssh_key_share">Share</string>
+    <string name="keepalive_title">Keep notifications coming</string>
+    <string name="keepalive_text">To reach you while the phone sleeps, Gecko\'s background connection needs to be left out of battery optimization. Gecko only keeps one small connection open.</string>
+    <string name="keepalive_text_exempt">Battery optimization already leaves Gecko alone.</string>
+    <string name="keepalive_samsung">On Samsung phones: Settings, Apps, Gecko, Battery: Unrestricted. Also make sure Gecko isn\'t in Battery, Background usage limits, Sleeping or Deep sleeping apps.</string>
+    <string name="keepalive_xiaomi">On Xiaomi, Redmi and POCO phones: turn on Autostart for Gecko, and set Battery saver to No restrictions (Settings, Apps, Gecko). Locking Gecko in the recent apps helps too.</string>
+    <string name="keepalive_oneplus">On OnePlus phones: Settings, Apps, Gecko, Battery: allow background activity and set it to Unrestricted (or Don\'t optimize). Turn on Auto launch if your phone has it.</string>
+    <string name="keepalive_oppo">On Oppo and Realme phones: allow Auto launch for Gecko, and in Settings, Apps, Gecko, Battery: allow background activity.</string>
+    <string name="keepalive_vivo">On Vivo and iQOO phones: allow Gecko to run in the background (Battery, Background power consumption) and turn on Autostart.</string>
+    <string name="keepalive_huawei">On Huawei and Honor phones: Settings, Battery, App launch: set Gecko to Manage manually and turn on Auto launch, Secondary launch and Run in background.</string>
+    <string name="keepalive_allow">Allow</string>
+    <string name="keepalive_open">Open settings</string>
+    <string name="keepalive_later">Not now</string>
+    <string name="keepalive_more">More help</string>
+    <string name="keepalive_menu">Background notifications</string>
+    <string name="webview_old">This phone\'s Android System WebView is version %1$s. Gecko needs version 111 or newer (Android keeps it up to date from the Play Store).</string>
+    <string name="webview_update">Update WebView</string>
+</resources>

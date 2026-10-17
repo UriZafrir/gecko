@@ -67,3 +67,17 @@ func TestMigrate(t *testing.T) {
 		t.Fatal("migrated twice")
 	}
 }
+
+func TestHostName(t *testing.T) {
+	for in, want := range map[string]string{
+		"Pixel 8\n":           "pixel-8",
+		"sdk_gphone64_x86_64": "sdk-gphone64-x86-64",
+		"  SM-S918B ":         "sm-s918b",
+		"Ünïcode / phone":     "n-code-phone",
+		"":                    "",
+	} {
+		if got := hostName(in); got != want {
+			t.Errorf("hostName(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

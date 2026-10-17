@@ -110,7 +110,9 @@ export class Conn {
         const msg = m.error === 'bad request'
           ? 'The Gecko background service is too old for this. Restart it to update: gecko stop && gecko'
           : m.error;
-        p.reject(new Error(msg));
+        const e = new Error(msg);
+        e.reply = m; // what else it said (e.g. kind, for the Add machine dialog)
+        p.reject(e);
       }
       else p.resolve(m);
       return;

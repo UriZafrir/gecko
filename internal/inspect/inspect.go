@@ -236,3 +236,44 @@ func MoshTarget(args []string) string {
 	}
 	return ""
 }
+
+// PaneForeground returns what runs in the foreground of the terminal whose
+// first process is pid (a tmux pane's pane_pid): the foreground group, or
+// the process itself when that is in the foreground (a shell at its prompt,
+// or a pane started with a command). atPrompt reports the former case of a
+// shell waiting at its prompt.
+func (t *Table) PaneForeground(pid int) (fg []*Proc, atPrompt bool) {
+	if fg = t.Foreground(pid); fg != nil {
+		return fg, false
+	}
+	p := t.ByPid[pid]
+	if p == nil {
+		return nil, false
+	}
+	return []*Proc{p}, shells[baseNoExt(p.Name())]
+}
+
+var shells = map[string]bool{"bash": true, "zsh": true, "fish": true, "sh": true, "dash": true, "ksh": true,
+	"tcsh": true, "csh": true, "nu": true, "xonsh": true, "elvish": true, "pwsh": true, "powershell": true, "cmd": true}
+
+// PaneAgent tells which coding agent runs in a terminal whose first process
+// is pid and whose title is title (a tmux pane), and what its title says
+// about its status. The process table decides when it can; the title
+// covers agents out of its sight (ssh, mosh, containers), but not when
+// the pane's shell sits at its prompt, which means a title left behind.
+func (t *Table) PaneAgent(pid int, title string) (agent, status string) {
+	fg, atPrompt := t.PaneForeground(pid)
+	if len(fg) == 0 || atPrompt {
+		return "", ""
+	}
+	if c := Classify(fg); c.Agent != "" {
+		if a, st, ok := TitleAgent(title, c.Agent); ok && a == c.Agent {
+			return c.Agent, st
+		}
+		return c.Agent, ""
+	}
+	if a, st, ok := TitleAgent(title, ""); ok {
+		return a, st
+	}
+	return "", ""
+}

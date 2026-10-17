@@ -56,6 +56,9 @@ type Hub struct {
 	// Upgrade, if set, replaces the daemon with the binary on disk while
 	// keeping sessions (see daemon.upgrade). It only returns on failure.
 	Upgrade func() error
+	// Share, if set, turns the listener for other devices on or off (on
+	// with addr), or reports it (action ""). See daemon.sharer.
+	Share func(action, addr string) (proto.ShareState, error)
 
 	cfg   *config.Config
 	name  string

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Gecko" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/gecko_green</item>
+        <item name="colorOnPrimary">@color/gecko_bg</item>
+        <item name="colorSecondary">@color/gecko_green</item>
+        <item name="android:colorBackground">@color/gecko_bg</item>
+        <item name="colorSurface">@color/gecko_bg</item>
+    </style>
+</resources>

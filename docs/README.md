@@ -4,6 +4,7 @@
 - [Install and run](install.md): building, the desktop app, the `gecko` CLI
 - [More machines](machines.md): adding hosts over SSH or any other transport
 - [Phone and tablet](mobile.md): using Gecko from your phone
+- [Android app](android.md): the native app, its notifications and extra keys
 - [Themes](themes.md): every theme, with screenshots
 - [Keyboard](keyboard.md): shortcuts on macOS, Linux and Windows
 - [Configuration](config.md): config files, workspace templates, notifications

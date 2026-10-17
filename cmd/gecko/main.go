@@ -29,9 +29,14 @@ import (
 	"github.com/gecko-term/gecko/internal/proto"
 	"github.com/gecko-term/gecko/internal/server"
 	"github.com/gecko-term/gecko/internal/session"
+	"github.com/gecko-term/gecko/internal/sshc"
 )
 
 var version = "dev"
+
+// The build id (set by make): the commit, with -dirty for uncommitted
+// changes, and when it was built (UTC, RFC 3339).
+var buildCommit, buildTime string
 
 const usage = `gecko - a terminal for shells, tmux, ssh/mosh and coding agents, everywhere
 
@@ -48,6 +53,10 @@ Usage:
   gecko ws open <name>       open a workspace template from the config
   gecko host ls|add|rm|install   manage remote machines (ssh)
   gecko daemon [--listen a]  run the daemon in the foreground
+  gecko share [on [addr]|off] [--json]   let other devices on this network open Gecko,
+                             with a link of its own (new each time; off makes it invalid)
+  gecko ssh | ssh-keygen | scp   a built-in ssh client, for machines without one (Android);
+                             also runs as ssh, ssh-keygen or scp when linked under those names
   gecko upgrade              restart the daemon with this binary, keeping every session
   gecko stop                 stop the daemon (ends all local sessions)
   gecko service install|uninstall   start the daemon at login (done on first run)
@@ -60,6 +69,19 @@ Config: ` + "%s" + `
 
 func main() {
 	session.Version = version
+	server.Build = server.BuildInfo{Version: version, Commit: buildCommit, Time: buildTime}
+	// Linked as ssh, ssh-keygen or scp (the Android app does, since Android
+	// has none): behave as that program.
+	switch strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe") {
+	case "ssh":
+		os.Exit(sshc.Main(os.Args[1:], sshc.StdIO()))
+	case "ssh-keygen":
+		os.Exit(sshc.KeygenMain(os.Args[1:], sshc.StdIO()))
+	case "scp":
+		os.Exit(sshc.ScpMain(os.Args[1:], sshc.StdIO()))
+	case "gecko-askpass":
+		os.Exit(askpass(os.Args[1:]))
+	}
 	args := os.Args[1:]
 	cmd := ""
 	if len(args) > 0 {
@@ -110,6 +132,14 @@ func main() {
 		err = cmdBridge()
 	case "stop":
 		err = cmdStop()
+	case "ssh":
+		os.Exit(sshc.Main(args, sshc.StdIO()))
+	case "ssh-keygen":
+		os.Exit(sshc.KeygenMain(args, sshc.StdIO()))
+	case "scp":
+		os.Exit(sshc.ScpMain(args, sshc.StdIO()))
+	case "share":
+		err = cmdShare(args)
 	case "upgrade", "restart":
 		err = cmdUpgrade(args)
 	case "service":
@@ -750,4 +780,72 @@ func cmdStop() error {
 		return p.Kill()
 	}
 	return p.Signal(os.Interrupt)
+}
+
+// cmdShare turns the listener for other devices on or off (the Android
+// app's "Allow other devices"), or shows it.
+func cmdShare(args []string) error {
+	fs := flag.NewFlagSet("share", flag.ExitOnError)
+	asJSON := fs.Bool("json", false, "print the state as JSON")
+	_ = fs.Parse(args)
+	action, addr := "", ""
+	switch fs.NArg() {
+	case 0:
+	case 1, 2:
+		action = fs.Arg(0)
+		if action != "on" && action != "off" {
+			return fmt.Errorf("usage: gecko share [on [addr]|off]")
+		}
+		addr = fs.Arg(1)
+	default:
+		return fmt.Errorf("usage: gecko share [on [addr]|off]")
+	}
+	c, err := client.Connect(false)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	r, err := c.Call(&proto.Msg{T: proto.TShare, Text: action, Target: addr})
+	if err != nil {
+		return err
+	}
+	if *asJSON {
+		fmt.Println(r.Text)
+		return nil
+	}
+	var st proto.ShareState
+	if err := json.Unmarshal([]byte(r.Text), &st); err != nil {
+		return err
+	}
+	if !st.On {
+		fmt.Println("Not shared with other devices.")
+		return nil
+	}
+	fmt.Printf("Other devices on this network can open Gecko (listening on %s):\n", st.Listen)
+	for _, u := range st.URLs {
+		fmt.Println("  " + u)
+	}
+	fmt.Println("Anyone with the link gets this terminal. `gecko share off` ends it.")
+	return nil
+}
+
+// askpass is SSH_ASKPASS for the checks and installs the daemon runs with a
+// password from the Add machine dialog: it trades the one-time id in
+// GECKO_ASKPASS for the password, over the daemon's own socket.
+func askpass(args []string) int {
+	id := os.Getenv("GECKO_ASKPASS")
+	if id == "" || len(args) == 0 {
+		return 1
+	}
+	c, err := client.Connect(false)
+	if err != nil {
+		return 1
+	}
+	defer c.Close()
+	r, err := c.Call(&proto.Msg{T: proto.TAskpass, Text: id, Data: args[0]})
+	if err != nil {
+		return 1
+	}
+	fmt.Println(r.Secret)
+	return 0
 }
