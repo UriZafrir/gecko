@@ -18,13 +18,18 @@ class AnswerReceiver : BroadcastReceiver() {
         val session = intent.getStringExtra(TerminalActivity.EXTRA_SESSION) ?: return
         val key = intent.getStringExtra(EXTRA_KEY) ?: return
         if (machine.token.isEmpty()) return
-        val done = goAsync()
+        val pending = goAsync()
+        // Once: OkHttp can report the end of the same socket more than once
+        // (closing, then closed or failed as the server hangs up), and a
+        // second finish() throws, which took the whole app down.
+        val finished = java.util.concurrent.atomic.AtomicBoolean(false)
+        val done = { if (finished.compareAndSet(false, true)) pending.finish() }
         Notifier.cancel(ctx, machine.id, session)
         val client = OkHttpClient.Builder().callTimeout(8, TimeUnit.SECONDS).build()
         val req = Request.Builder().url(LinkParser.wsUrl(machine.url)).header("Authorization", "Bearer " + machine.token).build()
         Thread {
             if (!machine.url.startsWith("https:") && !NetPolicy.cleartextAllowedResolving(machine.host)) {
-                done.finish()
+                done()
                 return@Thread
             }
             client.newWebSocket(req, object : WebSocketListener() {
@@ -34,9 +39,9 @@ class AnswerReceiver : BroadcastReceiver() {
                     webSocket.close(1000, null)
                 }
 
-                override fun onClosed(webSocket: WebSocket, code: Int, reason: String) = done.finish()
-                override fun onClosing(webSocket: WebSocket, code: Int, reason: String) = done.finish()
-                override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) = done.finish()
+                override fun onClosed(webSocket: WebSocket, code: Int, reason: String) = done()
+                override fun onClosing(webSocket: WebSocket, code: Int, reason: String) = done()
+                override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) = done()
             })
         }.start()
     }
