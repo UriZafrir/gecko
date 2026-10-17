@@ -120,12 +120,13 @@ class TermuxTest {
             js(sc, "gecko.newTab()")
             waitFor(sc, "gecko.activePane()&&gecko.activeSession()&&!gecko.activeSession().exited")
             val tools = args.getString("termuxTools") == "true"
-            val cmd = "echo \$SHELL; echo \$PREFIX; " + (if (tools) "git --version; tmux -V; node -v; tmux new -d -s gk 'sleep 600'; tmux ls; " else "") + "echo marker-\$((6*7))"
+            val cmd = "echo \$SHELL; echo shell=\$0; echo \$PREFIX; " + (if (tools) "git --version; tmux -V; node -v; tmux new -d -s gk 'sleep 600'; tmux ls; " else "") + "echo marker-\$((6*7))"
             js(sc, "gecko.sendInput(gecko.activeId(), ${org.json.JSONObject.quote("$cmd\r")})")
             waitFor(sc, "screen().includes('marker-42')", 30)
             val text = js(sc, "screen()")
             assertTrue(text, text.contains("/data/data/com.termux/files/usr"))
-            assertTrue("not Termux's shell: $text", text.contains("/data/data/com.termux/files/usr/bin/"))
+            assertTrue("not Termux's shell: $text", text.contains("/data/data/com.termux/files/usr/bin/bash"))
+            assertTrue("not bash: $text", Regex("shell=\\S*bash").containsMatchIn(text))
             if (tools) {
                 assertTrue(text, text.contains("git version"))
                 assertTrue(text, Regex("tmux \\d").containsMatchIn(text))

@@ -63,6 +63,9 @@ func DefaultShell() string {
 	}
 	for _, s := range shellCandidates(prefix) {
 		if st, err := os.Stat(s); err == nil && !st.IsDir() {
+			if prefix != "" {
+				os.Setenv("SHELL", s) // what tabs see, rather than Termux's login
+			}
 			return s
 		}
 	}
