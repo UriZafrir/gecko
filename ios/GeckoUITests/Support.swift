@@ -1,3 +1,4 @@
+import UIKit
 import XCTest
 
 /// What the UI tests share: launching against the Gecko the CI job runs

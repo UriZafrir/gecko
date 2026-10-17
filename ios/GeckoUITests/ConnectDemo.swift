@@ -1,3 +1,4 @@
+import UIKit
 import XCTest
 
 /// 01-connect: paste Gecko's link, name the machine, and its Gecko opens.

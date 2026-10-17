@@ -288,7 +288,6 @@ final class TerminalViewController: UIViewController, WKNavigationDelegate, WKUI
             UIAction(title: "Machines", image: UIImage(systemName: "desktopcomputer")) { [weak self] _ in self?.onLeave() },
         ]
         let build = UIAction(title: AppBuild.id, subtitle: "Build. Tap to copy.") { _ in AppBuild.copy() }
-        build.accessibilityIdentifier = "menu.build-id"
         return main + [UIMenu(options: .displayInline, children: [build])]
     }
 
