@@ -3,7 +3,7 @@
 // --remote-debugging-port=$TOUR_CDP) while the screen is being recorded,
 // and writes a caption timeline ("unix-seconds|text" lines) to
 // $TOUR_CAPTIONS. Chapters: pairing, another machine, agents, Gecko driven
-// from outside, themes, scrolling. A chapter that fails is logged and the
+// from outside, themes, transparency, scrolling. A chapter that fails is logged and the
 // tour goes on.
 //
 // Environment:
@@ -20,6 +20,8 @@
 //   TOUR_AGENTS         0: skip the agents chapter (no agent detection)
 //   TOUR_AGENTS_WHY     caption when it is skipped
 //   TOUR_TMUX           0: no tmux part in the scrolling chapter
+//   TOUR_SEE_THROUGH    caption on how this platform shows what is behind
+//                       the window (vibrancy, acrylic, a compositor)
 //   TOUR_SKIP           comma-separated chapter numbers to skip
 const fs = require('fs');
 let pw;
@@ -400,8 +402,64 @@ async function themes() {
   await sleep(2000);
 }
 
+// Background opacity: the window shrinks so the wallpaper shows around it,
+// over a window with big text that the platform script put behind Gecko
+// before the app started, then the opacity goes down step by step.
+async function transparency() {
+  const x = BX + Math.round(BW * 0.26), y = BY + Math.round(BH * 0.14);
+  caption('6. Transparency: a window with notes and the wallpaper are behind Gecko');
+  await setBounds(x, y, BX + BW - x - 16, BY + BH - y - 16);
+  await page.evaluate(() => window.gecko.activePane()?.show());
+  await sleep(3000);
+  const steps = async (n, ms = 900) => { for (let i = 0; i < n; i++) { await page.keyboard.press('ArrowDown'); await sleep(ms); } };
+  try {
+    caption('Background opacity... in the palette previews each step live');
+    await palette('background opacity');
+    await sleep(1200);
+    await steps(3);
+    caption('85%: a hint of what is behind');
+    await sleep(2500);
+    await steps(3);
+    caption('70%: the notes window and the wallpaper clearly show through');
+    await sleep(3000);
+    await steps(2);
+    caption(`50%: very see-through. ${env.TOUR_SEE_THROUGH || ''}`.trim());
+    await sleep(3500);
+    await page.keyboard.press('ArrowUp');
+    await sleep(700);
+    await page.keyboard.press('Enter');
+    caption('Kept at 60%. On a photo theme the picture fades as well');
+    await sleep(1200);
+    await palette('change theme');
+    await sleep(800);
+    await typeSlow('Cyberpunk', 90);
+    await sleep(800);
+    await page.keyboard.press('Enter');
+    await sleep(4500);
+    caption('And on Tokyo Night');
+    await palette('change theme');
+    await sleep(800);
+    await typeSlow('Tokyo Night', 90);
+    await sleep(800);
+    await page.keyboard.press('Enter');
+    await sleep(4000);
+    caption('Back to solid');
+    await palette('background opacity');
+    await sleep(900);
+    for (let i = 0; i < 9; i++) { await page.keyboard.press('ArrowUp'); await sleep(250); }
+    await sleep(900);
+    await page.keyboard.press('Enter');
+    await sleep(2500);
+  } finally {
+    await page.evaluate(() => { const g = window.gecko; if (g.settings.opacity !== 1) g.setSetting('opacity', 1); if (g.settings.theme !== 'tokyo-night') g.setSetting('theme', 'tokyo-night'); }).catch(() => {});
+    await setBounds(BX, BY, BW, BH);
+    await page.evaluate(() => window.gecko.activePane()?.show());
+    await sleep(800);
+  }
+}
+
 async function scrolling() {
-  caption('6. Scrolling: a long output, then the mouse wheel through the scrollback');
+  caption('7. Scrolling: a long output, then the mouse wheel through the scrollback');
   const local = await page.evaluate(() => window.gecko.hostName);
   const all = await sessions();
   const shell = all.find((x) => x.host === local && x.name !== 'build' && !x.agent);
@@ -455,7 +513,7 @@ async function scrolling() {
   page = ctx.pages().find((p) => !p.url().startsWith('devtools')) || (await ctx.waitForEvent('page'));
   await page.waitForFunction(() => window.gecko && window.gecko.hostName, null, { timeout: 30000 });
   await page.bringToFront().catch(() => {});
-  const chapters = [intro, pairing, machines, agents, managed, themes, scrolling];
+  const chapters = [intro, pairing, machines, agents, managed, themes, transparency, scrolling];
   let failed = 0;
   for (const [i, ch] of chapters.entries()) {
     if (skip.has(i)) continue;
