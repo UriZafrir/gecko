@@ -447,6 +447,8 @@ input[type=text], input[type=search], textarea {
 .replies button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .replies button b { font: 600 11px var(--mono); color: var(--faint); }
 .replies button.esc { color: var(--muted); }
+/* Phones only (below): folds the dock to a count. */
+.dock-fold { display: none; }
 .replies button:hover { box-shadow: inset 0 0 0 1px var(--need); color: var(--need); }
 
 /* ------------------------------------------------------------ status line */
@@ -627,6 +629,8 @@ input, textarea, [contenteditable] { cursor: text; user-select: text; -webkit-us
     font-weight: 650; color: var(--accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   #tabbar { height: 44px; }
+  /* Compact: the drawer has the workspace, the machine and the folders. */
+  #ws-title, #new-tab .where, #tabs .tab .git, #tabs .tab .where { display: none; }
   .tab { padding-left: 12px; max-width: 46vw; }
   .tab .x { display: none; }
   .tab.cur .x { display: block; }
@@ -636,7 +640,35 @@ input, textarea, [contenteditable] { cursor: text; user-select: text; -webkit-us
   #statusline:has(.sl-action) { display: flex; justify-content: center; height: 34px; }
   #statusline:has(.sl-action) .l > :not(.sl-action), #statusline:has(.sl-action) .r > :not(.sl-action) { display: none; }
   #statusline .sl-action { padding: 4px 12px; }
-  .agent { min-width: 70vw; }
+  /* The agents: one slim row of chips, scrolling sideways; a chip opens to
+     its last line and answers; the row folds to a count. */
+  #dock { gap: 6px; padding: 5px 6px; align-items: flex-start; scrollbar-width: none; }
+  #dock::-webkit-scrollbar { display: none; }
+  .dock-fold {
+    display: inline-flex; align-items: center; gap: 6px; flex: none; height: 30px; padding: 0 10px; border-radius: 15px;
+    font: 13px var(--ui); color: var(--muted); box-shadow: inset 0 0 0 1px var(--line);
+  }
+  .dock-fold b { font-weight: 650; color: var(--text); }
+  .dock-fold.s-working b { color: var(--accent); }
+  .dock-fold.s-needs-input { color: var(--need); box-shadow: inset 0 0 0 1.5px var(--need); }
+  .dock-fold.s-needs-input b { color: var(--need); }
+  #dock:not(.folded) .dock-fold { width: 30px; padding: 0; justify-content: center; }
+  #dock:not(.folded) .dock-fold span { display: inline-block; transform: rotate(90deg); font-size: 16px; }
+  #dock.folded { padding: 4px 6px; }
+  #dock.folded .agent { display: none; }
+  .agent {
+    min-width: 0; max-width: 64vw; height: 30px; padding: 0 12px 0 9px; column-gap: 6px;
+    grid-template-rows: 30px; border: 1px solid var(--line); border-radius: 15px;
+  }
+  .agent .who { font-size: 13px; }
+  .agent .what, .agent .replies { display: none; }
+  .agent.s-working { border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
+  .agent.s-needs-input { border-color: var(--need); background: color-mix(in srgb, var(--need) 14%, var(--surface-panel)); }
+  .agent.cur { background: var(--surface-raise); }
+  .agent.s-needs-input.cur { background: color-mix(in srgb, var(--need) 22%, var(--surface-panel)); }
+  .agent.open { height: auto; min-width: calc(100vw - 54px); max-width: calc(100vw - 54px); grid-template-rows: 28px auto auto; padding: 0 10px 8px 9px; border-radius: 12px; }
+  .agent.open .what { display: block; }
+  .agent.open .replies { display: flex; }
   .replies button { min-width: 34px; height: 30px; }
   .tab-row, .host-main { padding-top: 7px; padding-bottom: 7px; }
   .host-row .x { opacity: 1; }

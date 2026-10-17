@@ -29,6 +29,12 @@ the drawer.
 The mobile layout has:
 
 - A drawer with workspaces, agents and machines.
+- A compact tab bar: just the tabs' titles (the workspace, machine, repo and
+  folder are in the drawer, and in a tab's long-press menu).
+- The agents as one slim row of chips above the keys: a chip shows the
+  agent, its tab and how long; tap it for its last line and the answers (or
+  quick replies), tap again to close. One that needs you is tinted. The
+  button at the start folds the row to a count ("2 agents · 1 needs you").
 - A key bar: esc, tab, sticky ctrl/alt, arrows, `^C`, pgup/pgdn, select,
   paste.
 - A **compose** box for writing prompts with your keyboard's autocorrect.

@@ -185,6 +185,9 @@ function gitStateText(g) {
   return bits.length ? bits.join(', ') : 'clean';
 }
 
+// The phone layout (style.css, "phones"): the same breakpoint.
+const phoneLayout = () => matchMedia('(max-width: 760px)').matches;
+
 // full: also show counts and ahead/behind (status line). Otherwise just a
 // dot when there are uncommitted changes (tabs).
 function gitChip(s, full = false) {
@@ -318,6 +321,8 @@ class App {
     this.collapsed = store('collapsed', {});
     this.tmuxOpen = store('tmuxOpen', {}); // tmux sessions expanded in the sidebar
     this.mods = { ctrl: false, alt: false };
+    this.dockFolded = !!store('dockFolded', false); // phones: the agent dock as a count
+    this.dockOpen = null; // phones: the agent chip showing its answers
     this.agentSeen = new Map();
     this.pendingFocus = null;
     this.applyTheme();
@@ -1667,10 +1672,26 @@ class App {
         this.conn.input(id, keys[reply.dataset.reply] ?? reply.dataset.reply);
         return;
       }
+      if (ev.target.closest('[data-fold]')) {
+        // Phones: the dock folds to a count of agents, and back.
+        this.dockFolded = !this.dockFolded;
+        save('dockFolded', this.dockFolded);
+        this.renderDock();
+        return;
+      }
       const chip = ev.target.closest('[data-agent]');
       if (chip) {
         const a = this.allAgents().find((x) => x.key === chip.dataset.agent);
-        if (a) this.openAgent(a);
+        if (!a) return;
+        // Phones: a chip opens to its last line and answers (and its tab);
+        // a second tap closes it.
+        if (phoneLayout()) {
+          this.dockOpen = this.dockOpen === a.key ? null : a.key;
+          this.renderDock();
+          if (this.dockOpen) this.openAgent(a);
+          return;
+        }
+        this.openAgent(a);
       }
     });
     $('#empty').addEventListener('click', (ev) => {
@@ -1792,7 +1813,10 @@ class App {
       const shortcut = id === this.activeId() ? prettyCombo(this.keys.first('closeTab')) : '';
       if (!s) return [{ label: 'Close tab', run: () => this.closeTab(id), hint: shortcut, danger: true }];
       const others = this.tabsOf(s.workspace).filter((t) => t.id !== id);
+      // Phones show only the tab's title: its details are here.
+      const about = phoneLayout() && [s.host, s.repo && (s.branch ? `${s.repo} on ${s.branch}` : s.repo), s.cwd && shortPath(s.cwd)].filter(Boolean).join(' · ');
       return [
+        about && { note: about },
         { label: 'New tab here', hint: 'Same machine and folder', run: () => this.newTab({ host: s.host, cwd: s.cwd, workspace: s.workspace }) },
         sep,
         { label: 'Rename…', run: () => this.renameTab(id) },
@@ -3330,7 +3354,14 @@ class App {
       return;
     }
     const act = this.activeId();
-    dock.innerHTML = agents.map((a) => {
+    // Phones: a slim row of chips (answers behind a tap), or just a count.
+    const need = agents.filter((a) => a.state.status === 'needs-input').length;
+    const working = agents.some((a) => a.state.status === 'working');
+    dock.classList.toggle('folded', !!this.dockFolded);
+    const fold = `<button class="dock-fold ${need ? 's-needs-input' : working ? 's-working' : ''}" data-fold aria-expanded="${!this.dockFolded}"
+        title="${this.dockFolded ? 'Show' : 'Hide'} the agents" aria-label="${agents.length} agent${agents.length === 1 ? '' : 's'}${need ? `, ${need} need${need === 1 ? 's' : ''} you` : ''}; ${this.dockFolded ? 'show' : 'hide'} them">
+        ${this.dockFolded ? `<b>${agents.length}</b><span>agent${agents.length === 1 ? '' : 's'}${need ? ` · ${need} need${need === 1 ? 's' : ''} you` : ''}</span>` : '<span>›</span>'}</button>`;
+    dock.innerHTML = fold + agents.map((a) => {
       const s = a.session;
       const where = tabLabel(s) === a.state.name ? s.workspace : tabLabel(s);
       // Waiting on a question: the answers it offers on screen (read by the
@@ -3342,7 +3373,7 @@ class App {
         : a.state.status !== 'working'
           ? `<span class="replies">${parseQuickReplies(this.settings.quickReplies).map((q) => button(`data-prompt="${esc(q.text)}"`, `<span>${esc(q.label)}</span>`, `Send “${q.text}”`)).join('')}</span>`
           : '';
-      return `<div class="agent s-${esc(a.state.status)} ${s && s.id === act ? 'cur' : ''}" data-agent="${esc(a.key)}" role="button" tabindex="0"
+      return `<div class="agent s-${esc(a.state.status)} ${s && s.id === act ? 'cur' : ''} ${this.dockOpen === a.key ? 'open' : ''}" data-agent="${esc(a.key)}" role="button" tabindex="0"
           title="${esc(`${a.state.name} on ${a.host}: ${STATUS_TEXT[a.state.status] || a.state.status}${a.state.detail ? ' - ' + a.state.detail : ''}`)}">
         ${agentMark({ agent: a.state })}
         <span class="who"><b>${esc(a.state.name)}</b> ${esc(where)}${a.host !== this.hostName ? ` <span class="where">${esc(a.host)}</span>` : ''}</span>
