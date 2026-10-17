@@ -1,8 +1,8 @@
 # Draft recipe for termux-packages (https://github.com/termux/termux-packages),
 # as packages/gecko/build.sh there. Not submitted yet; before it can be:
 #   - the repository needs a license (TERMUX_PKG_LICENSE must name it),
-#   - a release that has the Termux fixes (after 0.1.0), with its tarball's
-#     sha256 below.
+#   - the 0.2.0 release (the first with the Termux fixes) published, with its
+#     tarball's sha256 below.
 # Test it in a termux-packages checkout: ./scripts/run-docker.sh ./build-package.sh -a aarch64 gecko
 TERMUX_PKG_HOMEPAGE=https://github.com/eternaleclipse/gecko
 TERMUX_PKG_DESCRIPTION="Terminal for shells, tmux, ssh and coding agents, in a browser or the Gecko app"
