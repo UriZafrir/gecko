@@ -10,6 +10,7 @@ pkgbase = gecko
 	makedepends = npm
 	depends = glibc
 	depends = electron
+	depends = hicolor-icon-theme
 	optdepends = tmux: tmux sessions in Gecko
 	optdepends = mosh: mosh connections to other machines
 	conflicts = gecko-bin

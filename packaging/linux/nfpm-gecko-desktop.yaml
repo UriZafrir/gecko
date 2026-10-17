@@ -17,6 +17,7 @@ homepage: https://github.com/eternaleclipse/gecko
 license: LicenseRef-Unspecified
 depends:
   - gecko (>= ${PKG_VERSION})
+  - libc6
   - libgtk-3-0t64 | libgtk-3-0
   - libnss3
   - libasound2t64 | libasound2
@@ -35,16 +36,14 @@ overrides:
       - gecko >= ${PKG_VERSION}
       - gtk3
       - nss
-      - alsa-lib
       - mesa-libgbm
+      - at-spi2-core
+      - xdg-utils
+    recommends:
+      - libnotify
+      - libsecret
       - libXScrnSaver
       - libXtst
-      - libnotify
-      - at-spi2-core
-      - libsecret
-      - libdrm
-      - libxkbcommon
-      - xdg-utils
 contents:
   - src: dist/build/linux/root/usr/lib/gecko-desktop
     dst: /usr/lib/gecko-desktop
@@ -55,6 +54,13 @@ contents:
   - src: dist/build/linux/root/usr/share/gecko/apparmor/gecko-desktop-package
     dst: /etc/apparmor.d/gecko-desktop-package
     type: config
+    file_info: {mode: 0644}
+    packager: deb
+  - src: dist/build/linux/root/usr/share/man/man1/gecko-desktop.1.gz
+    dst: /usr/share/man/man1/gecko-desktop.1.gz
+    file_info: {mode: 0644}
+  - src: packaging/linux/lintian-overrides-gecko-desktop
+    dst: /usr/share/lintian/overrides/gecko-desktop
     file_info: {mode: 0644}
     packager: deb
   - src: packaging/linux/copyright

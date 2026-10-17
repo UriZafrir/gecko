@@ -32,6 +32,7 @@ override_dh_auto_install:
 	install -Dm644 packaging/linux/gecko.svg debian/gecko/usr/share/icons/hicolor/scalable/apps/gecko.svg
 	install -Dm644 packaging/linux/gecko-256.png debian/gecko/usr/share/icons/hicolor/256x256/apps/gecko.png
 	install -Dm644 packaging/linux/gecko.metainfo.xml debian/gecko/usr/share/metainfo/dev.gecko.app.metainfo.xml
+	install -Dm644 packaging/linux/gecko.1 debian/gecko/usr/share/man/man1/gecko.1
 
 # Go binaries: no DWARF to compress, and the static binary is intended.
 override_dh_dwz:

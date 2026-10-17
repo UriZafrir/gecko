@@ -163,7 +163,7 @@ jobs:
           cp pkgs/gecko-$v-src.tar.gz pkgs/gecko-$v-linux-x86_64.tar.gz ~/rpmbuild/SOURCES/
           GOPROXY=off rpmbuild -ba --define "gecko_version $v" packaging/rpm/gecko.spec
           mkdir -p out && cp ~/rpmbuild/RPMS/x86_64/*.rpm ~/rpmbuild/SRPMS/*.rpm out/
-          rpmlint packaging/rpm/gecko.spec out/*.rpm | tee out/rpmlint.txt || true
+          rpmlint -r packaging/rpm/gecko.rpmlintrc packaging/rpm/gecko.spec out/*.rpm | tee out/rpmlint.txt || true
       - name: Install and smoke test
         run: |
           dnf -y -q install ./out/gecko-[0-9]*.x86_64.rpm ./out/gecko-desktop-*.x86_64.rpm xorg-x11-server-Xvfb ImageMagick python3 curl procps-ng util-linux shadow-utils >/dev/null
@@ -218,9 +218,10 @@ jobs:
           pacman -S --noconfirm --needed go npm electron >/dev/null
           pacman -R --noconfirm gecko-bin
           mkdir -p work/gecko
-          git config --global --add safe.directory "$PWD"
           v=${{ needs.build.outputs.version }}
-          git archive --prefix=gecko-$v/ -o work/gecko/gecko-$v.tar.gz HEAD
+          # The checkout has no .git here (no git in the image at checkout).
+          tar --exclude=./pkgs --exclude=./work --exclude=./out --transform "s,^\.,gecko-$v," -czf /tmp/gecko-$v.tar.gz .
+          mv /tmp/gecko-$v.tar.gz work/gecko/
           cp packaging/arch/gecko/PKGBUILD work/gecko/
           chown -R builder work
           cd work/gecko

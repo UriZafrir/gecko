@@ -9,7 +9,7 @@ arch=('x86_64' 'aarch64')
 url="https://github.com/eternaleclipse/gecko"
 # The project has not chosen a license yet (docs/linux-packages.md).
 license=('LicenseRef-Unspecified')
-depends=('glibc' 'electron')
+depends=('glibc' 'electron' 'hicolor-icon-theme')
 makedepends=('go' 'npm')
 optdepends=('tmux: tmux sessions in Gecko'
             'mosh: mosh connections to other machines')
@@ -58,5 +58,7 @@ SH
   install -Dm644 packaging/linux/gecko.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/gecko.svg"
   install -Dm644 packaging/linux/gecko-256.png "$pkgdir/usr/share/icons/hicolor/256x256/apps/gecko.png"
   install -Dm644 packaging/linux/gecko.metainfo.xml "$pkgdir/usr/share/metainfo/dev.gecko.app.metainfo.xml"
+  install -Dm644 packaging/linux/gecko.1 "$pkgdir/usr/share/man/man1/gecko.1"
+  install -Dm644 packaging/linux/gecko-desktop.1 "$pkgdir/usr/share/man/man1/gecko-desktop.1"
   install -Dm644 README.md "$pkgdir/usr/share/doc/gecko/README.md"
 }

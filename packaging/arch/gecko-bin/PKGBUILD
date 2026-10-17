@@ -9,7 +9,8 @@ arch=('x86_64' 'aarch64')
 url="https://github.com/eternaleclipse/gecko"
 # The project has not chosen a license yet (docs/linux-packages.md).
 license=('LicenseRef-Unspecified')
-depends=('gtk3' 'nss' 'alsa-lib' 'libxss' 'libxtst' 'libnotify' 'at-spi2-core' 'libsecret' 'mesa' 'libdrm' 'libxkbcommon' 'xdg-utils')
+depends=('gtk3' 'nss' 'alsa-lib' 'libxss' 'libxtst' 'libnotify' 'at-spi2-core' 'libsecret' 'mesa' 'libdrm' 'libxkbcommon' 'xdg-utils'
+         'dbus' 'libxrandr' 'cairo' 'hicolor-icon-theme')
 optdepends=('tmux: tmux sessions in Gecko'
             'mosh: mosh connections to other machines')
 provides=('gecko')

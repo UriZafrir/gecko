@@ -25,6 +25,12 @@ cp -a "$unpacked/." "$root/usr/lib/gecko-desktop/"
 # The AppImage's launcher and gecko copy are not used here.
 rm -rf "$root/usr/lib/gecko-desktop/usr" "$root/usr/lib/gecko-desktop/gecko-desktop"
 chmod 755 "$root/usr/lib/gecko-desktop/chrome-sandbox"
+chmod 644 "$root"/usr/lib/gecko-desktop/*.so*
+strip --strip-unneeded "$root/usr/lib/gecko-desktop/libvulkan.so.1" 2>/dev/null || true
+for m in gecko gecko-desktop; do
+	mkdir -p "$root/usr/share/man/man1"
+	gzip -9nc "$here/$m.1" >"$root/usr/share/man/man1/$m.1.gz"
+done
 install -Dm644 "$here/gecko.service" "$root/usr/lib/systemd/user/gecko.service"
 mkdir -p "$root/usr/share/applications"
 sed 's|@BIN@|/usr/bin/gecko|' "$here/gecko.desktop" >"$root/usr/share/applications/gecko.desktop"

@@ -40,18 +40,16 @@ which agent is working and which one is waiting for you.
 Summary:        Native window for the Gecko terminal multiplexer
 License:        LicenseRef-Unspecified AND MIT
 Requires:       gecko = %{version}-%{release}
+# Linked libraries are found automatically; these are loaded at runtime.
 Requires:       gtk3
 Requires:       nss
-Requires:       alsa-lib
 Requires:       mesa-libgbm
-Requires:       libXScrnSaver
-Requires:       libXtst
-Requires:       libnotify
 Requires:       at-spi2-core
-Requires:       libsecret
-Requires:       libdrm
-Requires:       libxkbcommon
 Requires:       xdg-utils
+Recommends:     libnotify
+Recommends:     libsecret
+Recommends:     libXScrnSaver
+Recommends:     libXtst
 
 %description    desktop
 A see-through window around Gecko's web UI, without browser chrome in the
@@ -74,11 +72,15 @@ sed 's|@BIN@|%{_bindir}/gecko|' packaging/linux/gecko.desktop >%{buildroot}%{_da
 install -Dm644 packaging/linux/gecko.svg %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/gecko.svg
 install -Dm644 packaging/linux/gecko-256.png %{buildroot}%{_datadir}/icons/hicolor/256x256/apps/gecko.png
 install -Dm644 packaging/linux/gecko.metainfo.xml %{buildroot}%{_metainfodir}/dev.gecko.app.metainfo.xml
+install -Dm644 packaging/linux/gecko.1 %{buildroot}%{_mandir}/man1/gecko.1
+install -Dm644 packaging/linux/gecko-desktop.1 %{buildroot}%{_mandir}/man1/gecko-desktop.1
 # The window, from the release tarball.
 bin=gecko-%{version}-linux-x86_64
 mkdir -p %{buildroot}%{_prefix}/lib
 cp -a $bin/usr/lib/gecko-desktop %{buildroot}%{_prefix}/lib/
+chmod 644 %{buildroot}%{_prefix}/lib/gecko-desktop/*.so*
 install -Dm755 packaging/linux/gecko-desktop %{buildroot}%{_bindir}/gecko-desktop
+%{_mandir}/man1/gecko-desktop.1*
 
 %check
 desktop-file-validate %{buildroot}%{_datadir}/applications/gecko.desktop
@@ -88,6 +90,7 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/dev.gecko.app.
 %files
 %doc README.md docs/linux-packages.md docs/desktop-packages.md
 %{_bindir}/gecko
+%{_mandir}/man1/gecko.1*
 %{_userunitdir}/gecko.service
 %{_datadir}/applications/gecko.desktop
 %{_datadir}/icons/hicolor/scalable/apps/gecko.svg
