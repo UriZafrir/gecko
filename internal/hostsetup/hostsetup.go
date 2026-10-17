@@ -204,7 +204,7 @@ func Binary(goos, goarch string) (string, error) {
 	if goos == runtime.GOOS && goarch == runtime.GOARCH {
 		return exe, nil
 	}
-	if config.IsAndroid() && goos == "linux" {
+	if config.IsAndroid() && goos == "linux" && os.Getenv("GECKO_APK") != "" {
 		// The Android app carries Gecko for both phone CPUs, which are the
 		// Linux builds for those CPUs too: take the other one out of the APK.
 		return fromAPK(os.Getenv("GECKO_APK"), goarch, filepath.Join(config.StateDir(), "dist"))

@@ -173,6 +173,10 @@ func (c *Config) CloudEnabled() bool {
 func DefaultName() string {
 	if IsAndroid() {
 		if n := androidName(); n != "" {
+			// Gecko in Termux and the app's own one on the same phone.
+			if IsTermux() {
+				return n + "-termux"
+			}
 			return n
 		}
 	}

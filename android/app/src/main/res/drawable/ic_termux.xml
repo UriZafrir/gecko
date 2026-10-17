@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Gecko in Termux: a terminal window with Termux's prompt, a chevron and a cursor. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="40dp" android:height="40dp" android:viewportWidth="40" android:viewportHeight="40">
+    <path android:fillColor="#000000" android:pathData="M8,5h24a5,5 0 0 1 5,5v20a5,5 0 0 1 -5,5h-24a5,5 0 0 1 -5,-5v-20a5,5 0 0 1 5,-5z" />
+    <path android:strokeColor="#7CCB3A" android:strokeWidth="1.2" android:pathData="M8,5.6h24a4.4,4.4 0 0 1 4.4,4.4v20a4.4,4.4 0 0 1 -4.4,4.4h-24a4.4,4.4 0 0 1 -4.4,-4.4v-20a4.4,4.4 0 0 1 4.4,-4.4z" />
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="2.6" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M11,14l5,5l-5,5" />
+    <path android:fillColor="#FFFFFF" android:pathData="M19,22.5h9v2.6h-9z" />
+</vector>

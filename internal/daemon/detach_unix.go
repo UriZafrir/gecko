@@ -9,6 +9,8 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
+
+	"github.com/gecko-term/gecko/internal/config"
 )
 
 func detach(cmd *exec.Cmd) {
@@ -32,7 +34,10 @@ func ignoreHangup() {
 // user has lingering enabled, so it also survives logind cleaning up the
 // SSH session's scope on logout.
 func spawnService(exe string) bool {
-	if runtime.GOOS != "linux" || os.Getenv("GECKO_HOME") != "" {
+	// Not on Android (the Gecko app, Termux): no systemd, and Go's own
+	// lookup of systemd-run could get the process killed there (see
+	// execx.LookPath).
+	if runtime.GOOS != "linux" || os.Getenv("GECKO_HOME") != "" || config.IsAndroid() {
 		return false
 	}
 	if _, err := exec.LookPath("systemd-run"); err != nil {
