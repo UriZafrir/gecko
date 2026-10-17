@@ -31,6 +31,8 @@ class CompactDemo {
         assumeTrue(args.getString("demo") == "compact")
         val shot = args.getString("shot") ?: "shot"
         val dir = args.getString("demoDir")!!
+        // Longer looks for a video (-e pause <ms>).
+        val pause = args.getString("pause")?.toLong() ?: 1500L
         val link = LinkParser.parse(args.getString("geckoUrl")!!)
         val m = Machine(name = "demo", url = link.baseUrl, token = link.token!!)
         Gecko.machines(ctx).save(m)
@@ -53,13 +55,21 @@ class CompactDemo {
             if (args.getString("open") == "true") {
                 // The asking agent's chip: its answers.
                 js(sc, "document.querySelector('#dock .agent.s-needs-input').click()")
-                Thread.sleep(1500)
+                Thread.sleep(pause)
                 device.takeScreenshot(File(ctx.getExternalFilesDir(null), "compact-$shot-open.png"))
                 js(sc, "gecko.focusSession($shell)")
+                // The working one, then closed again.
+                if (pause > 1500) {
+                    js(sc, "document.querySelector('#dock .agent:not(.s-needs-input)').click()")
+                    Thread.sleep(pause)
+                    js(sc, "document.querySelector('#dock .agent.open').click()")
+                    Thread.sleep(pause / 2)
+                }
                 js(sc, "document.querySelector('#dock [data-fold]').click()")
-                Thread.sleep(1500)
+                Thread.sleep(pause)
                 device.takeScreenshot(File(ctx.getExternalFilesDir(null), "compact-$shot-folded.png"))
                 js(sc, "document.querySelector('#dock [data-fold]').click()")
+                Thread.sleep(pause / 2)
             }
             for (id in listOf(work, ask)) js(sc, "gecko.sendInput($id, '\\u0003')")
         }

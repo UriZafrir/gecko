@@ -106,6 +106,59 @@ class DictationTest {
     @Test fun intoTheComposeBox() = drive(compose = true)
 
     /**
+     * For the video (-e demo dictation, -e geckoUrl, -e demoDir): voice
+     * typing at a person's pace into a shell, then into the compose box.
+     */
+    @Test fun demo() {
+        val args = InstrumentationRegistry.getArguments()
+        assumeTrue(args.getString("demo") == "dictation")
+        val link = LinkParser.parse(args.getString("geckoUrl")!!)
+        val m = Machine(name = "demo", url = link.baseUrl, token = link.token!!)
+        Gecko.machines(ctx).save(m)
+        val intent = Intent(ctx, TerminalActivity::class.java).putExtra(TerminalActivity.EXTRA_MACHINE, m.id)
+        ActivityScenario.launch<TerminalActivity>(intent).use { s ->
+            sc = s
+            waitFor("window.gecko&&gecko.conn.status==='online'&&gecko.firstSync===true", 60)
+            val before = js("gecko.activeId()")
+            js("gecko.newTab({cwd: ${org.json.JSONObject.quote(args.getString("demoDir"))}})")
+            waitFor("gecko.activeId()!==$before&&gecko.activePane()&&gecko.activePane().term.buffer.active.getLine(0).translateToString(true).trim().length>0")
+            js("gecko.sendInput(gecko.activeId(), 'clear\\r')")
+            Thread.sleep(1500)
+            tapTerminal()
+            Thread.sleep(1000)
+            // Said word by word, one word heard wrong and fixed, then Enter.
+            Ime(connect(), 450).run {
+                for (p in listOf("echo", "echo the", "echo the payments", "echo the payments test", "echo the payments test pases")) compose(p)
+                compose("echo the payments test passes"); commit("echo the payments test passes")
+                commit(" now"); delete(4); commit(", now")
+                Thread.sleep(800)
+                enter()
+            }
+            Thread.sleep(2500)
+            // The compose box: Enter while it's still listening sends it all.
+            js("gecko.toggleCompose(true)")
+            waitFor("document.activeElement===document.querySelector('#compose textarea')")
+            Thread.sleep(800)
+            val geo = js("(()=>{const r=document.querySelector('#compose textarea').getBoundingClientRect(),d=devicePixelRatio;return [(r.left+r.width/2)*d,(r.top+r.height/2)*d].join(',')})()").trim('"').split(",").map { it.toDouble() }
+            val dev = androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+            val web = dev.findObject(androidx.test.uiautomator.UiSelector().className("android.webkit.WebView")).bounds
+            val starts = ScriptIme.started
+            dev.click(web.left + geo[0].toInt(), web.top + geo[1].toInt())
+            val until = System.currentTimeMillis() + 2000
+            while (ScriptIme.started == starts && System.currentTimeMillis() < until) Thread.sleep(50)
+            Thread.sleep(800)
+            Ime(connect(), 450).run {
+                for (p in listOf("echo", "echo sent", "echo sent from", "echo sent from the", "echo sent from the compose", "echo sent from the compose box")) compose(p)
+                Thread.sleep(600)
+                enter()
+            }
+            Thread.sleep(3000)
+            js("gecko.toggleCompose(false)")
+            Thread.sleep(1500)
+        }
+    }
+
+    /**
      * With the phone's own keyboard (Gboard on the emulator) up: what
      * `input text` types reaches the terminal once, in order.
      */
@@ -342,14 +395,14 @@ class DictationTest {
     }
 
     /** A keyboard's calls, each on the connection's thread, a few ms apart like Gboard's. */
-    inner class Ime(private val ic: InputConnection) {
+    inner class Ime(private val ic: InputConnection, private val pace: Long = 60) {
         private val handler = ic.handler ?: Handler(Looper.getMainLooper())
 
         private fun call(f: InputConnection.() -> Unit) {
             val latch = CountDownLatch(1)
             handler.post { ic.f(); latch.countDown() }
             latch.await(5, TimeUnit.SECONDS)
-            Thread.sleep(60)
+            Thread.sleep(pace)
         }
 
         fun compose(text: String) = call { setComposingText(text, 1) }
