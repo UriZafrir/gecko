@@ -390,7 +390,7 @@ export class Conn {
 
   onJSON(m) {
     if (this.ping && m.rid === this.ping.rid) {
-      // Any reply is a pong: services before protocol 7 answer "ping"
+      // Any reply is a pong: services before protocol 8 answer "ping"
       // with an error.
       this.rtt = Math.max(1, Math.round(performance.now() - this.ping.at));
       this.lastPing = this.ping.at;
@@ -408,7 +408,9 @@ export class Conn {
         const msg = m.error === 'bad request'
           ? 'The Gecko background service is too old for this. Restart it to update: gecko stop && gecko'
           : m.error;
-        p.reject(new Error(msg));
+        const e = new Error(msg);
+        e.reply = m; // what else it said (e.g. kind, for the Add machine dialog)
+        p.reject(e);
       }
       else p.resolve(m);
       return;

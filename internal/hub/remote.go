@@ -216,7 +216,7 @@ func (r *Remote) pinger(conn proto.Conn, done chan struct{}) {
 		case <-t.C:
 		}
 		start := time.Now()
-		// Gecko before protocol 7 answers "ping" with an error reply,
+		// Gecko before protocol 8 answers "ping" with an error reply,
 		// which is just as good a pong.
 		_, err := r.requestTimeout(&proto.Msg{T: proto.TPing}, pingTimeout)
 		if err != nil && !errors.Is(err, errRemote) {

@@ -1,0 +1,42 @@
+[versions]
+agp = "8.13.2"
+kotlin = "2.2.21"
+core = "1.16.0"
+activity = "1.10.1"
+appcompat = "1.7.1"
+material = "1.12.0"
+webkit = "1.14.0"
+recyclerview = "1.4.0"
+okhttp = "4.12.0"
+zxingEmbedded = "4.3.0"
+zxingCore = "3.5.3"
+junit = "4.13.2"
+json = "20240303"
+androidxJunit = "1.2.1"
+testRunner = "1.6.2"
+testRules = "1.6.1"
+espresso = "3.6.1"
+uiautomator = "2.3.0"
+
+[libraries]
+androidx-core = { module = "androidx.core:core-ktx", version.ref = "core" }
+androidx-activity = { module = "androidx.activity:activity-ktx", version.ref = "activity" }
+androidx-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "appcompat" }
+androidx-webkit = { module = "androidx.webkit:webkit", version.ref = "webkit" }
+androidx-recyclerview = { module = "androidx.recyclerview:recyclerview", version.ref = "recyclerview" }
+material = { module = "com.google.android.material:material", version.ref = "material" }
+okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
+zxing-embedded = { module = "com.journeyapps:zxing-android-embedded", version.ref = "zxingEmbedded" }
+zxing-core = { module = "com.google.zxing:core", version.ref = "zxingCore" }
+junit = { module = "junit:junit", version.ref = "junit" }
+json = { module = "org.json:json", version.ref = "json" }
+androidx-test-junit = { module = "androidx.test.ext:junit", version.ref = "androidxJunit" }
+androidx-test-runner = { module = "androidx.test:runner", version.ref = "testRunner" }
+androidx-test-rules = { module = "androidx.test:rules", version.ref = "testRules" }
+espresso-core = { module = "androidx.test.espresso:espresso-core", version.ref = "espresso" }
+espresso-web = { module = "androidx.test.espresso:espresso-web", version.ref = "espresso" }
+uiautomator = { module = "androidx.test.uiautomator:uiautomator", version.ref = "uiautomator" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }

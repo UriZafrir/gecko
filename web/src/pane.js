@@ -1,4 +1,5 @@
 // A Pane is one xterm.js terminal bound to one session stream.
+import { imeMirror, mirrorIme } from './ime.js';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
@@ -70,6 +71,9 @@ export class Pane {
     this.el.addEventListener('mousedown', (ev) => { if (ev.button === 0) this.lastDown = Date.now(); }, true);
     this.term.open(this.el);
     this.loadRenderer();
+    // Android keyboards (voice typing above all) edit in place: Gecko sends
+    // their edits as keys itself (ime.js), not xterm.
+    if (imeMirror && this.term.textarea) this.imeReset = mirrorIme(this.term.textarea, (b) => app.sendInput(this.id, b, true), this.el);
 
     this.term.onData((d) => {
       // Replaying history makes xterm answer old queries (device attributes,
@@ -131,14 +135,37 @@ export class Pane {
     const { cols, rows } = dims;
     clearTimeout(this.colsTimer);
     if (cols !== this.term.cols && !now) {
-      if (rows !== this.term.rows) this.term.resize(this.term.cols, rows);
+      if (rows !== this.term.rows) this.resizeKeepingView(this.term.cols, rows);
       this.colsTimer = setTimeout(() => this.layout(true), 120);
       return;
     }
-    if (cols !== this.term.cols || rows !== this.term.rows) this.term.resize(cols, rows);
+    if (cols !== this.term.cols || rows !== this.term.rows) this.resizeKeepingView(cols, rows);
     clearTimeout(this.sizeTimer);
     if (now) this.sendSize();
     else this.sizeTimer = setTimeout(() => this.sendSize(), 120);
+  }
+
+  // Scrolled back (reading), the line at the top stays at the top through a
+  // rotation, a fold or a window resize: xterm alone keeps the bottom in
+  // place, which moves what you were reading by the change in rows. A
+  // marker follows the line through re-wrapping, too.
+  resizeKeepingView(cols, rows) {
+    const b = this.term.buffer.active;
+    let mark = null;
+    if (b.type === 'normal' && b.viewportY < b.baseY) {
+      try { mark = this.term.registerMarker(b.viewportY - (b.baseY + b.cursorY)); } catch { mark = null; }
+    }
+    this.term.resize(cols, rows);
+    if (!mark) return;
+    // Again once xterm has synced its scroll area to the new size (that
+    // sync scrolls by the change in rows).
+    const back = () => { if (!mark.isDisposed && mark.line >= 0) this.term.scrollToLine(Math.min(mark.line, this.term.buffer.active.baseY)); };
+    back();
+    clearTimeout(this.keepTimer);
+    this.keepMark?.dispose();
+    this.keepMark = mark;
+    requestAnimationFrame(back);
+    this.keepTimer = setTimeout(() => { back(); mark.dispose(); }, 80);
   }
 
   // Called when the pane becomes visible: size it right away and repaint.
@@ -211,6 +238,7 @@ export class Pane {
   focus() { this.term.focus(); }
 
   dispose() {
+    this.untouch?.();
     this.detach();
     this.ro.disconnect();
     cancelAnimationFrame(this.layoutFrame);

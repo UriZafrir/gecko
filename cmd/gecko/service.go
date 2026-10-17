@@ -45,7 +45,7 @@ func autoService() {
 		return
 	}
 	exe, err := os.Executable()
-	if err != nil || strings.HasPrefix(exe, os.TempDir()) { // go run
+	if err != nil || notTheInstalledGecko(exe) {
 		return
 	}
 	// Linux without a systemd user manager (containers, WSL without
@@ -60,6 +60,39 @@ func autoService() {
 		return
 	}
 	fmt.Println("gecko now starts at login (undo: gecko service uninstall)")
+}
+
+// notTheInstalledGecko tells a throwaway or development run, which must not
+// point the login service at itself, from the user's own Gecko: a binary
+// from `go run`, one inside a Gecko source tree, one started with its own
+// GECKO_HOME (the service runs the default home), or one that isn't the
+// gecko on PATH when there is one.
+func notTheInstalledGecko(exe string) bool {
+	exe, _ = filepath.EvalSymlinks(exe)
+	if strings.HasPrefix(exe, os.TempDir()) {
+		return true
+	}
+	if h := os.Getenv("GECKO_HOME"); h != "" {
+		home, _ := os.UserHomeDir()
+		if filepath.Clean(h) != filepath.Join(home, ".gecko-terminal") {
+			return true
+		}
+	}
+	for d := filepath.Dir(exe); ; d = filepath.Dir(d) {
+		if b, err := os.ReadFile(filepath.Join(d, "go.mod")); err == nil && strings.HasPrefix(string(b), "module github.com/gecko-term/gecko\n") {
+			return true
+		}
+		if filepath.Dir(d) == d {
+			break
+		}
+	}
+	if p, err := exec.LookPath("gecko"); err == nil {
+		p, _ = filepath.EvalSymlinks(p)
+		if p != exe {
+			return true
+		}
+	}
+	return false
 }
 
 // serviceOptOut marks that the user removed the service on purpose.

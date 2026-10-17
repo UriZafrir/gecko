@@ -25,6 +25,13 @@ type HTTP struct {
 	Hub    *hub.Hub
 	Token  string
 	Listen string
+	// PrivateOnly refuses peers outside private networks: the listener the
+	// Android app opens for other devices binds every interface, mobile
+	// data included.
+	PrivateOnly bool
+
+	mu    sync.Mutex
+	conns map[*websocket.Conn]struct{}
 
 	// WebTransport, between StartWT and CloseWT (see wt.go).
 	wtMu      sync.Mutex
@@ -33,6 +40,13 @@ type HTTP struct {
 	certs     *certManager
 	tickets   tickets
 }
+
+// BuildInfo identifies the running gecko: its version, the commit it was
+// built from (with -dirty for uncommitted changes) and when (RFC 3339).
+type BuildInfo struct{ Version, Commit, Time string }
+
+// Build is this gecko's (set by main).
+var Build = BuildInfo{Version: "dev"}
 
 // Handler returns the http.Handler.
 func (s *HTTP) Handler() http.Handler {
@@ -70,7 +84,50 @@ func (s *HTTP) Handler() http.Handler {
 		w.Header().Set("Cache-Control", "no-cache")
 		files.ServeHTTP(w, r)
 	})
+	if s.PrivateOnly {
+		return privateOnly(securityHeaders(mux))
+	}
 	return securityHeaders(mux)
+}
+
+func privateOnly(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !PrivatePeer(r.RemoteAddr) {
+			http.Error(w, "only devices on the same network or tailnet may connect", http.StatusForbidden)
+			return
+		}
+		h.ServeHTTP(w, r)
+	})
+}
+
+// PrivatePeer reports whether addr (host:port) is this device, a LAN
+// address, link-local, or Tailscale's 100.64.0.0/10.
+func PrivatePeer(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		host = addr
+	}
+	ip := net.ParseIP(strings.TrimPrefix(strings.TrimSuffix(host, "]"), "["))
+	if ip == nil {
+		return false
+	}
+	if v4 := ip.To4(); v4 != nil {
+		ip = v4
+		if v4[0] == 100 && v4[1]&0xc0 == 64 {
+			return true
+		}
+	}
+	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast()
+}
+
+// CloseClients drops every WebSocket client of this listener, e.g. when
+// sharing is turned off and its token stops being valid.
+func (s *HTTP) CloseClients() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for c := range s.conns {
+		_ = c.Close()
+	}
 }
 
 func securityHeaders(h http.Handler) http.Handler {
@@ -122,6 +179,17 @@ func (s *HTTP) ws(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c.SetReadLimit(16 << 20)
+	s.mu.Lock()
+	if s.conns == nil {
+		s.conns = map[*websocket.Conn]struct{}{}
+	}
+	s.conns[c] = struct{}{}
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		delete(s.conns, c)
+		s.mu.Unlock()
+	}()
 	Serve(s.Hub, newWSConn(c))
 }
 
@@ -134,6 +202,10 @@ func (s *HTTP) info(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"host": s.Hub.Name(),
 		"urls": ShareURLs(s.Listen, s.Token),
+		// Which gecko this is, so a client can tell an older one.
+		"version": Build.Version,
+		"commit":  Build.Commit,
+		"built":   Build.Time,
 	})
 }
 

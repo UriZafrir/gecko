@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- This phone: a handset with a prompt on its screen. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="40dp" android:height="40dp" android:viewportWidth="40" android:viewportHeight="40">
+    <path android:fillColor="#2B352D" android:pathData="M14,3h12a4,4 0 0 1 4,4v26a4,4 0 0 1 -4,4h-12a4,4 0 0 1 -4,-4v-26a4,4 0 0 1 4,-4z" />
+    <path android:strokeColor="#7CCB3A" android:strokeWidth="2.2" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M15,15l4,4l-4,4M21,24h5" />
+    <path android:fillColor="#7CCB3A" android:pathData="M18,32h4v1.4h-4z" />
+</vector>

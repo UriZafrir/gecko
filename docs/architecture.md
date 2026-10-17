@@ -71,7 +71,7 @@ as the request (ports may differ; `localhost` and `127.0.0.1` match each
 other), and the bind address is the web UI's, loopback only by default.
 
 **Liveness.** The client sends `{"t":"ping","rid":N}` every 2 seconds and the
-daemon replies right away (services before protocol 7 answer with an error
+daemon replies right away (services before protocol 8 answer with an error
 reply, which counts just the same). That gives the round trip in the status
 line. If nothing at all has arrived for 3 seconds while a ping waits, the
 connection is stale: the client closes it and reconnects at once, then every
