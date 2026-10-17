@@ -140,9 +140,10 @@ code { font: 0.92em var(--mono); }
 /* A workspace's agents: their logo (or the robot) in the chip's color. */
 .agents .alogo { margin-right: 1px; fill: currentColor; }
 .agents .agi.s-working { animation: logo-fade 2s ease-in-out infinite; }
-/* Without motion a working agent keeps a steady ring instead (like .alogo). */
+/* With reduced motion a working agent also gets a ring (like .alogo); its
+   fade stays, being a change of opacity, not movement. */
 @media (prefers-reduced-motion: reduce) {
-  .agents .agi.s-working { animation: none; outline: 1.5px solid currentColor; outline-offset: 1px; border-radius: 50%; }
+  .agents .agi.s-working { outline: 1.5px solid currentColor; outline-offset: 1px; border-radius: 50%; }
 }
 
 .ws ul, .hostlist { list-style: none; margin: 0; padding: 0; }
@@ -243,10 +244,10 @@ body.reordering, body.reordering * { cursor: grabbing !important; }
 .alogo.w-agent.a-claude { fill: #d97757; }
 .agent .alogo { width: 15px; height: 15px; margin: 0; flex: none; }
 @keyframes logo-fade { 50% { opacity: 0.2; } }
-/* Without motion (Remove animations, battery saver) a working agent still
-   shows: its logo stays in the accent color inside a steady ring. */
+/* With reduced motion (Remove animations, battery saver) the logo keeps
+   fading in and out, a change of opacity and not movement, inside a ring. */
 @media (prefers-reduced-motion: reduce) {
-  .alogo.s-working { animation: none; outline: 1.5px solid var(--accent); outline-offset: 1.5px; border-radius: 50%; }
+  .alogo.s-working { outline: 1.5px solid var(--accent); outline-offset: 1.5px; border-radius: 50%; }
 }
 /* In the sidebar and the tab bar the tab number is a small plain figure
    (in the sidebar, under the workspace's fold arrow); its color carries

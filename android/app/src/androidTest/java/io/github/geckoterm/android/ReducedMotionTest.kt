@@ -25,7 +25,7 @@ import java.util.concurrent.TimeUnit
  * With animations removed (Settings > Accessibility > Remove animations,
  * animator scale 0) the page reports reduced motion, and still: a fast
  * flick coasts (also when the phone repeats the last position just before
- * the lift), and a working agent's logo has a steady mark. Needs geckoUrl
+ * the lift), and a working agent's logo still fades, inside a ring. Needs geckoUrl
  * and, for the agent, a stand-in for Claude Code (-e fakeClaude <path>, as
  * the VM's run/fakebin/claude); with
  * -e shot true it saves files/reduced-motion.png. Settings are put back.
@@ -98,7 +98,7 @@ class ReducedMotionTest {
             assertEquals("reduced and flung: $diag", "true", js(sc, "gecko.touchStats.reduced&&gecko.touchStats.flung"))
             assertTrue("the report says so", js(sc, "gecko.touchReport()").contains("Reduced motion: yes"))
 
-            // An agent at work: its logo has a steady ring, no animation.
+            // An agent at work: its logo fades in and out (opacity only) in a ring.
             val fake = InstrumentationRegistry.getArguments().getString("fakeClaude")
             assumeTrue("no fakeClaude argument: skipping the agent part", !fake.isNullOrEmpty())
             js(sc, "$p.term.scrollToBottom()")
@@ -106,7 +106,9 @@ class ReducedMotionTest {
             waitFor(sc, "!!document.querySelector('#tabs .alogo.s-working')", 30)
             Thread.sleep(500)
             val style = js(sc, "(()=>{const s=getComputedStyle(document.querySelector('#tabs .alogo.s-working'));return s.animationName+' '+s.outlineStyle+' '+s.outlineWidth})()")
-            assertTrue("a steady working mark: $style", style.contains("none solid"))
+            assertTrue("a fading logo in a ring: $style", style.contains("logo-fade solid"))
+            val keys = js(sc, "[...document.styleSheets].flatMap(s=>[...s.cssRules]).filter(r=>r.name==='logo-fade').map(r=>[...r.cssRules].map(k=>[...k.style].join()).join()).join()")
+            assertEquals("logo-fade changes only opacity", "\"opacity\"", keys)
             if (InstrumentationRegistry.getArguments().getString("shot") == "true") {
                 js(sc, "document.body.classList.add('drawer')")
                 Thread.sleep(1500)
