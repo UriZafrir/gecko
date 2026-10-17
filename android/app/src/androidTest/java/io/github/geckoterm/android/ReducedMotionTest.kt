@@ -25,7 +25,7 @@ import java.util.concurrent.TimeUnit
  * With animations removed (Settings > Accessibility > Remove animations,
  * animator scale 0) the page reports reduced motion, and still: a fast
  * flick coasts (also when the phone repeats the last position just before
- * the lift), and a working agent's logo still fades, inside a ring. Needs geckoUrl
+ * the lift), and a working agent's logo still fades. Needs geckoUrl
  * and, for the agent, a stand-in for Claude Code (-e fakeClaude <path>, as
  * the VM's run/fakebin/claude); with
  * -e shot true it saves files/reduced-motion.png. Settings are put back.
@@ -98,15 +98,23 @@ class ReducedMotionTest {
             assertEquals("reduced and flung: $diag", "true", js(sc, "gecko.touchStats.reduced&&gecko.touchStats.flung"))
             assertTrue("the report says so", js(sc, "gecko.touchReport()").contains("Reduced motion: yes"))
 
-            // An agent at work: its logo fades in and out (opacity only) in a ring.
+            // An agent at work: its logo fades in and out (opacity only), no ring.
             val fake = InstrumentationRegistry.getArguments().getString("fakeClaude")
             assumeTrue("no fakeClaude argument: skipping the agent part", !fake.isNullOrEmpty())
             js(sc, "$p.term.scrollToBottom()")
             js(sc, "gecko.sendInput($id, 'clear; $fake 60 30\\r')")
-            waitFor(sc, "!!document.querySelector('#tabs .alogo.s-working')", 30)
+            try { waitFor(sc, "!!document.querySelector('#tabs .alogo.s-working')", 40) } catch (e: AssertionError) {
+                throw AssertionError("no working logo; tabs: " + js(sc, "document.querySelector('#tabs').innerHTML.slice(0,1500)") + " sessions: " + js(sc, "JSON.stringify([...gecko.sessions.values()].map(s=>[s.id,s.agent,s.status,s.title]))"))
+            }
             Thread.sleep(500)
-            val style = js(sc, "(()=>{const s=getComputedStyle(document.querySelector('#tabs .alogo.s-working'));return s.animationName+' '+s.outlineStyle+' '+s.outlineWidth})()")
-            assertTrue("a fading logo in a ring: $style", style.contains("logo-fade solid"))
+            // (The tab bar redraws as the title changes: ask until it's there.)
+            var style = "null"
+            for (i in 0 until 20) {
+                style = js(sc, "(()=>{const e=document.querySelector('#tabs .alogo.s-working');if(!e)return null;const s=getComputedStyle(e);return s.animationName+' '+s.outlineStyle})()")
+                if (style != "null") break
+                Thread.sleep(250)
+            }
+            assertTrue("a fading logo, no ring: $style", style.contains("logo-fade none"))
             val keys = js(sc, "[...document.styleSheets].flatMap(s=>[...s.cssRules]).filter(r=>r.name==='logo-fade').map(r=>[...r.cssRules].map(k=>[...k.style].join()).join()).join()")
             assertEquals("logo-fade changes only opacity", "\"opacity\"", keys)
             if (InstrumentationRegistry.getArguments().getString("shot") == "true") {
@@ -149,10 +157,15 @@ class ReducedMotionTest {
         ev.recycle()
     }
 
+    // Not through sc.onActivity: that waits for the main thread to go idle,
+    // which it never does while the working logo fades.
+    private var activity: TerminalActivity? = null
+
     private fun js(sc: ActivityScenario<TerminalActivity>, expr: String): String {
+        val a = activity ?: run { var x: TerminalActivity? = null; sc.onActivity { x = it }; activity = x; x!! }
         val latch = CountDownLatch(1)
         var out = ""
-        sc.onActivity { a -> a.web.evaluateJavascript(expr) { out = it ?: ""; latch.countDown() } }
+        a.runOnUiThread { a.web.evaluateJavascript(expr) { out = it ?: ""; latch.countDown() } }
         latch.await(10, TimeUnit.SECONDS)
         return out
     }

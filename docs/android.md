@@ -103,7 +103,7 @@ rule itself before it connects (`NetPolicy.kt`).
   animations removed (Remove animations, animator scale 0, which the page
   sees as reduced motion) flicks still coast, as Android's own lists do;
   only the stretch at the ends and the scrollbar's fade go, and a working agent's
-  logo, still fading in and out, gets a ring as well. Pinch to change the font size (kept per
+  logo still fades in and out, as on the desktop. Pinch to change the font size (kept per
   device). Two fingers sideways, or a swipe on the tab bar when its tabs fit,
   change tabs. A swipe in from the left edge opens the drawer, a swipe left
   closes it. Tap for the keyboard, long-press for the selectable text view.
