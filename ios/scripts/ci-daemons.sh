@@ -33,8 +33,12 @@ if [ "$1" = reset ]; then
 import json, sys
 d = json.load(sys.stdin)
 d = d if isinstance(d, list) else d.get("sessions", [])
-print(" ".join(s["id"] for s in d if s.get("host") == "studio-mac"))'); do
-    GECKO_HOME=$home "$g" kill "$id" > /dev/null 2>&1 || true
+print(" ".join(s["id"] + "@" + s.get("tty", "") for s in d if s.get("host") == "studio-mac"))'); do
+    GECKO_HOME=$home "$g" kill "${id%@*}" > /dev/null 2>&1 || true
+    # gecko kill closes the terminal, which hasn't always ended the shell
+    # on macOS here; end what still runs on it.
+    tty=${id#*@}
+    [ -n "$tty" ] && pkill -HUP -t "${tty#/dev/}" 2> /dev/null || true
   done
   [ "${GECKO_REMOTE:-}" = ssh ] && { GECKO_HOME=$home "$g" host rm build-box > /dev/null 2>&1 || true; }
   sleep 1

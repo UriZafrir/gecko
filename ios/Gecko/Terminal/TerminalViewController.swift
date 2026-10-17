@@ -472,6 +472,8 @@ final class TerminalViewController: UIViewController, WKNavigationDelegate, WKUI
     /// UI tests: scripts the test leaves in GECKO_UITEST_CMDS (a folder on
     /// the Mac, which the Simulator's apps can read) run in the page, in order.
     private func runTestScripts() {
+        // Only the page on screen (a machine left earlier lives on in its timer).
+        guard viewIfLoaded?.window != nil, AppModel.shared.terminal === self else { return }
         guard let dir = ProcessInfo.processInfo.environment["GECKO_UITEST_CMDS"], !dir.isEmpty,
               let names = try? FileManager.default.contentsOfDirectory(atPath: dir) else { return }
         for n in names.filter({ $0.hasSuffix(".js") }).sorted() {
