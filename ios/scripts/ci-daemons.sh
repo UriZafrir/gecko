@@ -17,6 +17,8 @@ set -eu
 abs() { (cd "$(dirname "$1")" && echo "$(pwd)/$(basename "$1")"); }
 tmp=${RUNNER_TEMP:-/tmp}
 home=$tmp/gecko-home
+# The ports (another base to try the script on a machine running Gecko).
+p1=${GECKO_CI_PORT:-7681} p2=$((${GECKO_CI_PORT:-7681} + 1)) p3=$((${GECKO_CI_PORT:-7681} + 2))
 
 tabs() { # gecko
   cd "$tmp/work/parser"
@@ -48,8 +50,8 @@ cp "$root/fake-claude" "$tmp/fakebin/claude"
 cp "$new" "$HOME/.local/bin/gecko"
 # gecko in the tabs (the feature tour's agent runs it), for studio-mac.
 printf '#!/bin/sh\nGECKO_HOME=${GECKO_HOME:-%s} exec %s "$@"\n' "$home" "$new" > "$tmp/fakebin/gecko"
-chmod +x "$tmp/fakebin/claude" "$tmp/fakebin/gecko" "$new" "$old"
-export PATH="$tmp/fakebin:$PATH" SHELL=/bin/zsh GECKO_FAKE_WORK=14 BASH_SILENCE_DEPRECATION_WARNING=1
+chmod +x "$tmp/fakebin/claude" "$tmp/fakebin/gecko" "$HOME/.local/bin/gecko" "$new" "$old"
+export PATH="$tmp/fakebin:$PATH" SHELL=${GECKO_CI_SHELL:-/bin/zsh} GECKO_FAKE_WORK=14 BASH_SILENCE_DEPRECATION_WARNING=1
 # zsh asks a new user to set it up; an empty config skips that.
 touch "$HOME/.zshrc"
 
@@ -69,7 +71,7 @@ start() { # bin home port log address
 bb=$HOME/.gecko-terminal
 mkdir -p "$bb"
 printf '{"name":"build-box"}\n' > "$bb/config.json"
-start "$HOME/.local/bin/gecko" "$bb" 7683 "$out/daemon-buildbox.log" 127.0.0.1
+start "$HOME/.local/bin/gecko" "$bb" $p3 "$out/daemon-buildbox.log" 127.0.0.1
 GECKO_HOME=$bb "$new" new -n api -C "$tmp/buildbox/api" > /dev/null
 GECKO_HOME=$bb "$new" new -n deploy -C "$tmp/buildbox/deploy" > /dev/null
 
@@ -80,8 +82,8 @@ mkdir -p "$HOME/.ssh" && chmod 700 "$HOME/.ssh"
 cat "$HOME/.ssh/id_ed25519.pub" >> "$HOME/.ssh/authorized_keys"
 chmod 600 "$HOME/.ssh/authorized_keys"
 {
-  sudo launchctl enable system/com.openssh.sshd || true
-  sudo launchctl bootstrap system /System/Library/LaunchDaemons/ssh.plist || sudo launchctl load -w /System/Library/LaunchDaemons/ssh.plist || true
+  sudo -n launchctl enable system/com.openssh.sshd || true
+  sudo -n launchctl bootstrap system /System/Library/LaunchDaemons/ssh.plist || sudo -n launchctl load -w /System/Library/LaunchDaemons/ssh.plist || true
 } > "$out/sshd.log" 2>&1
 i=0
 while [ $i -lt 10 ]; do
@@ -100,14 +102,14 @@ else
 fi
 echo "build-box: $remote"
 
-start "$new" "$home" 7681 "$out/daemon.log" 0.0.0.0
-start "$old" "$tmp/gecko-old-home" 7682 "$out/daemon-old.log" 127.0.0.1
+start "$new" "$home" $p1 "$out/daemon.log" 0.0.0.0
+start "$old" "$tmp/gecko-old-home" $p2 "$out/daemon-old.log" 127.0.0.1
 tabs "$new"
 GECKO_HOME=$tmp/gecko-old-home "$old" new -n shell -C "$tmp/work" > /dev/null
 # The app opens studio-mac at 127.0.0.1 (the Simulator is on this Mac).
-link="http://127.0.0.1:7681/?token=$(cat "$home/token")"
+link="http://127.0.0.1:$p1/?token=$(cat "$home/token")"
 oldlink=$(GECKO_HOME=$tmp/gecko-old-home "$old" url | head -1)
-bblink="http://127.0.0.1:7683/?token=$(cat "$bb/token")"
+bblink="http://127.0.0.1:$p3/?token=$(cat "$bb/token")"
 echo "gecko: $(echo "$link" | sed 's/token=.*/token=.../')"
 echo "older gecko: $(echo "$oldlink" | sed 's/token=.*/token=.../')"
 {
