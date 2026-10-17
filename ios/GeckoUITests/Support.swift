@@ -6,6 +6,7 @@ import XCTest
 /// for the report (GECKO_SHOTS, a folder on the Mac), and pacing for video.
 class GeckoUITestCase: XCTestCase {
     var app: XCUIApplication!
+    private var jsCount = 0
     let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
 
     var env: [String: String] { ProcessInfo.processInfo.environment }
@@ -27,6 +28,11 @@ class GeckoUITestCase: XCTestCase {
         app.launchEnvironment["GECKO_UITEST_RESET"] = "1"
         if let open { app.launchEnvironment["GECKO_UITEST_OPEN"] = open }
         if let name { app.launchEnvironment["GECKO_UITEST_NAME"] = name }
+        if let dir = env["GECKO_CUES"], !dir.isEmpty {
+            let js = (dir as NSString).appendingPathComponent("js")
+            try? FileManager.default.createDirectory(atPath: js, withIntermediateDirectories: true)
+            app.launchEnvironment["GECKO_UITEST_CMDS"] = js
+        }
         app.launch()
     }
 
@@ -127,14 +133,30 @@ class GeckoUITestCase: XCTestCase {
     /// Runs a script in the page (AppModel.uiTestURL), for steps a
     /// synthesized finger can't do reliably, such as a button deep in the page.
     func js(_ script: String) {
+        // A file the app picks up (it reads the folder twice a second)...
+        if let dir = app.launchEnvironment["GECKO_UITEST_CMDS"] {
+            jsCount += 1
+            let path = (dir as NSString).appendingPathComponent(String(format: "%05d.js", jsCount))
+            try? script.write(toFile: path, atomically: true, encoding: .utf8)
+            let until = Date().addingTimeInterval(3)
+            while Date() < until {
+                if !FileManager.default.fileExists(atPath: path) { return }
+                Thread.sleep(forTimeInterval: 0.1)
+            }
+            try? FileManager.default.removeItem(atPath: path)
+        }
+        // ...or else a link.
         var c = URLComponents()
         c.scheme = "gecko-uitest"
         c.host = "js"
         c.queryItems = [URLQueryItem(name: "c", value: script)]
         guard #available(iOS 16.4, *) else { return XCTFail("the tour needs iOS 16.4 or newer") }
-        app.open(c.url!)
+        // Through the system, as a tapped link would: the app as it is
+        // (XCUIApplication.open launches it again, from scratch).
+        XCUIDevice.shared.system.open(c.url!)
         let open = springboard.buttons["Open"]
-        if open.waitForExistence(timeout: 0.6) { open.tap() }
+        if open.waitForExistence(timeout: 1.5) { open.tap() }
+        if app.state != .runningForeground { app.activate() }
     }
 
     /// The video's caption from now on: the time and text, for the job's

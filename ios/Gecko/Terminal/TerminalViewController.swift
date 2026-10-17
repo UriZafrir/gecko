@@ -469,6 +469,19 @@ final class TerminalViewController: UIViewController, WKNavigationDelegate, WKUI
     // MARK: UI tests
 
     /// A label the UI tests read: the page's state as JSON (only with GECKO_UITEST=1).
+    /// UI tests: scripts the test leaves in GECKO_UITEST_CMDS (a folder on
+    /// the Mac, which the Simulator's apps can read) run in the page, in order.
+    private func runTestScripts() {
+        guard let dir = ProcessInfo.processInfo.environment["GECKO_UITEST_CMDS"], !dir.isEmpty,
+              let names = try? FileManager.default.contentsOfDirectory(atPath: dir) else { return }
+        for n in names.filter({ $0.hasSuffix(".js") }).sorted() {
+            let path = (dir as NSString).appendingPathComponent(n)
+            guard let s = try? String(contentsOfFile: path, encoding: .utf8) else { continue }
+            try? FileManager.default.removeItem(atPath: path)
+            eval(s)
+        }
+    }
+
     private func addProbe() {
         let l = UILabel(frame: CGRect(x: 0, y: 0, width: 2, height: 2))
         l.isAccessibilityElement = true
@@ -481,6 +494,7 @@ final class TerminalViewController: UIViewController, WKNavigationDelegate, WKUI
     }
 
     @objc private func updateProbe() {
+        runTestScripts()
         eval(BridgeScript.probe) { [weak self] r in
             guard let s = r as? String else { return }
             self?.probe?.accessibilityLabel = s

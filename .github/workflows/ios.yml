@@ -44,9 +44,9 @@ jobs:
           dirname "$(find "$RUNNER_TEMP/xcodegen" -type f -name xcodegen -perm -u+x | head -1)" >> "$GITHUB_PATH"
       - name: Web UI for the app, and gecko for this Mac
         run: make ios-web build
-      - name: An older gecko (protocol 6, from main)
+      - name: An older gecko (protocol 6, from main as it was then)
         run: |
-          git worktree add "$RUNNER_TEMP/old" origin/main
+          git worktree add "$RUNNER_TEMP/old" b125842
           (cd "$RUNNER_TEMP/old" && CGO_ENABLED=0 go build -o "$GITHUB_WORKSPACE/bin/gecko-old" ./cmd/gecko)
       - name: Generate the Xcode project
         run: cd ios && xcodegen generate
