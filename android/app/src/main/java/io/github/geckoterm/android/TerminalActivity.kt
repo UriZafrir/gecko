@@ -302,7 +302,7 @@ class TerminalActivity : AppCompatActivity() {
 
     /** Starts Gecko on this phone (in its service, so it keeps running), then shows it. */
     private fun loadLocal() {
-        errorView.visibility = View.GONE
+        errorView.visibility = View.GONE; keys.visibility = View.VISIBLE
         PhoneService.start(this)
         Thread {
             val ok = LocalGecko.start(this)
@@ -318,10 +318,29 @@ class TerminalActivity : AppCompatActivity() {
         }.start()
     }
 
+    /** The system WebView's major version, when it's older than the page needs. */
+    private fun oldWebView(): String? {
+        val v = androidx.webkit.WebViewCompat.getCurrentWebViewPackage(this)?.versionName ?: return null
+        val major = v.substringBefore('.').toIntOrNull() ?: return null
+        return if (major < MIN_WEBVIEW) v else null
+    }
+
     private fun load() {
+        oldWebView()?.let { v ->
+            showError(getString(R.string.webview_old, v))
+            findViewById<Button>(R.id.retry).apply {
+                setText(R.string.webview_update)
+                setOnClickListener {
+                    val pkg = androidx.webkit.WebViewCompat.getCurrentWebViewPackage(this@TerminalActivity)?.packageName ?: "com.google.android.webview"
+                    try { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("market://details?id=$pkg"))) }
+                    catch (e: Exception) { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://play.google.com/store/apps/details?id=$pkg"))) }
+                }
+            }
+            return
+        }
         val m = machine ?: return
         if (m.id == LocalGecko.ID) return loadLocal()
-        errorView.visibility = View.GONE
+        errorView.visibility = View.GONE; keys.visibility = View.VISIBLE
         if (m.token.isEmpty()) return showError(getString(R.string.err_no_token))
         val link = try { LinkParser.parse(m.url) } catch (e: LinkException) { return showError(e.message ?: "") }
         origin = LinkParser.origin(m.url)
@@ -384,6 +403,7 @@ class TerminalActivity : AppCompatActivity() {
         pageTrusted = false
         findViewById<TextView>(R.id.error_text).text = text
         errorView.visibility = View.VISIBLE
+        keys.visibility = View.GONE // nothing to type into
     }
 
     private fun leave() {
@@ -428,6 +448,9 @@ class TerminalActivity : AppCompatActivity() {
                 menu.add(0, MENU_SSH_KEY, 12, R.string.ssh_key_title)
                 menu.add(0, MENU_STOP, 13, R.string.phone_stop_long)
             }
+            if (Gecko.prefs(this@TerminalActivity).getBoolean(Gecko.BACKGROUND, false) && KeepAlive.needsHelp(this@TerminalActivity)) {
+                menu.add(0, MENU_KEEPALIVE, 80, R.string.keepalive_menu)
+            }
             menu.add(0, MENU_TOUCH, 90, R.string.touch_diagnostics)
             menu.add(0, MENU_BUILD, 100, BuildId.small(this@TerminalActivity, BuildId.current))
             setOnMenuItemClickListener { item ->
@@ -436,6 +459,7 @@ class TerminalActivity : AppCompatActivity() {
                     MENU_LINKS -> ShareUi.showLinks(this@TerminalActivity)
                     MENU_SSH_KEY -> SshKeyUi.show(this@TerminalActivity)
                     MENU_TOUCH -> showTouchDiagnostics()
+                    MENU_KEEPALIVE -> KeepAlive.show(this@TerminalActivity)
                     MENU_BUILD -> BuildId.copy(this@TerminalActivity)
                     MENU_STOP -> {
                         PhoneService.stop(this@TerminalActivity)
@@ -507,6 +531,7 @@ class TerminalActivity : AppCompatActivity() {
         }
         WatchService.start(this)
         toastInPage(getString(R.string.background_on))
+        KeepAlive.offerOnce(this)
     }
 
     /** "Notify me when agents need input" in the web UI's palette. */
@@ -523,6 +548,7 @@ class TerminalActivity : AppCompatActivity() {
             startBackgroundAfterGrant = false
             WatchService.start(this)
             toastInPage(getString(R.string.background_on))
+            KeepAlive.offerOnce(this)
             return
         }
         if (Gecko.prefs(this).getBoolean(Gecko.BACKGROUND, false)) return
@@ -617,6 +643,10 @@ class TerminalActivity : AppCompatActivity() {
         private const val MENU_SSH_KEY = 104
         private const val MENU_TOUCH = 105
         private const val MENU_BUILD = 106
+        private const val MENU_KEEPALIVE = 107
+
+        /** The page needs color-mix() (111), dvh units (108) and ES2022. */
+        const val MIN_WEBVIEW = 111
 
         /** The origin of the machine on show, for requests on web view threads. */
         @Volatile var currentOrigin: String? = null
