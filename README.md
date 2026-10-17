@@ -12,7 +12,7 @@
 <p align="center">
   <img alt="Go" src="https://img.shields.io/badge/Go-1.22+-00ADD8?logo=go&logoColor=white">
   <img alt="Platforms" src="https://img.shields.io/badge/Linux%20%C2%B7%20macOS%20%C2%B7%20Windows-a3be8c">
-  <img alt="Mobile" src="https://img.shields.io/badge/phone-PWA%20%C2%B7%20Android-d08770">
+  <img alt="Mobile" src="https://img.shields.io/badge/phone-PWA%20%C2%B7%20Android%20%C2%B7%20iOS-d08770">
   <img alt="Agents" src="https://img.shields.io/badge/agents-Claude%20Code%20%C2%B7%20Codex%20%C2%B7%20Gemini%20%C2%B7%20Aider-88c0d0">
 </p>
 
@@ -54,8 +54,14 @@
   answer when an agent needs you, a built-in ssh client, and a terminal on the
   phone itself.
 
-Coming: an iOS app, more desktop packages (macOS dmg, AppImage, snap, Arch)
-and Termux integration.
+- **[iOS app](docs/ios.md).** The same UI on iPhone and iPad, built for the
+  iOS Simulator for now (no App Store yet).
+- **[Desktop apps](docs/desktop-packages.md).** A macOS dmg, a Windows setup
+  or zip, and a Linux AppImage, each with the daemon inside.
+- **[Linux packages](docs/linux-packages.md).** deb, rpm, snap and Arch, plus
+  static Linux binaries that run anywhere, Termux included.
+- **[Termux](docs/android.md#termux).** Gecko runs in Termux on the phone, and
+  the Android app opens it like any other machine.
 
 [All features](docs/features.md)
 

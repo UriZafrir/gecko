@@ -163,7 +163,11 @@ type sink struct {
 func (s *sink) Data(_ int64, b []byte) { s.mu.Lock(); s.buf.Write(b); s.mu.Unlock() }
 func (s *sink) Reset(int64, string)    {}
 func (s *sink) Exit()                  {}
-func (s *sink) has(x string) bool      { s.mu.Lock(); defer s.mu.Unlock(); return strings.Contains(s.buf.String(), x) }
+func (s *sink) has(x string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return strings.Contains(s.buf.String(), x)
+}
 
 // TestRelaySession: enroll a second machine, then create a session on it
 // from the first and type into it, all through the relay. The relay must

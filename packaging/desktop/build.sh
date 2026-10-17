@@ -36,7 +36,7 @@ printf '{"commit":"%s","time":"%s","version":"%s"}\n' "$commit" "$(date -u +%Y-%
 cp packaging/linux/gecko-256.png desktop/icon.png
 cp desktop/package.json dist/build/desktop/package.json.orig
 trap 'mv -f dist/build/desktop/package.json.orig desktop/package.json' EXIT
-# The app's version (Info.plist, setup.exe) is the release, not 0.1.0.
+# The app's version (Info.plist, setup.exe) is the release tag, not the one in package.json.
 node -e 'const f="desktop/package.json",p=require("./"+f);p.version=process.argv[1];require("fs").writeFileSync(f,JSON.stringify(p,null,2)+"\n")' "$PKG_VERSION"
 
 (cd packaging/desktop && npm ci --no-audit --no-fund)

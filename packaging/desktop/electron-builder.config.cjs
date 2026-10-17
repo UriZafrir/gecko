@@ -63,6 +63,8 @@ module.exports = {
     icon: path.join(root, 'packaging', 'windows', 'gecko.ico'),
     extraResources: [{ from: path.join(bins, 'windows-${arch}', 'gecko.exe'), to: 'gecko.exe' }],
     signAndEditExecutable: true,
+    // The portable zip, named like the setup (not "win-x64").
+    artifactName: 'Gecko-${version}-windows-${arch}.${ext}',
   },
   nsis: {
     oneClick: false,
