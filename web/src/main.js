@@ -40,8 +40,11 @@ import { Pane, FONT } from './pane.js';
 import { THEMES, AUTO, resolveTheme, paintTheme, swatch } from './themes.js';
 import { Keys, prettyCombo, comboOf, ACTIONS, DEFAULTS, DEFAULT_TAB_MODIFIER, TAB_MODIFIERS } from './keys.js';
 import { startupChime } from './sound.js';
+import { attachPane, attachPage } from './touch.js';
+import { imeMirror } from './ime.js';
+import { BUILD, buildId } from './build.js';
 import { siClaude, siGooglegemini, siCursor, siGithubcopilot, siQwen, siOpencode } from 'simple-icons';
-import { $, esc, ago, shortPath, copyText, readClipboard, fuzzy, store, save, isTouch, isMac } from './util.js';
+import { $, esc, ago, shortPath, copyText, readClipboard, fuzzy, store, save, isTouch, isMac, android, compactLayout, COMPACT } from './util.js';
 
 const MAX_LIVE_PANES = 12;
 
@@ -116,7 +119,11 @@ function newOrder(shown, old) {
 const SYNCED = ['theme', 'opacity', 'fontSize', 'mobileFontSize', 'copyOnSelect', 'smartCopy', 'optionIsMeta', 'renderer', 'sidebarHidden', 'keys', 'startupSound', 'order', 'quickReplies'];
 
 // Protocol version this client speaks; see internal/proto.
-const PROTOCOL = 6;
+const PROTOCOL = 9;
+
+// Round trips that feel slow at the keyboard (ms): echo starts to lag
+// noticeably past ~100 ms and gets hard to type against past ~300 ms.
+const latencyClass = (ms) => (ms == null ? '' : ms >= 300 ? 'bad' : ms >= 100 ? 'slow' : '');
 const WATCH_MIN_COLS = 20, WATCH_MIN_ROWS = 3; // the Digital Watch LCD
 const OUTDATED = 'The Gecko background service is older than this window, so some features are missing. Click to restart it.';
 
@@ -170,6 +177,7 @@ export function tabLabel(s) {
 // Git info drawn by Gecko itself, so prompts don't need powerline or a
 // patched font: branch icon, branch, and working-tree state.
 // A robot face: agents, counted next to it in a workspace's title.
+const DEVICES_ICON = '<svg class="agi" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="3" width="9.5" height="7" rx="1.3"/><path d="M4 12.75h4.5"/><rect x="11.5" y="5.75" width="3.25" height="7" rx="1"/></svg>';
 const AGENTS_ICON = '<svg class="agi" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="3.75" width="11" height="8.5" rx="2.2"/><circle cx="5.9" cy="8" r="1.05" class="f"/><circle cx="10.1" cy="8" r="1.05" class="f"/></svg>';
 const BRANCH_ICON = '<svg class="gi" viewBox="0 0 16 16" aria-hidden="true"><circle cx="4.5" cy="3.5" r="1.7"/><circle cx="4.5" cy="12.5" r="1.7"/><circle cx="11.5" cy="5" r="1.7"/><path d="M4.5 5.2v5.6M11.5 6.7c0 3-6.2 2.2-6.8 4.1"/></svg>';
 
@@ -182,6 +190,9 @@ function gitStateText(g) {
   if (g.behind) bits.push(`${g.behind} behind`);
   return bits.length ? bits.join(', ') : 'clean';
 }
+
+// The phone layout (style.css, "phones"): the same breakpoint.
+const phoneLayout = compactLayout;
 
 // full: also show counts and ahead/behind (status line). Otherwise just a
 // dot when there are uncommitted changes (tabs).
@@ -212,6 +223,11 @@ function repoPath(s) {
 
 // Text with `code` spans, as in Markdown: hostnames, commands and names in
 // messages stand out from the sentence around them.
+// What machines call their OS, for people.
+function prettyOS(os) {
+  return { linux: 'Linux', darwin: 'macOS', windows: 'Windows', freebsd: 'FreeBSD' }[os] || os || '';
+}
+
 function md(text) {
   return esc(text).replace(/`([^`]+)`/g, '<code>$1</code>');
 }
@@ -242,6 +258,22 @@ function agentMark(s) {
   return `<svg class="alogo s-${esc(st)} a-${esc(s.agent.name)}"${phase} viewBox="0 0 24 24" aria-hidden="true"><title>${esc(`${s.agent.name}: ${STATUS_TEXT[st] || st}`)}</title><path d="${AGENT_LOGOS[s.agent.name] || AGENT_PROMPT}"/></svg>`;
 }
 
+// The icon of a workspace's agents in one state: their logo when they are
+// all the same agent, else the robot face; it moves like a tab's logo
+// while they work (same cycle and phase as agentMark).
+function groupAgentMark(agents, status) {
+  const names = [...new Set(agents.map((t) => t.agent.name))];
+  const phase = status === 'working' ? ` style="animation-delay:-${Date.now() % 2000}ms"` : '';
+  if (names.length !== 1) return AGENTS_ICON.replace('class="agi"', `class="agi s-${esc(status)}"${phase}`);
+  return `<svg class="alogo s-${esc(status)} a-${esc(names[0])}"${phase} viewBox="0 0 24 24" aria-hidden="true"><path d="${AGENT_LOGOS[names[0]] || AGENT_PROMPT}"/></svg>`;
+}
+
+// The logo of the agent in a tmux window (its status isn't tracked there).
+function windowAgentMark(w) {
+  if (!w.agent) return '';
+  return `<svg class="alogo w-agent a-${esc(w.agent)}" viewBox="0 0 24 24" aria-hidden="true"><title>${esc(w.agent + ' runs here')}</title><path d="${AGENT_LOGOS[w.agent] || AGENT_PROMPT}"/></svg>`;
+}
+
 function numGlyph(s, n, plain = false) {
   if (plain && s.agent) s = { ...s, agent: null, running: true };
   const st = s.agent ? s.agent.status : s.attention ? 'bell' : s.running || (s.kind && s.kind !== 'shell') ? 'busy' : '';
@@ -260,6 +292,8 @@ class App {
   constructor() {
     this.sessions = new Map();
     this.hosts = [];
+    this.cloud = null; // the account, when this machine is signed in (gecko login)
+    this.cloudDismissed = new Set(); // waiting machines whose prompt was closed
     this.tmux = [];
     this.templates = [];
     this.hostName = '';
@@ -267,6 +301,8 @@ class App {
     this.exited = new Map(); // id -> info of sessions that failed while shown
     this.closing = new Set(); // ids the user closed
     this.touch = isTouch;
+    // The Android app serves this UI from the APK for every machine.
+    this.bundled = (() => { try { return !!android?.bundled?.(); } catch { return false; } })();
     // Running inside the Gecko desktop app (Electron) rather than a browser.
     this.desktop = window.geckoDesktop || null;
     this.settings = {
@@ -298,6 +334,8 @@ class App {
     this.collapsed = store('collapsed', {});
     this.tmuxOpen = store('tmuxOpen', {}); // tmux sessions expanded in the sidebar
     this.mods = { ctrl: false, alt: false };
+    this.dockFolded = !!store('dockFolded', false); // phones: the agent dock as a count
+    this.dockOpen = null; // phones: the agent chip showing its answers
     this.agentSeen = new Map();
     this.pendingFocus = null;
     this.applyTheme();
@@ -310,6 +348,7 @@ class App {
         if (a) a.sendSize(true);
       },
       onStatus: () => this.renderSoon(),
+      onRTT: () => this.renderNet(),
       onMessage: (m) => this.onMessage(m),
       onData: (sub, off, data) => this.panes.get(sub)?.write(off, data),
     });
@@ -329,7 +368,16 @@ class App {
         // "Restart Gecko" by reloading this window into the new version.
         if (this.restarting && m.text && m.text !== this.startId) location.reload();
         this.startId = m.text;
-        this.outdated = (m.version || 1) < PROTOCOL;
+        this.daemonVersion = m.version || 1;
+        this.outdated = this.daemonVersion < PROTOCOL;
+        // In the Android app this UI comes with the app, whatever Gecko the
+        // machine runs: an older one there is fine (its tabs work, newer
+        // features wait for an update), and restarting it wouldn't help.
+        if (this.outdated && this.bundled) {
+          this.outdated = false;
+          if (!this.olderNoted) this.toast(`Gecko on ${m.host} is an older version: tabs work, and updating it there brings the newest features.`);
+          this.olderNoted = true;
+        }
         if (this.outdated) this.toast(OUTDATED);
         break;
       case 'sessions': {
@@ -372,6 +420,9 @@ class App {
       case 'hostlog':
         this.hostSetup?.log(m.sub, m.text);
         return;
+      case 'cloud':
+        this.onCloud(m.cloud);
+        break;
       case 'reset':
         this.panes.get(m.sub)?.reset(m.offset, m.prefix);
         break;
@@ -485,6 +536,10 @@ class App {
   }
 
   notify(title, body, id) {
+    if (android && document.hidden) {
+      // The Android app posts it; tapping it opens this tab.
+      try { android.notify(title, body, id || ''); return; } catch {}
+    }
     if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
       const n = new Notification(title, { body, tag: id || title, icon: '/icon.svg' });
       n.onclick = () => { window.focus(); if (id) this.focusSession(id); n.close(); };
@@ -612,7 +667,10 @@ class App {
     this.switchWorkspace(all[(i + d + all.length) % all.length]);
   }
 
-  sendInput(id, data) {
+  // fromIme: a keyboard edit (ime.js). Anything else ends what the
+  // keyboard was writing: the shell has the line now.
+  sendInput(id, data, fromIme = false) {
+    if (!fromIme) this.panes.get(id)?.imeReset?.();
     if (this.exited.has(id)) {
       this.closeTab(id, true);
       return;
@@ -1325,7 +1383,10 @@ class App {
   // Add (or fix) a machine: check the SSH connection with live output,
   // offer to install gecko there, and only then add it.
   addHost(prefill = {}) {
-    const guessName = (t) => t.replace(/^ssh:\/\//, '').replace(/^.*@/, '').replace(/^\[|\]?(:\d+)?\/?$/g, '').split('.')[0].toLowerCase();
+    const guessName = (t) => {
+      const host = t.replace(/^ssh:\/\//, '').replace(/^.*@/, '').replace(/^\[|\]?(:\d+)?\/?$/g, '').toLowerCase();
+      return /^[\d.]+$/.test(host) ? host : host.split('.')[0]; // an IP address whole
+    };
     const m = $('#modal');
     m.innerHTML = `<div class="card setup" role="dialog" aria-modal="true" aria-labelledby="setup-title">
       <h2 id="setup-title">${prefill.name ? `Fix ${esc(prefill.name)}` : 'Add a machine'}</h2>
@@ -1336,6 +1397,10 @@ class App {
         <label>Path to gecko on that machine<input name="gecko" placeholder="found on PATH or in ~/.local/bin" autocomplete="off" spellcheck="false"></label>
       </details>
       <div class="setup-status" role="status"></div>
+      <div class="setup-auth" hidden>
+        <label>Password<input name="secret" type="password" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+        <label class="check" data-key-row><input name="usekey" type="checkbox" checked> <span data-key-label></span></label>
+      </div>
       <pre class="setup-log" hidden></pre>
       <div class="row">
         <button data-cancel>Cancel</button>
@@ -1345,12 +1410,17 @@ class App {
     </div>`;
     m.hidden = false;
     const $m = (sel) => m.querySelector(sel);
-    const f = { target: $m('[name=target]'), name: $m('[name=name]'), gecko: $m('[name=gecko]') };
+    const f = { target: $m('[name=target]'), name: $m('[name=name]'), gecko: $m('[name=gecko]'), secret: $m('[name=secret]'), usekey: $m('[name=usekey]') };
+    const auth = $m('.setup-auth');
+    $m('[data-key-label]').textContent = android ? "Use this phone's SSH key from now on" : 'Use my SSH key from now on (adds it to ~/.ssh/authorized_keys there)';
+    // The password lives only in this dialog and the request it goes with.
+    let secret = '';
+    let fingerprint = '';
     f.target.value = prefill.target || '';
     f.name.value = prefill.name || (prefill.target ? guessName(prefill.target) : '');
     f.gecko.value = prefill.gecko || '';
     let nameEdited = !!prefill.name;
-    let state = 'idle'; // idle | busy | ok | missing | failed
+    let state = 'idle'; // idle | busy | ok | missing | failed | password | hostkey
     let found = null;
     const job = 'setup' + Date.now();
     const log = $m('.setup-log');
@@ -1360,14 +1430,16 @@ class App {
 
     const setState = (st, msg = '', kind = '') => {
       state = st;
-      status.textContent = msg;
+      status.innerHTML = md(msg);
       status.className = 'setup-status ' + kind;
       const busy = st === 'busy';
-      for (const el of [main, recheck, f.target, f.name, f.gecko]) el.disabled = busy;
-      main.textContent = { idle: 'Check connection', busy: 'Working…', ok: 'Add machine', missing: 'Install Gecko there', failed: 'Retry' }[st];
+      for (const el of [main, recheck, f.target, f.name, f.gecko, f.secret, f.usekey]) el.disabled = busy;
+      main.textContent = { idle: 'Check connection', busy: 'Working…', ok: 'Add machine', missing: 'Install Gecko there', failed: 'Retry', password: 'Log in', hostkey: 'Trust and connect' }[st];
+      if (st !== 'busy') auth.hidden = st !== 'password';
       recheck.hidden = !(st === 'ok' || st === 'missing');
     };
     const close = () => {
+      secret = '';
       this.hostSetup = null;
       m.hidden = true;
       m.innerHTML = '';
@@ -1386,12 +1458,47 @@ class App {
       if (!target) return setState('failed', 'Enter the SSH destination, for example me@devbox.', 'bad');
       if (keepLog !== true) log.textContent = '';
       setState('busy', 'Connecting…');
+      const installKey = !!secret && f.usekey.checked && !$m('[data-key-row]').hidden;
       try {
-        const r = await this.conn.request({ t: 'probehost', sub: job, target, data: f.gecko.value.trim() });
+        const r = await this.conn.request({ t: 'probehost', sub: job, target, data: f.gecko.value.trim(), secret: secret || undefined, installKey: installKey || undefined });
         if (!this.hostSetup) return;
         found = r;
+        if (installKey) secret = ''; // the key logs in from now on
+        if (secret && !installKey) {
+          // Gecko's own connection there logs in with a key, never a password.
+          return setState('failed', r.canUseKey
+            ? 'The password works, but Gecko stays connected with a key: tick the box to use yours, then log in again.'
+            : 'The password works, but Gecko stays connected with a key and this computer has none. Make one with `ssh-keygen`, then check again.', 'warn');
+        }
         if (r.missing) setState('missing', `Reachable (${r.os}), but Gecko isn't installed there. Gecko can copy itself over to ~/.local/bin.`, 'warn');
         else setState('ok', `Connected: ${r.os}, ${r.text}.`, 'good');
+      } catch (e) {
+        if (!this.hostSetup) return;
+        const r = e.reply || {};
+        if (r.kind === 'needs-password') {
+          const again = !!secret;
+          secret = '';
+          f.secret.value = '';
+          $m('[data-key-row]').hidden = !r.canUseKey;
+          setState('password', again ? 'That password didn\'t work. Try again.' : `${target.replace(/:\d+$/, '')} wants a password. Gecko uses it for this setup only and doesn't keep it.`, again ? 'bad' : '');
+          f.secret.focus();
+        } else if (r.kind === 'host-key-unknown') {
+          fingerprint = r.data;
+          setState('hostkey', `First connection to this machine. Its key fingerprint is \`${r.data}\`. If you aren't sure it's the right machine, compare it with what \`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub\` shows there.`, 'warn');
+        } else setState('failed', e.message, 'bad');
+      }
+    };
+    const login = () => {
+      if (!f.secret.value) return f.secret.focus();
+      secret = f.secret.value;
+      f.secret.value = '';
+      check(true);
+    };
+    const trust = async () => {
+      setState('busy', 'Trusting the machine…');
+      try {
+        await this.conn.request({ t: 'trusthost', target: f.target.value.trim(), data: fingerprint });
+        if (this.hostSetup) check(true);
       } catch (e) {
         if (this.hostSetup) setState('failed', e.message, 'bad');
       }
@@ -1399,7 +1506,7 @@ class App {
     const install = async () => {
       setState('busy', 'Installing Gecko…');
       try {
-        await this.conn.request({ t: 'installhost', sub: job, target: f.target.value.trim(), os: found.os });
+        await this.conn.request({ t: 'installhost', sub: job, target: f.target.value.trim(), os: found.os, secret: secret || undefined });
         if (this.hostSetup) await check(true);
       } catch (e) {
         if (this.hostSetup) setState('missing', e.message, 'bad');
@@ -1421,6 +1528,8 @@ class App {
       if (state === 'busy') return;
       if (state === 'ok') return add();
       if (state === 'missing') return install();
+      if (state === 'password') return login();
+      if (state === 'hostkey') return trust();
       return check();
     };
     main.onclick = primary;
@@ -1428,6 +1537,7 @@ class App {
     $m('[data-cancel]').onclick = close;
     f.target.addEventListener('input', () => {
       if (!nameEdited) f.name.value = guessName(f.target.value);
+      secret = '';
       if (state !== 'busy') setState('idle');
     });
     f.gecko.addEventListener('input', () => state !== 'busy' && setState('idle'));
@@ -1447,6 +1557,195 @@ class App {
     try { await this.conn.request({ t: 'rmhost', name }); } catch (e) { this.toast(e.message); }
   }
 
+  // ------------------------------------------------------------ account
+
+  // The account pushes its state (devices, machines waiting to join)
+  // whenever it changes; nothing arrives when this machine isn't signed in.
+  onCloud(st) {
+    const was = this.cloud;
+    this.cloud = st?.signedIn ? st : null;
+    if (st?.notice && st.notice !== was?.notice) this.toast(st.notice);
+    if (was && this.cloud) {
+      for (const d of this.cloud.devices || []) {
+        if (d.kind === 'machine' && !was.devices?.some((x) => x.id === d.id)) this.toast(`\`${d.name}\` joined your account.`);
+      }
+    }
+    this.devicesView?.();
+  }
+
+  // What the sidebar says about a machine when signed in: how it is
+  // reached and, for one that is away, when the relay last saw it.
+  hostWhere(h) {
+    if (h.local) return 'this machine';
+    const os = prettyOS(h.os);
+    if (h.status === 'connected') return h.via === 'relay' ? `${os} · ${h.kind === 'cloud' ? 'relay' : 'via relay'}` : os;
+    if (h.status === 'offline') return h.lastSeen ? `seen ${ago(h.lastSeen)} ago` : 'offline';
+    return h.status;
+  }
+
+  // A machine asking to join the account: every signed-in machine shows
+  // this until someone approves or denies it, or the code expires.
+  renderCloudPrompt() {
+    let el = $('#cloud-prompt');
+    const now = Date.now();
+    const waiting = (this.cloud?.pending || []).filter((p) => p.expires > now && !this.cloudDismissed.has(p.id));
+    if (!waiting.length) {
+      el?.remove();
+      return;
+    }
+    const p = waiting[0];
+    const key = `${p.id}:${waiting.length}`;
+    if (el?.dataset.key === key) return;
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'cloud-prompt';
+      el.setAttribute('role', 'alertdialog');
+      el.setAttribute('aria-label', 'A machine wants to join your account');
+      el.addEventListener('click', (ev) => {
+        const b = ev.target.closest('[data-cp]');
+        const cur = el.pending;
+        if (!b || !cur) return;
+        if (b.dataset.cp === 'approve') this.approveMachine(cur);
+        else if (b.dataset.cp === 'deny') this.denyMachine(cur);
+        else { this.cloudDismissed.add(cur.id); this.renderCloudPrompt(); }
+      });
+      document.body.appendChild(el);
+    }
+    el.dataset.key = key;
+    el.pending = p;
+    el.innerHTML = `<p class="q"><b>${esc(p.name)}</b> (${esc(prettyOS(p.os))}, ${esc(p.ip)}) wants to join. Approve?</p>
+      <p class="sub">Approve only a machine you just ran <code>gecko login</code> on; you'll type the code it shows.${waiting.length > 1 ? ` ${waiting.length - 1} more waiting.` : ''}</p>
+      <div class="row"><button data-cp="later">Later</button><button data-cp="deny">Deny</button><button class="primary" data-cp="approve">Approve…</button></div>`;
+  }
+
+  // Approve a waiting machine. The code it shows is a hash of its keys, so
+  // typing it here proves the keys the relay passed on are really its.
+  approveMachine(p) {
+    this.devicesView = null;
+    const m = $('#modal');
+    m.innerHTML = `<div class="card setup approve" role="dialog" aria-modal="true" aria-labelledby="ap-title">
+      <h2 id="ap-title">Approve ${esc(p.name)}?</h2>
+      <p class="sub">${esc(p.name)} (${esc(prettyOS(p.os))}, ${esc(p.ip)}) asked to join <b>${esc(this.cloud?.account || '')}</b>. Once approved, your machines can open tabs on it and it on them.</p>
+      <label>Code shown on ${esc(p.name)}<input name="code" placeholder="XXXX-XXXX" autocomplete="off" spellcheck="false" autocapitalize="characters" maxlength="9"></label>
+      <div class="setup-status" role="status"></div>
+      <div class="row"><button data-no>Cancel</button><button class="primary" data-yes>Approve</button></div></div>`;
+    m.hidden = false;
+    const input = m.querySelector('input');
+    const status = m.querySelector('.setup-status');
+    const yes = m.querySelector('[data-yes]');
+    const done = () => { m.hidden = true; m.innerHTML = ''; this.activePane()?.focus(); };
+    const go = async () => {
+      const code = input.value.trim();
+      if (!/^[A-Za-z2-7]{4}-?[A-Za-z2-7]{4}$/.test(code)) {
+        status.textContent = `The code looks like ABCD-EFGH. ${p.name} printed it when you ran gecko login there.`;
+        status.className = 'setup-status bad';
+        return input.focus();
+      }
+      yes.disabled = true;
+      status.textContent = 'Approving…';
+      status.className = 'setup-status';
+      try {
+        const r = await this.conn.request({ t: 'cloud', name: 'approve', data: `${p.id} ${code}` });
+        done();
+        this.onCloud(r.cloud);
+        this.renderSoon();
+      } catch (e) {
+        status.textContent = e.message.charAt(0).toUpperCase() + e.message.slice(1) + '.';
+        status.className = 'setup-status bad';
+        yes.disabled = false;
+      }
+    };
+    yes.onclick = go;
+    m.querySelector('[data-no]').onclick = done;
+    m.onkeydown = (ev) => {
+      if (ev.key === 'Escape') done();
+      if (ev.key === 'Enter') { ev.preventDefault(); go(); }
+    };
+    input.focus();
+  }
+
+  async denyMachine(p) {
+    try {
+      await this.conn.request({ t: 'cloud', name: 'deny', data: p.id });
+      this.toast(`Denied \`${p.name}\`.`);
+    } catch (e) {
+      this.toast(e.message);
+    }
+  }
+
+  // Settings > Devices: the account's machines, with Revoke.
+  openDevices() {
+    const m = $('#modal');
+    const done = () => { this.devicesView = null; m.hidden = true; m.innerHTML = ''; this.activePane()?.focus(); };
+    const draw = () => {
+      const c = this.cloud;
+      if (!c) return done();
+      const now = Date.now();
+      let relay = c.relay;
+      try { relay = new URL(c.relay).host; } catch {}
+      const pend = (c.pending || []).filter((p) => p.expires > now).map((p) => `<li class="dev pend">
+          <i class="hdot"></i>
+          <div class="dev-main"><b>${esc(p.name)}</b> <span class="badge need">wants to join</span>
+            <span class="dev-sub">${esc(prettyOS(p.os))} · ${esc(p.ip)} · code expires in ${Math.max(1, Math.round((p.expires - now) / 60000))} min</span></div>
+          <button data-deny="${esc(p.id)}">Deny</button><button class="primary" data-approve="${esc(p.id)}">Approve…</button>
+        </li>`).join('');
+      const rows = (c.devices || []).map((d) => {
+        const rec = d.kind === 'recovery';
+        const status = rec ? 'adds a machine without approval' : d.self ? (c.connected ? 'online' : 'not connected') : d.online ? 'online' : d.lastSeen ? `seen ${ago(d.lastSeen)} ago` : 'not seen yet';
+        const sub = [!rec && prettyOS(d.os), status, !rec && d.ip, d.by && `approved by ${d.by}`].filter(Boolean).join(' · ');
+        return `<li class="dev${!rec && (d.online || (d.self && c.connected)) ? ' on' : ''}${rec ? ' rec' : ''}">
+          <i class="hdot"></i>
+          <div class="dev-main"><b>${esc(rec ? 'Recovery code' : d.name)}</b>${d.self ? ' <span class="badge">this machine</span>' : ''}
+            <span class="dev-sub">${esc(sub)}</span></div>
+          ${rec ? '' : `<button class="danger" data-revoke="${esc(d.id)}">${d.self ? 'Sign out' : 'Revoke'}</button>`}
+        </li>`;
+      }).join('');
+      m.innerHTML = `<div class="card devices" role="dialog" aria-modal="true" aria-labelledby="dev-title">
+        <h2 id="dev-title">Devices</h2>
+        <p class="sub">Account <b>${esc(c.account)}</b> on ${esc(relay)}, ${c.connected ? 'connected' : esc(c.error || 'not connected')}.<br>
+          Fingerprint <code>${esc(c.fingerprint)}</code>, the same on every machine in this account.</p>
+        ${pend ? `<ul class="devlist">${pend}</ul>` : ''}
+        <ul class="devlist">${rows}</ul>
+        <p class="sub">Revoking a machine takes it out of the account; its connections close within seconds. To add one, run <code>gecko login --relay ${esc(c.relay)} --account ${esc(c.account)}</code> on it.</p>
+        <div class="row"><button class="primary" data-no>Done</button></div></div>`;
+      const card = m.firstElementChild;
+      card.addEventListener('click', (ev) => {
+        const b = ev.target.closest('button');
+        if (!b) return;
+        if (b.hasAttribute('data-no')) return done();
+        const find = (id) => (c.pending || []).find((p) => p.id === id);
+        if (b.dataset.revoke) return this.revokeDevice(b.dataset.revoke);
+        if (b.dataset.approve && find(b.dataset.approve)) return this.approveMachine(find(b.dataset.approve));
+        if (b.dataset.deny && find(b.dataset.deny)) return this.denyMachine(find(b.dataset.deny));
+      });
+      card.querySelector('[data-no]').focus();
+    };
+    this.devicesView = draw;
+    m.hidden = false;
+    m.onkeydown = (ev) => { if (ev.key === 'Escape') done(); };
+    draw();
+  }
+
+  // Take a device out of the account (this machine: sign out).
+  async revokeDevice(id) {
+    const d = this.cloud?.devices?.find((x) => x.id === id);
+    if (!d) return;
+    const reopen = !!this.devicesView;
+    this.devicesView = null;
+    const text = d.self
+      ? `Sign this machine out of \`${this.cloud.account}\`? It leaves the account and its keys are deleted. Tabs here keep running.`
+      : `Revoke \`${d.name}\`? It leaves your account and its connections close within seconds. Tabs running there keep running. To bring it back, sign it in again and approve it.`;
+    if (await this.confirm(text, d.self ? 'Sign out' : 'Revoke')) {
+      try {
+        await this.conn.request({ t: 'cloud', name: d.self ? 'logout' : 'revoke', data: d.id });
+        this.toast(d.self ? 'Signed out of your account.' : `Revoked \`${d.name}\`.`);
+      } catch (e) {
+        this.toast(e.message);
+      }
+    }
+    if (reopen && this.cloud) this.openDevices();
+  }
+
   async openTemplate(name) {
     const p = this.activePane();
     try {
@@ -1461,6 +1760,7 @@ class App {
   }
 
   async enableNotifications() {
+    if (android) return android.enableNotifications();
     if (!('Notification' in window)) return this.toast('This browser has no notifications.');
     const r = await Notification.requestPermission();
     this.toast(r === 'granted' ? 'Gecko will notify you when an agent needs you.' : 'Notifications are blocked for this site.');
@@ -1474,6 +1774,7 @@ class App {
     $('#menu-btn').title = `Show or hide workspaces (${prettyCombo(this.keys.first('toggleSidebar'))})`;
     document.body.classList.toggle('side-hidden', !!this.settings.sidebarHidden);
     $('#scrim').onclick = () => this.closeDrawer();
+    if (this.touch) attachPage(this);
     $('#palette-btn').onclick = () => this.openPalette();
     $('#conn').onclick = () => { if (this.outdated) this.restartService(); };
     $('#palette-btn kbd').textContent = prettyCombo(this.keys.first('palette'));
@@ -1535,6 +1836,11 @@ class App {
           return this.renderSidebar();
         }
         case 'add-host': return this.addHost();
+        case 'devices': return this.openDevices();
+        case 'host-revoke': {
+          const h = this.hosts.find((x) => x.name === d.host);
+          return h?.machine && this.revokeDevice(h.machine);
+        }
         case 'new-ws': return this.newWorkspace();
       }
     });
@@ -1569,6 +1875,7 @@ class App {
         // Typed, then Enter on its own, as if typed by hand; a long prompt
         // gets a moment to land first.
         const text = prompt.dataset.prompt;
+        this.panes.get(prompt.dataset.id)?.imeReset?.();
         this.conn.input(prompt.dataset.id, text);
         setTimeout(() => this.conn.input(prompt.dataset.id, '\r'), Math.min(400, 50 + text.length));
         return;
@@ -1576,14 +1883,31 @@ class App {
       const reply = ev.target.closest('[data-reply]');
       if (reply) {
         const id = reply.dataset.id;
+        this.panes.get(id)?.imeReset?.();
         const keys = { enter: '\r', esc: '\x1b', up: '\x1b[A', down: '\x1b[B' };
         this.conn.input(id, keys[reply.dataset.reply] ?? reply.dataset.reply);
+        return;
+      }
+      if (ev.target.closest('[data-fold]')) {
+        // Phones: the dock folds to a count of agents, and back.
+        this.dockFolded = !this.dockFolded;
+        save('dockFolded', this.dockFolded);
+        this.renderDock();
         return;
       }
       const chip = ev.target.closest('[data-agent]');
       if (chip) {
         const a = this.allAgents().find((x) => x.key === chip.dataset.agent);
-        if (a) this.openAgent(a);
+        if (!a) return;
+        // Phones: a chip opens to its last line and answers (and its tab);
+        // a second tap closes it.
+        if (phoneLayout()) {
+          this.dockOpen = this.dockOpen === a.key ? null : a.key;
+          this.renderDock();
+          if (this.dockOpen) this.openAgent(a);
+          return;
+        }
+        this.openAgent(a);
       }
     });
     $('#empty').addEventListener('click', (ev) => {
@@ -1604,6 +1928,14 @@ class App {
     this.bindFind();
     matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
       if (this.settings.theme === AUTO) this.applyTheme();
+    });
+    // Rotated, folded, unfolded or resized into the other layout: no drawer
+    // left open over a sidebar, and the dock in that layout's shape.
+    matchMedia(COMPACT).addEventListener('change', () => {
+      document.body.classList.remove('drawer');
+      this.dockOpen = null;
+      this.renderDock();
+      this.activePane()?.layout(true);
     });
     window.addEventListener('focus', () => {
       const p = this.activePane();
@@ -1705,7 +2037,10 @@ class App {
       const shortcut = id === this.activeId() ? prettyCombo(this.keys.first('closeTab')) : '';
       if (!s) return [{ label: 'Close tab', run: () => this.closeTab(id), hint: shortcut, danger: true }];
       const others = this.tabsOf(s.workspace).filter((t) => t.id !== id);
+      // Phones show only the tab's title: its details are here.
+      const about = phoneLayout() && [s.host, s.repo && (s.branch ? `${s.repo} on ${s.branch}` : s.repo), s.cwd && shortPath(s.cwd)].filter(Boolean).join(' · ');
       return [
+        about && { note: about },
         { label: 'New tab here', hint: 'Same machine and folder', run: () => this.newTab({ host: s.host, cwd: s.cwd, workspace: s.workspace }) },
         sep,
         { label: 'Rename…', run: () => this.renameTab(id) },
@@ -1758,10 +2093,13 @@ class App {
       const outdated = !h.local && h.status === 'connected' && (h.version || 0) < PROTOCOL;
       return [
         { label: `New tab on ${h.name}`, disabled: h.status !== 'connected', run: () => this.newTab({ host: h.name, cwd: '' }) },
-        !h.local && h.status === 'error' && { label: 'Fix connection…', run: () => this.addHost({ name: h.name, target: h.target, error: h.error }) },
-        !h.local && h.status === 'connected' && { label: outdated ? 'Update Gecko' : 'Reinstall Gecko', hint: 'Its tabs keep running', run: () => this.updateHost(h.name) },
+        !h.local && h.kind !== 'cloud' && h.status === 'error' && { label: 'Fix connection…', run: () => this.addHost({ name: h.name, target: h.target, error: h.error }) },
+        !h.local && h.kind !== 'cloud' && h.status === 'connected' && { label: outdated ? 'Update Gecko' : 'Reinstall Gecko', hint: 'Its tabs keep running', run: () => this.updateHost(h.name) },
+        this.cloud && { label: 'Devices…', hint: 'Your account', run: () => this.openDevices() },
         !h.local && sep,
-        !h.local && { label: 'Remove machine', hint: 'Its sessions keep running', danger: true, run: () => this.removeHost(h.name) },
+        h.kind === 'cloud'
+          ? { label: 'Revoke…', hint: 'Remove it from your account', danger: true, run: () => this.revokeDevice(h.machine) }
+          : !h.local && { label: 'Remove machine', hint: 'Its sessions keep running', danger: true, run: () => this.removeHost(h.name) },
       ];
     }
     const tpl = target.closest('.ws.template [data-name]');
@@ -2309,7 +2647,7 @@ class App {
 
   // Desktop: hide or show the sidebar (remembered). Phones: open the drawer.
   toggleSidebar() {
-    if (matchMedia('(max-width: 760px)').matches) {
+    if (phoneLayout()) {
       document.body.classList.toggle('drawer');
       return;
     }
@@ -2345,55 +2683,69 @@ class App {
   }
 
   setupTouch(p) {
-    if (!this.touch) return;
-    // Long-press anywhere on the terminal opens the selectable text view.
-    let timer = null, x = 0, y = 0;
-    p.el.addEventListener('touchstart', (ev) => {
-      const t = ev.touches[0];
-      x = t.clientX; y = t.clientY;
-      clearTimeout(timer);
-      timer = setTimeout(() => this.openTextView(), 550);
-    }, { passive: true });
-    p.el.addEventListener('touchmove', (ev) => {
-      const t = ev.touches[0];
-      if (Math.abs(t.clientX - x) + Math.abs(t.clientY - y) > 10) clearTimeout(timer);
-    }, { passive: true });
-    p.el.addEventListener('touchend', () => clearTimeout(timer));
+    if (this.touch) p.untouch = attachPane(this, p);
   }
 
   bindKeybar() {
-    const seq = {
-      esc: '\x1b', tab: '\t', up: '\x1b[A', down: '\x1b[B', left: '\x1b[D', right: '\x1b[C',
-      pgup: '\x1b[5~', pgdn: '\x1b[6~', home: '\x1b[H', end: '\x1b[F', 'ctrl-c': '\x03', 'ctrl-d': '\x04',
-    };
     const bar = $('#keybar');
     bar.addEventListener('pointerdown', (ev) => {
       if (ev.target.closest('button')) ev.preventDefault(); // keep the keyboard up
     });
     bar.addEventListener('click', (ev) => {
       const b = ev.target.closest('button');
-      if (!b) return;
-      const k = b.dataset.k;
-      const id = this.activeId();
-      if (k === 'ctrl' || k === 'alt') {
-        this.mods[k] = !this.mods[k];
-        this.renderKeybar();
-        this.activePane()?.focus();
-        return;
-      }
-      if (k === 'paste') return this.paste();
-      if (k === 'select') return this.openTextView();
-      if (k === 'compose') return this.toggleCompose();
-      if (!id) return;
-      const data = seq[k] ?? b.dataset.text ?? b.textContent;
-      this.sendInput(id, data);
+      if (b) this.pressKey(b.dataset.k, b.dataset.text ?? b.textContent);
     });
+  }
+
+  // A key of the key bar (or the Android app's extra keys row), by name:
+  // esc, tab, ctrl, alt, arrows, ctrl-c, pgup... or text to type.
+  pressKey(k, text) {
+    const seq = {
+      esc: '\x1b', tab: '\t', up: '\x1b[A', down: '\x1b[B', left: '\x1b[D', right: '\x1b[C',
+      pgup: '\x1b[5~', pgdn: '\x1b[6~', home: '\x1b[H', end: '\x1b[F', 'ctrl-c': '\x03', 'ctrl-d': '\x04',
+      pipe: '|', slash: '/', dash: '-', tilde: '~',
+    };
+    const id = this.activeId();
+    if (k === 'ctrl' || k === 'alt') {
+      this.mods[k] = !this.mods[k];
+      this.renderKeybar();
+      this.activePane()?.focus();
+      return;
+    }
+    if (k === 'paste') return this.paste();
+    if (k === 'select') return this.openTextView();
+    if (k === 'compose') return this.toggleCompose();
+    if (!id) return;
+    const data = seq[k] ?? text;
+    if (data) this.sendInput(id, data);
+  }
+
+  // The Android back button: closes what is open on top, innermost first.
+  // False when nothing was, so the app can leave this machine.
+  back() {
+    if (this.closeMenu) { this.closeMenu(); return true; }
+    const m = $('#modal');
+    if (!m.hidden) {
+      // Dialogs close on Escape; the rest have a cancel or done button.
+      const at = m.contains(document.activeElement) ? document.activeElement : m.querySelector('.card') || m;
+      at.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+      if (!m.hidden) m.querySelector('[data-no], [data-cancel], [data-close], [data-done]')?.click();
+      if (!m.hidden) { m.hidden = true; m.innerHTML = ''; this.capturingKeys = false; }
+      return true;
+    }
+    if (this.paletteOpen) { this.closePalette(); return true; }
+    if (this.textViewOpen) { this.closeTextView(); return true; }
+    if (!$('#find').hidden) { $('#find [data-close]').click(); return true; }
+    if (document.body.classList.contains('drawer')) { this.closeDrawer(); return true; }
+    if (!$('#compose').hidden) { this.toggleCompose(false); return true; }
+    return false;
   }
 
   renderKeybar() {
     for (const b of document.querySelectorAll('#keybar [data-k=ctrl], #keybar [data-k=alt]')) {
       b.classList.toggle('on', !!this.mods[b.dataset.k]);
     }
+    try { android?.mods(!!this.mods.ctrl, !!this.mods.alt); } catch {}
   }
 
   bindCompose() {
@@ -2411,12 +2763,28 @@ class App {
       ta.style.height = '';
     };
     $('#compose [data-send]').onclick = send;
+    // Enter from a phone keyboard while it still composes (voice typing
+    // mid-phrase): send once the phrase is in.
+    let sendAfter = false;
     ta.addEventListener('keydown', (ev) => {
       if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing) {
         ev.preventDefault();
         send();
+      } else if (ev.key === 'Enter' && !ev.shiftKey && imeMirror) {
+        sendAfter = true;
       }
       if (ev.key === 'Escape') this.toggleCompose(false);
+    });
+    ta.addEventListener('beforeinput', (ev) => {
+      // The keyboard's Enter as a new line: that's send, too.
+      if (imeMirror && (ev.inputType === 'insertLineBreak' || ev.inputType === 'insertParagraph')) {
+        ev.preventDefault();
+        sendAfter = true;
+        setTimeout(() => { if (sendAfter) { sendAfter = false; send(); } }, 0);
+      }
+    });
+    ta.addEventListener('compositionend', () => {
+      if (sendAfter) setTimeout(() => { if (sendAfter) { sendAfter = false; ta.value = ta.value.replace(/\n$/, ''); send(); } }, 0);
     });
     ta.addEventListener('input', () => {
       ta.style.height = '';
@@ -2551,9 +2919,14 @@ class App {
     }
     add('Add a machine…', 'Run sessions on another computer over SSH', () => this.addHost(), 'Command', undefined, 'ssh host server remote connect computer');
     for (const h of this.hosts) {
-      if (!h.local && h.status === 'connected') add(`Update Gecko on ${h.name}`, (h.version || 0) < PROTOCOL ? 'It runs an older version; its tabs keep running' : 'Reinstall this version there; its tabs keep running', () => this.updateHost(h.name), 'Command', undefined, 'upgrade install remote machine host');
+      if (!h.local && h.kind !== 'cloud' && h.status === 'connected') add(`Update Gecko on ${h.name}`, (h.version || 0) < PROTOCOL ? 'It runs an older version; its tabs keep running' : 'Reinstall this version there; its tabs keep running', () => this.updateHost(h.name), 'Command', undefined, 'upgrade install remote machine host');
     }
-    for (const h of this.hosts) if (!h.local) add(`Remove machine ${h.name}`, 'Its sessions keep running there', () => this.removeHost(h.name), 'Command');
+    for (const h of this.hosts) if (!h.local && h.kind !== 'cloud') add(`Remove machine ${h.name}`, 'Its sessions keep running there', () => this.removeHost(h.name), 'Command');
+    if (this.cloud) {
+      add('Devices…', `Machines in account ${this.cloud.account}: approve, revoke, sign out`, () => this.openDevices(), 'Command', undefined, 'account cloud devices revoke approve sign out relay');
+      for (const p of this.cloud.pending || []) add(`Approve ${p.name}…`, `${prettyOS(p.os)} · ${p.ip} wants to join your account`, () => this.approveMachine(p), 'Command', undefined, 'account join enroll');
+      for (const d of this.cloud.devices || []) if (d.kind === 'machine' && !d.self) add(`Revoke ${d.name}…`, 'Remove it from your account', () => this.revokeDevice(d.id), 'Command', undefined, 'account remove cloud');
+    }
     add('Restart Gecko', 'Restarts the background service with the installed version; your tabs and what runs in them keep going', () => this.restartService(), 'Command', undefined, 'restart upgrade update reload daemon service');
     add('Open on another device', 'Phone or tablet: shows a link and QR code', () => this.openShare(), 'Command', undefined, 'phone mobile tablet qr share link');
     add('Notify me when agents need input', '', () => this.enableNotifications(), 'Setting', undefined, 'notifications alerts');
@@ -2843,6 +3216,8 @@ class App {
   }
 
   async openShare() {
+    // The Android app running Gecko on the phone shows its own link and QR code.
+    try { if (android?.shareDevice?.()) return; } catch {}
     const m = $('#modal');
     let urls = [];
     try {
@@ -3036,6 +3411,35 @@ class App {
 
   // ---------------------------------------------------------------- render
 
+  // This web UI's build id, e.g. "a1b2c3d · Oct 17 02:15" (see build.js).
+  buildId() {
+    return buildId(BUILD.commit, BUILD.time);
+  }
+
+  // ⋮ > Touch diagnostics in the Android app: what the last gesture on a
+  // terminal looked like, to tell what a real phone sends.
+  touchReport() {
+    const t = this.touchStats;
+    const lines = [
+      `Web UI build: ${this.buildId()}`,
+      `UI: ${this.bundled ? 'from the app' : 'from the machine'}, protocol ${PROTOCOL}; Gecko there: ${this.daemonVersion || '?'}`,
+      `Screen: ${innerWidth}x${innerHeight} CSS px at ${devicePixelRatio}x; touch: ${this.touch}`,
+      `Reduced motion: ${matchMedia('(prefers-reduced-motion: reduce)').matches ? 'yes (flings still coast; no stretch at the ends)' : 'no'}`,
+    ];
+    if (!t) lines.push('No gesture yet: scroll, flick or swipe on a terminal, then look again.');
+    else {
+      lines.push(`Last gesture (${t.at}): ${t.kind || 'tap'}`);
+      lines.push(`Samples: ${t.n} over ${Math.round(t.span)} ms, steps ${t.dtMin.toFixed(1)} to ${t.dtMax.toFixed(1)} ms`);
+      lines.push(`Moves: ${t.moves}, taken over by the browser: ${t.late}`);
+      lines.push(`Speed at release: ${t.v} px/ms; fling distance: ${t.fling} px${t.boosted ? ` (boosted from ${t.boosted})` : ''}`);
+      if (t.keys !== undefined) lines.push(`Cursor: ${t.keys} steps dragged, ${t.flingKeys} flung`);
+      if (t.flung !== undefined) lines.push(t.flung ? `Fling: yes${t.why ? ` (${t.why})` : ''}` : `Why no fling: ${t.why}`);
+      if (t.lift) lines.push(`Lifted ${t.lift[0]} ms after the last move${t.lift[1] !== null ? ` (${t.lift[1]} ms as received)` : ''}`);
+      if (t.steps?.length) lines.push(`Last samples (dt ms, d px): ${t.steps.map((q) => `${q.dt}, ${q.d}`).join(' | ')}`);
+    }
+    return lines.join('\n');
+  }
+
   toast(text, onClick) {
     const t = document.createElement('div');
     t.className = 'toast';
@@ -3068,6 +3472,7 @@ class App {
     this.renderEmpty();
     this.renderDock();
     this.renderStatus();
+    this.renderCloudPrompt();
     this.updateTitle();
   }
 
@@ -3078,15 +3483,16 @@ class App {
     for (const ws of this.workspaces()) {
       const tabs = this.tabsOf(ws);
       const agents = tabs.filter((t) => t.agent);
-      const need = agents.filter((t) => t.agent.status === 'needs-input').length;
-      const working = agents.filter((t) => t.agent.status === 'working').length;
+      const needing = agents.filter((t) => t.agent.status === 'needs-input');
+      const workers = agents.filter((t) => t.agent.status === 'working');
+      const need = needing.length, working = workers.length;
       const hosts = [...new Set(tabs.map((t) => t.host))].filter((h) => h && h !== this.hostName);
       const folded = this.collapsed[ws];
       parts.push(`<div class="ws ${ws === this.ws ? 'cur' : ''}" data-ws="${esc(ws)}">
         <div class="ws-row" data-drag="ws" data-key="${esc(ws)}">
           <button class="ws-name" data-act="ws" data-ws="${esc(ws)}" aria-expanded="${!folded}" title="Click to ${folded ? 'expand' : 'collapse'}, double-click to rename"><span class="fold" aria-hidden="true">${folded ? '▸' : '▾'}</span>${esc(ws)}</button>
-          ${need ? `<span class="agents need" title="Agents waiting for you">${AGENTS_ICON}${need}</span>` : ''}
-          ${working ? `<span class="agents work" title="Agents working">${AGENTS_ICON}${working}</span>` : ''}
+          ${need ? `<span class="agents need" title="Agents waiting for you">${groupAgentMark(needing, 'needs-input')}${need}</span>` : ''}
+          ${working ? `<span class="agents work" title="Agents working">${groupAgentMark(workers, 'working')}${working}</span>` : ''}
           ${hosts.length ? `<span class="hosts">${esc(hosts.join(', '))}</span>` : ''}
           <button class="x" data-act="ws-close" data-ws="${esc(ws)}" aria-label="Close workspace ${esc(ws)}" title="Close workspace and its tabs">×</button>
         </div>`);
@@ -3108,30 +3514,58 @@ class App {
       if (open.has(t.name)) continue;
       parts.push(`<div class="ws template"><button class="ws-name" data-act="template" data-name="${esc(t.name)}">${esc(t.name)} <span class="hosts">open</span></button></div>`);
     }
-    parts.push('</div><div class="group"><h3>Machines <button class="mini" data-act="add-host" title="Add a machine" aria-label="Add a machine">+</button></h3><ul class="hostlist">');
+    const signedIn = !!this.cloud?.signedIn;
+    parts.push(signedIn
+      ? `</div><div class="group machines"><h3>Machines <span class="h3-actions"><button class="mini devices" data-act="devices" title="Devices in your account" aria-label="Devices in your account">${DEVICES_ICON}</button><button class="mini" data-act="add-host" title="Add a machine over SSH" aria-label="Add a machine">+</button></span></h3><ul class="hostlist">`
+      : '</div><div class="group"><h3>Machines <button class="mini" data-act="add-host" title="Add a machine" aria-label="Add a machine">+</button></h3><ul class="hostlist">');
     const next = this.defaultHost();
-    for (const h of this.sortedHosts()) {
+    const hostRow = (h) => {
       const tm = this.tmux.filter((t) => t.host === h.name);
-      const broken = !h.local && h.status === 'error';
+      const cloud = h.kind === 'cloud';
+      const broken = !h.local && !cloud && h.status === 'error';
       const outdated = !h.local && h.status === 'connected' && (h.version || 0) < PROTOCOL;
-      parts.push(`<li class="host st-${esc(h.status)}${h.name === next ? ' next' : ''}" data-host="${esc(h.name)}">
+      const where = signedIn ? this.hostWhere(h) : h.local ? 'this machine' : h.status === 'connected' ? h.os || '' : h.status;
+      let counts = '';
+      if (signedIn) {
+        const agents = [...this.sessions.values()].filter((t) => t.host === h.name && t.agent);
+        const need = agents.filter((t) => t.agent.status === 'needs-input').length;
+        const working = agents.filter((t) => t.agent.status === 'working').length;
+        if (need) counts += `<span class="agents need" title="Agents waiting for you on ${esc(h.name)}">${AGENTS_ICON}${need}</span>`;
+        if (working) counts += `<span class="agents work" title="Agents working on ${esc(h.name)}">${AGENTS_ICON}${working}</span>`;
+      }
+      return `<li class="host st-${esc(h.status)}${h.name === next ? ' next' : ''}" data-host="${esc(h.name)}">
         <div class="host-row" data-drag="host" data-key="${esc(h.name)}">
           <button class="host-main" data-act="${broken ? 'host-fix' : outdated ? 'host-update' : 'host-new'}" data-host="${esc(h.name)}" title="${esc(broken ? 'Fix the connection to ' + h.name : outdated ? h.name + ' runs an older Gecko; click to update it (its tabs keep running)' : 'New tab on ' + h.name + (h.name === next ? `. New tabs (${prettyCombo(this.keys.first('newTab'))}) open here, on the current tab's machine` : ''))}">
-            <i class="hdot"></i><span class="nm">${esc(h.name)}</span><span class="where">${esc(h.local ? 'this machine' : h.status === 'connected' ? h.os || '' : h.status)}</span><span class="plus${outdated ? ' upd' : ''}">${broken ? 'fix' : outdated ? 'update' : '+'}</span>
+            <i class="hdot"></i><span class="nm">${esc(h.name)}</span>${counts}<span class="where">${esc(where)}</span>${!h.local && h.status === 'connected' && h.rtt ? `<span class="rtt ${latencyClass(h.rtt)}" title="${esc(`Round trip from this Gecko to ${h.name}: ${h.rtt} ms`)}">${h.rtt} ms</span>` : ''}<span class="plus${outdated ? ' upd' : ''}">${broken ? 'fix' : outdated ? 'update' : '+'}</span>
           </button>
-          ${h.local ? '' : `<button class="x" data-act="host-rm" data-host="${esc(h.name)}" aria-label="Remove ${esc(h.name)}" title="Remove ${esc(h.name)}">×</button>`}
+          ${h.local ? '' : cloud
+            ? `<button class="x" data-act="host-revoke" data-host="${esc(h.name)}" aria-label="Revoke ${esc(h.name)}" title="Revoke ${esc(h.name)}: remove it from your account">×</button>`
+            : `<button class="x" data-act="host-rm" data-host="${esc(h.name)}" aria-label="Remove ${esc(h.name)}" title="Remove ${esc(h.name)}">×</button>`}
         </div>
         ${h.error && h.status !== 'connected' ? `<div class="err">${esc(h.error)}</div>` : ''}
         ${tm.map((t) => {
           const tab = this.tmuxTab(h.name, t.name);
           const open = !!this.tmuxOpen[h.name + '/' + t.name];
-          const wins = (t.wins || []).map((w) => `<button class="tmux-win ${w.active ? 'on' : ''}" data-act="tmux-win" data-host="${esc(h.name)}" data-name="${esc(t.name)}" data-idx="${w.index}" title="${esc((tab ? 'Show this window in tab ' + nums.get(tab.id) : 'Open in a new tab') + '. Double-click to rename.')}"><span class="wi">${w.index}</span>${esc(w.name)}${w.command && w.command !== w.name ? `<span class="where">${esc(w.command)}</span>` : ''}</button>`).join('');
+          const wins = (t.wins || []).map((w) => `<button class="tmux-win ${w.active ? 'on' : ''}" data-act="tmux-win" data-host="${esc(h.name)}" data-name="${esc(t.name)}" data-idx="${w.index}" title="${esc((tab ? 'Show this window in tab ' + nums.get(tab.id) : 'Open in a new tab') + '. Double-click to rename.')}"><span class="wi">${w.index}</span>${windowAgentMark(w)}${esc(w.name)}${w.command && w.command !== w.name ? `<span class="where">${esc(w.command)}</span>` : ''}</button>`).join('');
           return `<div class="tmux-row">
             <button class="fold" data-act="tmux-fold" data-host="${esc(h.name)}" data-name="${esc(t.name)}" aria-label="${open ? 'Hide' : 'Show'} windows">${open ? '▾' : '▸'}</button>
             <button class="tmux" data-act="tmux" data-host="${esc(h.name)}" data-name="${esc(t.name)}" title="${esc((tab ? 'Go to tab ' + nums.get(tab.id) + ', which shows this session' : 'Open in a new tab') + '. Double-click to rename.')}">${TMUX_ICON}<b>${esc(t.name)}</b><span class="where">${t.windows} ${t.windows === 1 ? 'window' : 'windows'}</span>${tab ? numGlyph(tab, nums.get(tab.id)) : ''}</button>
           </div>${open ? `<div class="tmux-wins">${wins}</div>` : ''}`;
         }).join('')}
-      </li>`);
+      </li>`;
+    };
+    if (!signedIn) {
+      for (const h of this.sortedHosts()) parts.push(hostRow(h));
+    } else {
+      // Signed in: grouped by how Gecko reaches each machine.
+      const groups = [['Local', (h) => h.local], ['SSH', (h) => !h.local && h.kind !== 'cloud'], ['Cloud', (h) => h.kind === 'cloud']];
+      for (const [title, test] of groups) {
+        const hs = this.sortedHosts().filter(test);
+        if (!hs.length && title !== 'Cloud') continue;
+        parts.push(`<li class="hgroup" aria-hidden="true">${title}</li>`);
+        if (!hs.length) parts.push(`<li class="hnone">No other machines yet. On one, run <code>gecko login</code>.</li>`);
+        for (const h of hs) parts.push(hostRow(h));
+      }
     }
     parts.push('</ul></div>');
     $('#side-body').innerHTML = parts.join('');
@@ -3197,7 +3631,14 @@ class App {
       return;
     }
     const act = this.activeId();
-    dock.innerHTML = agents.map((a) => {
+    // Phones: a slim row of chips (answers behind a tap), or just a count.
+    const need = agents.filter((a) => a.state.status === 'needs-input').length;
+    const working = agents.some((a) => a.state.status === 'working');
+    dock.classList.toggle('folded', !!this.dockFolded);
+    const fold = `<button class="dock-fold ${need ? 's-needs-input' : working ? 's-working' : ''}" data-fold aria-expanded="${!this.dockFolded}"
+        title="${this.dockFolded ? 'Show' : 'Hide'} the agents" aria-label="${agents.length} agent${agents.length === 1 ? '' : 's'}${need ? `, ${need} need${need === 1 ? 's' : ''} you` : ''}; ${this.dockFolded ? 'show' : 'hide'} them">
+        ${this.dockFolded ? `<b>${agents.length}</b><span>agent${agents.length === 1 ? '' : 's'}${need ? ` · ${need} need${need === 1 ? 's' : ''} you` : ''}</span>` : '<span>›</span>'}</button>`;
+    dock.innerHTML = fold + agents.map((a) => {
       const s = a.session;
       const where = tabLabel(s) === a.state.name ? s.workspace : tabLabel(s);
       // Waiting on a question: the answers it offers on screen (read by the
@@ -3209,7 +3650,7 @@ class App {
         : a.state.status !== 'working'
           ? `<span class="replies">${parseQuickReplies(this.settings.quickReplies).map((q) => button(`data-prompt="${esc(q.text)}"`, `<span>${esc(q.label)}</span>`, `Send “${q.text}”`)).join('')}</span>`
           : '';
-      return `<div class="agent s-${esc(a.state.status)} ${s && s.id === act ? 'cur' : ''}" data-agent="${esc(a.key)}" role="button" tabindex="0"
+      return `<div class="agent s-${esc(a.state.status)} ${s && s.id === act ? 'cur' : ''} ${this.dockOpen === a.key ? 'open' : ''}" data-agent="${esc(a.key)}" role="button" tabindex="0"
           title="${esc(`${a.state.name} on ${a.host}: ${STATUS_TEXT[a.state.status] || a.state.status}${a.state.detail ? ' - ' + a.state.detail : ''}`)}">
         ${agentMark({ agent: a.state })}
         <span class="who"><b>${esc(a.state.name)}</b> ${esc(where)}${a.host !== this.hostName ? ` <span class="where">${esc(a.host)}</span>` : ''}</span>
@@ -3259,8 +3700,32 @@ class App {
     const right = [];
     if (s.notice) right.push(`<span class="notice" title="${esc(s.notice)}">${esc(s.notice)}</span>`);
     if (p) right.push(`<span>${p.term.cols}×${p.term.rows}</span>`);
-    right.push(`<span class="conn-dot ${this.conn.status}" title="Connection: ${this.conn.status}"></span>`);
+    right.push(`<span id="sl-net" class="net">${this.netHTML()}</span>`);
     el.innerHTML = `<div class="l">${bits.join('')}</div><div class="r">${right.join('')}</div>`;
+  }
+
+  // The connection in the status line: transport and round trip, or
+  // "reconnecting". Updated in place on every ping (every 2 s).
+  netHTML() {
+    const c = this.conn;
+    const st = c.status;
+    let text, title, cls = '';
+    if (st === 'online') {
+      const quic = c.transport === 'quic';
+      text = `<span class="via">${quic ? 'QUIC' : 'WS'}</span>${c.rtt != null ? `${c.rtt} ms` : ''}`;
+      title = `Connected over ${quic ? 'QUIC (WebTransport, UDP)' : 'a WebSocket (TCP)'}${c.rtt != null ? `. Round trip to the Gecko service: ${c.rtt} ms` : ''}`;
+      cls = latencyClass(c.rtt);
+    } else {
+      text = st === 'unauthorized' ? 'not signed in' : st === 'offline' ? 'reconnecting' : 'connecting';
+      title = st === 'offline' ? 'The connection stopped answering; reconnecting (tabs keep running and pick up where they were)' : '';
+      cls = st === 'unauthorized' ? 'bad' : 'slow';
+    }
+    return `<span class="conn-dot ${st}"></span><span class="ms ${cls}" title="${esc(title)}">${text}</span>`;
+  }
+
+  renderNet() {
+    const el = document.getElementById('sl-net');
+    if (el) el.innerHTML = this.netHTML();
   }
 
   updateTitle() {
@@ -3281,6 +3746,7 @@ if (window.geckoDesktop?.build) {
   const brand = document.querySelector('#side .brand > span');
   if (brand) brand.title = `Gecko desktop ${window.geckoDesktop.build}`;
 }
+if (window.GeckoAndroid) document.documentElement.classList.add('android'); // its own extra keys row
 paintTheme(
   resolveTheme(initialTheme()),
   window.geckoDesktop?.transparent ? store('opacity', 0.9) : 1,

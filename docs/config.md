@@ -10,6 +10,7 @@ it):
 | `config.json` | machines, workspace templates, listen address |
 | `settings.json` | theme, fonts, copy behaviour, key bindings (edited from the app, or by hand; changes apply live) |
 | `token` | web access token |
+| `cloud/` | only once signed in (`gecko login`): this machine's keys and the account's device list |
 | `state/` | socket, logs, window size, shell integration scripts |
 
 Older installs kept these in `~/.config/gecko` and `~/.local/state/gecko`;
@@ -42,6 +43,13 @@ they are copied over on first run.
 
 - **Workspace templates** open all their tabs at once (`gecko ws open api`, or
   from the sidebar).
+- **`cloud.enabled`**: `false` keeps account features off on this machine
+  even when it is signed in. Leave it out and signing in is what turns them
+  on. See [Accounts and the relay](cloud.md).
 - **`notify.webhook`** is POSTed when an agent starts waiting for you, so you
   hear about it with no Gecko window open. With ntfy.sh, that means a phone push.
 
+- **`listen`** is the web UI's address (TCP). Gecko also listens for
+  WebTransport (QUIC) on UDP at the same address and port number, so a
+  firewall rule for the web UI needs both. `"off"` turns both off, and
+  `GECKO_WEBTRANSPORT=off` in the service's environment turns off just QUIC.

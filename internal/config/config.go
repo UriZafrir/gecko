@@ -24,6 +24,9 @@ type Host struct {
 	SSH     string   `json:"ssh,omitempty"`     // ssh destination, e.g. me@devbox
 	Gecko   string   `json:"gecko,omitempty"`   // path to gecko on the remote
 	Command []string `json:"command,omitempty"` // custom transport, overrides SSH
+	// Machine is its id in your Gecko account, learned when it is signed
+	// in too; the relay then stands in when SSH can't reach it.
+	Machine string `json:"machine,omitempty"`
 }
 
 // Config is ~/.config/gecko/config.json.
@@ -38,6 +41,9 @@ type Config struct {
 	Notify          struct {
 		Webhook string `json:"webhook,omitempty"` // POSTed when an agent needs input (e.g. ntfy.sh)
 	} `json:"notify,omitempty"`
+	// Cloud: signing in (gecko login) turns the account features on;
+	// "enabled": false keeps them off even then (no relay connection).
+	Cloud *CloudConfig `json:"cloud,omitempty"`
 
 	mu sync.Mutex
 }
@@ -153,8 +159,23 @@ func Load() (*Config, error) {
 	return c, nil
 }
 
+// CloudConfig is the "cloud" section of the config.
+type CloudConfig struct {
+	Enabled *bool `json:"enabled,omitempty"`
+}
+
+// CloudEnabled reports whether account features may run when signed in.
+func (c *Config) CloudEnabled() bool {
+	return c.Cloud == nil || c.Cloud.Enabled == nil || *c.Cloud.Enabled
+}
+
 // DefaultName is the short host name.
 func DefaultName() string {
+	if IsAndroid() {
+		if n := androidName(); n != "" {
+			return n
+		}
+	}
 	h, _ := os.Hostname()
 	h, _, _ = strings.Cut(h, ".")
 	if h == "" {

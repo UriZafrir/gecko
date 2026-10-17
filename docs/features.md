@@ -18,13 +18,38 @@
   agent.
 - **Agent-aware.** Gecko recognises Claude Code, Codex, Gemini, Aider,
   OpenCode, Goose, Amp, Cursor Agent, Copilot and others running in its tabs,
-  on any machine. The agent dock shows each one as *working*, *needs you* or
+  on any machine: in the tab itself, inside a tmux pane, or over ssh and mosh
+  (from the terminal title the agent sets). tmux windows in the sidebar show
+  the agent in their active pane. The agent dock shows each one as *working*, *needs you* or
   *idle*, with the line it is showing, and one-tap replies (`1`, `2`, `y`,
   `esc`, `⏎`). You get a notification when an agent stops for you.
+- **[Android app](android.md).** The same UI as a native app: scan the QR code
+  to connect, terminal keys above the keyboard, notifications with answer
+  buttons when an agent needs you (even with the app closed), the real
+  clipboard and share to Gecko. It runs Gecko on the phone too: **This
+  phone** is a terminal there, which other devices can open when you allow
+  them.
 - **[Many machines](machines.md).** Add a host by its SSH destination. Gecko runs
   `gecko bridge` there over SSH, and that machine's own daemon owns its
   sessions. A dropped connection just reconnects and resumes, much like mosh,
   for every tab at once.
+- **[One account for every machine](machines.md#through-the-relay-accounts)**
+  (optional). `gecko login` on each machine and they find each other through
+  a relay you run (`gecko relay`), with no SSH, open ports or VPN. A new
+  machine joins only when one already signed in approves it, and terminal
+  data is end-to-end encrypted: the relay can't read it. Revoke a machine
+  from any other and its connections close within seconds. Without
+  `gecko login` nothing changes and Gecko makes no network calls.
+- **Latency you can see, recovery you don't notice.** The status line shows
+  the round trip to the Gecko service, measured with a small ping every 2
+  seconds ("QUIC 23 ms"), in the warning color from 100 ms and in red from
+  300 ms. Each other machine in the sidebar shows its own hop from this
+  Gecko. If pings stop answering for about 3 seconds the status line says
+  *reconnecting*, the connection is dropped and dialed again at once, and
+  again every second or so while the network is down (and right away when
+  the browser says the network is back or changed, or the tab is shown
+  again). Every tab picks up from the last byte it had. See
+  [Connection and transport](architecture.md#connection-and-transport).
 - **tmux, natively.** Gecko talks to each machine's tmux server: sessions and
   windows appear in the sidebar and in the palette, a tmux tab is titled by
   its active window, and the status line has clickable window chips. Click to

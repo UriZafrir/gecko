@@ -1,18 +1,22 @@
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 # Package version: the latest release tag without its "v".
 PKG_VERSION ?= $(or $(patsubst v%,%,$(shell git describe --tags --abbrev=0 2>/dev/null)),0.0.0)
-LDFLAGS := -s -w -X main.version=$(VERSION)
+# Build id: the commit (with -dirty for uncommitted changes) and when it
+# was built, in the web UI, gecko and the Android app alike.
+BUILD_COMMIT := $(or $(BUILD_COMMIT),$(shell c=$$(git rev-parse --short=7 HEAD 2>/dev/null || echo unknown); [ -n "$$(git status --porcelain 2>/dev/null)" ] && c="$$c-dirty"; echo $$c))
+BUILD_TIME := $(or $(BUILD_TIME),$(shell date -u +%Y-%m-%dT%H:%M:%SZ))
+LDFLAGS := -s -w -X main.version=$(VERSION) -X main.buildCommit=$(BUILD_COMMIT) -X main.buildTime=$(BUILD_TIME)
 GO ?= go
 export GOTOOLCHAIN ?= local
 
 PREFIX ?= $(HOME)/.local
 DESKTOP_DIR := $(PREFIX)/share/gecko/desktop
-.PHONY: all web build test dist packages package-mac package-appimage package-windows install install-desktop desktop desktop-sandbox clean dev
+.PHONY: all web build test dist packages package-mac package-appimage package-windows install install-desktop desktop desktop-sandbox clean dev android android-gecko android-test
 
 all: web build
 
 web:
-	cd web && npm install --no-audit --no-fund && node build.mjs
+	cd web && npm install --no-audit --no-fund && GECKO_BUILD_COMMIT=$(BUILD_COMMIT) GECKO_BUILD_TIME=$(BUILD_TIME) node build.mjs
 
 build:
 	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o bin/gecko ./cmd/gecko
@@ -20,6 +24,7 @@ build:
 test:
 	$(GO) vet ./...
 	$(GO) test ./...
+	node --test web/src/gestures.test.mjs web/src/build.test.mjs web/src/ime.test.mjs
 
 # Cross-compiled binaries; `gecko host install` picks the right one.
 dist: web
@@ -55,6 +60,29 @@ install-desktop:
 	@# GNOME reads icons through this cache; a stale one hides new or changed icons.
 	@if [ -f $(PREFIX)/share/icons/hicolor/icon-theme.cache ] || command -v gtk-update-icon-cache >/dev/null; then \
 		gtk-update-icon-cache -f -t -q $(PREFIX)/share/icons/hicolor 2>/dev/null || true; fi
+
+# Android app (android/): a debug APK at android/app/build/outputs/apk/debug.
+# Needs JDK 17 and the Android SDK (ANDROID_HOME); see docs/android.md.
+# The APK carries Gecko itself (the daemon and web UI) for the phone's own
+# terminal, as lib/<abi>/libgecko.so: a static linux build runs on Android.
+android: android-gecko
+	cd android && ./gradlew --no-daemon assembleDebug
+	@ls -l android/app/build/outputs/apk/debug/app-debug.apk
+
+ANDROID_JNI := android/app/src/main/jniLibs
+android-gecko: web
+	@for t in arm64-v8a/arm64 x86_64/amd64; do \
+		abi=$${t%/*}; arch=$${t#*/}; mkdir -p $(ANDROID_JNI)/$$abi; \
+		CGO_ENABLED=0 GOOS=linux GOARCH=$$arch $(GO) build -trimpath -ldflags "$(LDFLAGS)" -o $(ANDROID_JNI)/$$abi/libgecko.so ./cmd/gecko || exit 1; \
+	done
+	@# The web UI, which the app serves for every machine (BundledUi.kt).
+	@rm -rf android/app/src/main/assets/web && mkdir -p android/app/src/main/assets && cp -r web/dist android/app/src/main/assets/web && rm -f android/app/src/main/assets/web/.keep
+	@# The same build id for the app (BuildConfig, see app/build.gradle.kts).
+	@printf 'commit=%s\ntime=%s\n' '$(BUILD_COMMIT)' '$(BUILD_TIME)' > android/app/build-id.properties
+
+# Its unit tests; `./gradlew connectedDebugAndroidTest` runs the device tests.
+android-test:
+	cd android && ./gradlew --no-daemon testDebugUnitTest
 
 # Native desktop app (Electron): see-through window with blur on macOS and
 # Windows. `gecko open` uses it automatically once installed.
