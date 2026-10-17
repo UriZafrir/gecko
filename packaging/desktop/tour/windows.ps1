@@ -43,7 +43,7 @@ if (-not $ff) { $c = "C:\ProgramData\chocolatey\bin\ffmpeg.exe"; if (Test-Path $
 Log "ffmpeg: $ff"
 
 "{0}|start" -f [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() | Set-Content "$Out\t0.txt"
-$rec = Start-Process -FilePath $ff -ArgumentList "-y -loglevel error -f gdigrab -framerate 15 -draw_mouse 0 -i desktop -c:v libx264 -preset veryfast -crf 22 -pix_fmt yuv420p `"$Out\tour.mkv`"" -PassThru -WindowStyle Hidden
+$rec = Start-Process -FilePath $ff -ArgumentList "-y -loglevel error -f gdigrab -framerate 15 -draw_mouse 0 -i desktop -c:v libx264 -preset veryfast -tune zerolatency -crf 22 -pix_fmt yuv420p -flush_packets 1 `"$Out\tour.mkv`"" -PassThru -WindowStyle Hidden
 Start-Sleep 2
 
 $env:PATH = "$Res;$env:PATH"
@@ -68,7 +68,7 @@ $env:TOUR_OUTSIDE = "1"; $env:TOUR_GECKO = $G
 $env:TOUR_AGENTS_WHY = "skipped on Windows: the Windows daemon can't inspect processes yet, so it doesn't detect agents"
 node "$Here\tour.cjs" 2>&1 | Tee-Object -FilePath "$Out\tour.log"
 $rc = $LASTEXITCODE
-Start-Sleep 1
+Start-Sleep 4
 Stop-Process -Id $rec.Id -ErrorAction SilentlyContinue
 Start-Sleep 2
 Get-Process -Name Gecko -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $App } | Stop-Process -Force
