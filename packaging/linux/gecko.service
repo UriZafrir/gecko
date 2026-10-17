@@ -1,0 +1,15 @@
+# Gecko's daemon as a systemd user service. Not enabled by the package:
+# the first plain `gecko` sets up start at login (writing its own
+# ~/.config/systemd/user/gecko.service, which takes precedence over this
+# one), or enable this one by hand: systemctl --user enable --now gecko
+[Unit]
+Description=Gecko terminal daemon
+Documentation=https://github.com/eternaleclipse/gecko
+
+[Service]
+ExecStart=/usr/bin/gecko daemon
+Restart=on-failure
+KillMode=process
+
+[Install]
+WantedBy=default.target

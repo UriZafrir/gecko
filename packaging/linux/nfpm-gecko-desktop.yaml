@@ -1,0 +1,70 @@
+# The gecko-desktop package (.deb, .rpm): Gecko's native window (Electron,
+# with the libraries Chromium needs from the system). Built by
+# packaging/build.sh from dist/build/linux/root (packaging/linux/stage.sh).
+name: gecko-desktop
+arch: ${ARCH}
+platform: linux
+version: ${PKG_VERSION}
+section: utils
+priority: optional
+maintainer: Gecko contributors <gecko@users.noreply.github.com>
+description: |
+  Native window for the Gecko terminal multiplexer
+  A see-through window around Gecko's web UI, without browser chrome in the
+  way. `gecko open` uses it once installed; opened from the app menu it
+  finds or starts the Gecko daemon.
+homepage: https://github.com/eternaleclipse/gecko
+license: LicenseRef-Unspecified
+depends:
+  - gecko (>= ${PKG_VERSION})
+  - libgtk-3-0t64 | libgtk-3-0
+  - libnss3
+  - libasound2t64 | libasound2
+  - libgbm1
+  - libxss1
+  - libxtst6
+  - libnotify4
+  - libatspi2.0-0t64 | libatspi2.0-0
+  - libsecret-1-0
+  - libdrm2
+  - libxkbcommon0
+  - xdg-utils
+overrides:
+  rpm:
+    depends:
+      - gecko >= ${PKG_VERSION}
+      - gtk3
+      - nss
+      - alsa-lib
+      - mesa-libgbm
+      - libXScrnSaver
+      - libXtst
+      - libnotify
+      - at-spi2-core
+      - libsecret
+      - libdrm
+      - libxkbcommon
+      - xdg-utils
+contents:
+  - src: dist/build/linux/root/usr/lib/gecko-desktop
+    dst: /usr/lib/gecko-desktop
+    type: tree
+  - src: dist/build/linux/root/usr/bin/gecko-desktop
+    dst: /usr/bin/gecko-desktop
+    file_info: {mode: 0755}
+  - src: dist/build/linux/root/usr/share/gecko/apparmor/gecko-desktop-package
+    dst: /etc/apparmor.d/gecko-desktop-package
+    type: config
+    file_info: {mode: 0644}
+    packager: deb
+  - src: packaging/linux/copyright
+    dst: /usr/share/doc/gecko-desktop/copyright
+    file_info: {mode: 0644}
+    packager: deb
+  - src: dist/build/linux/changelog.gz
+    dst: /usr/share/doc/gecko-desktop/changelog.gz
+    file_info: {mode: 0644}
+    packager: deb
+scripts:
+  postinstall: packaging/linux/gecko-desktop.postinst
+  postremove: packaging/linux/gecko-desktop.postrm

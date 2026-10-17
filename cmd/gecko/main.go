@@ -205,12 +205,19 @@ func desktopApp() (string, bool) {
 	if b, err := os.ReadFile("/proc/sys/kernel/apparmor_restrict_unprivileged_userns"); err != nil || strings.TrimSpace(string(b)) != "1" {
 		return p, true
 	}
-	if _, err := os.Stat("/etc/apparmor.d/gecko-desktop"); err == nil {
+	// gecko-desktop from `make desktop-sandbox`, gecko-desktop-package from
+	// the gecko-desktop .deb.
+	if m, _ := filepath.Glob("/etc/apparmor.d/gecko-desktop*"); len(m) > 0 {
 		return p, true
 	}
-	helper := filepath.Join(filepath.Dir(p), "..", "share", "gecko", "desktop", "node_modules", "electron", "dist", "chrome-sandbox")
-	if st, err := os.Stat(helper); err == nil && st.Mode()&os.ModeSetuid != 0 && ownedByRoot(st) {
-		return p, true
+	bin := filepath.Dir(p)
+	for _, helper := range []string{
+		filepath.Join(bin, "..", "share", "gecko", "desktop", "node_modules", "electron", "dist", "chrome-sandbox"), // make desktop
+		filepath.Join(bin, "..", "lib", "gecko-desktop", "chrome-sandbox"),                                          // packages
+	} {
+		if st, err := os.Stat(helper); err == nil && st.Mode()&os.ModeSetuid != 0 && ownedByRoot(st) {
+			return p, true
+		}
 	}
 	fmt.Fprintln(os.Stderr, "gecko: the desktop app's sandbox isn't set up on this system; using a browser window. Fix once with `make desktop-sandbox` in the gecko repo.")
 	return "", false

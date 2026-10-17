@@ -1,33 +1,54 @@
-# .deb and .rpm packages, built by packaging/build.sh with nfpm.
+# The gecko package (.deb, .rpm): CLI and daemon, one static binary. Built by
+# packaging/build.sh from dist/build/linux/root (packaging/linux/stage.sh).
+# It recommends gecko-desktop, the native window; without it `gecko open`
+# uses a browser app window.
 name: gecko
 arch: ${ARCH}
 platform: linux
 version: ${PKG_VERSION}
 section: utils
 priority: optional
-maintainer: Gecko contributors
+maintainer: Gecko contributors <gecko@users.noreply.github.com>
 description: |
-  The terminal for running coding agents across all your machines.
-  Sessions that survive anything, agents you can see at a glance,
-  from your desktop or your phone.
+  Terminal multiplexer for coding agents across your machines
+  Gecko keeps shells, tmux sessions, SSH connections and coding agents
+  running in a daemon and shows them in a web UI and a native window, on
+  your desktop or your phone. Sessions survive closing the window.
 homepage: https://github.com/eternaleclipse/gecko
+license: LicenseRef-Unspecified
+recommends:
+  - gecko-desktop
 suggests:
   - tmux
   - mosh
+overrides:
+  rpm:
+    recommends:
+      - gecko-desktop
 contents:
-  - src: dist/build/linux/gecko
+  - src: dist/build/linux/root/usr/bin/gecko
     dst: /usr/bin/gecko
-    file_info:
-      mode: 0755
-  - src: dist/build/linux/gecko.desktop
+    file_info: {mode: 0755}
+  - src: dist/build/linux/root/usr/lib/systemd/user/gecko.service
+    dst: /usr/lib/systemd/user/gecko.service
+    file_info: {mode: 0644}
+  - src: dist/build/linux/root/usr/share/applications/gecko.desktop
     dst: /usr/share/applications/gecko.desktop
-    file_info:
-      mode: 0644
-  - src: packaging/linux/gecko.svg
+    file_info: {mode: 0644}
+  - src: dist/build/linux/root/usr/share/icons/hicolor/scalable/apps/gecko.svg
     dst: /usr/share/icons/hicolor/scalable/apps/gecko.svg
-    file_info:
-      mode: 0644
-  - src: packaging/linux/gecko-256.png
+    file_info: {mode: 0644}
+  - src: dist/build/linux/root/usr/share/icons/hicolor/256x256/apps/gecko.png
     dst: /usr/share/icons/hicolor/256x256/apps/gecko.png
-    file_info:
-      mode: 0644
+    file_info: {mode: 0644}
+  - src: dist/build/linux/root/usr/share/metainfo/dev.gecko.app.metainfo.xml
+    dst: /usr/share/metainfo/dev.gecko.app.metainfo.xml
+    file_info: {mode: 0644}
+  - src: packaging/linux/copyright
+    dst: /usr/share/doc/gecko/copyright
+    file_info: {mode: 0644}
+    packager: deb
+  - src: dist/build/linux/changelog.gz
+    dst: /usr/share/doc/gecko/changelog.gz
+    file_info: {mode: 0644}
+    packager: deb

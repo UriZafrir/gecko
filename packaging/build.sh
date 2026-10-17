@@ -1,6 +1,7 @@
 #!/bin/sh
 # Builds installation packages into dist/packages:
-#   linux    gecko_<ver>_<arch>.deb, gecko-<ver>.<arch>.rpm (amd64, arm64)
+#   linux    gecko and gecko-desktop .deb and .rpm, gecko-<ver>-linux-<arch>.tar.gz
+#            (amd64, arm64; LINUX_ARCHS=amd64 for one)
 #   macos    Gecko-<ver>-macos.zip, a Gecko.app for Apple silicon and Intel
 #   windows  Gecko-<ver>-setup-<arch>.exe (amd64, arm64)
 #
@@ -36,14 +37,30 @@ run_nfpm() {
 }
 
 linux() {
-	# nfpm.yaml takes the files from dist/build/linux, one arch at a time.
-	dir=$BUILD/linux
-	mkdir -p "$dir"
-	for arch in amd64 arm64; do
-		build linux $arch "$dir/gecko"
-		sed 's|@BIN@|/usr/bin/gecko|' packaging/linux/gecko.desktop >"$dir/gecko.desktop"
-		for fmt in deb rpm; do
-			ARCH=$arch PKG_VERSION=$PKG_VERSION run_nfpm package -f packaging/linux/nfpm.yaml -p $fmt -t "$OUT"
+	# Per arch: gecko, the desktop window (Electron, from electron-builder's
+	# unpacked Linux app) and the rest of the file tree in
+	# dist/build/linux/root, then from it a tarball (for the AUR gecko-bin and
+	# manual installs) and with nfpm the gecko and gecko-desktop .debs and
+	# .rpms. Packages that build from source: packaging/rpm, packaging/arch,
+	# packaging/debian, packaging/snap (docs/linux-packages.md).
+	for arch in ${LINUX_ARCHS:-amd64 arm64}; do
+		case $arch in amd64) ea=x64 ua=x86_64 unpacked=linux-unpacked ;; arm64) ea=arm64 ua=aarch64 unpacked=linux-arm64-unpacked ;; esac
+		ARCHS=$ea packaging/desktop/build.sh linux-dir
+		root=$BUILD/linux/root
+		rm -rf "$BUILD/linux" && mkdir -p "$root"
+		build linux $arch "$BUILD/linux/gecko"
+		printf 'gecko (%s) stable; urgency=medium\n\n  * Gecko %s.\n\n -- Gecko contributors <gecko@users.noreply.github.com>  %s\n' \
+			"$PKG_VERSION" "$VERSION" "$(LC_ALL=C date -R)" | gzip -9n >"$BUILD/linux/changelog.gz"
+		LINUX_ROOT=$root LINUX_UNPACKED=dist/desktop/$unpacked packaging/linux/stage.sh "$BUILD/linux/gecko"
+		name=gecko-$PKG_VERSION-linux-$ua
+		rm -rf "$BUILD/$name" && cp -a "$root" "$BUILD/$name"
+		tar -C "$BUILD" --owner=0 --group=0 -czf "$OUT/$name.tar.gz" "$name"
+		rm -rf "$BUILD/$name"
+		echo "created package: $OUT/$name.tar.gz"
+		for pkg in gecko gecko-desktop; do
+			for fmt in deb rpm; do
+				ARCH=$arch PKG_VERSION=$PKG_VERSION run_nfpm package -f packaging/linux/nfpm-$pkg.yaml -p $fmt -t "$OUT"
+			done
 		done
 	done
 }

@@ -1,0 +1,62 @@
+# Maintainer: Gecko contributors <gecko@users.noreply.github.com>
+# Gecko built from source; the window runs on Arch's electron package.
+# The prebuilt alternative (bundled Electron) is gecko-bin.
+pkgname=gecko
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Terminal multiplexer for coding agents across your machines"
+arch=('x86_64' 'aarch64')
+url="https://github.com/eternaleclipse/gecko"
+# The project has not chosen a license yet (docs/linux-packages.md).
+license=('LicenseRef-Unspecified')
+depends=('glibc' 'electron')
+makedepends=('go' 'npm')
+optdepends=('tmux: tmux sessions in Gecko'
+            'mosh: mosh connections to other machines')
+conflicts=('gecko-bin')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+prepare() {
+  cd "$pkgname-$pkgver"
+  export GOPATH="$srcdir/gopath" GOFLAGS="-modcacherw"
+  go mod download
+  (cd web && npm ci --no-audit --no-fund)
+  (cd desktop && printf '{"commit":"v%s","time":"%s"}\n' "$pkgver" "$(date -u -d "@${SOURCE_DATE_EPOCH:-$(date +%s)}" +%Y-%m-%dT%H:%M:%SZ)" >build-id.json)
+}
+
+build() {
+  cd "$pkgname-$pkgver"
+  (cd web && node build.mjs)
+  export GOPATH="$srcdir/gopath" CGO_ENABLED=0 GOTOOLCHAIN=local
+  export GOFLAGS="-buildmode=pie -trimpath -mod=readonly -modcacherw"
+  go build -ldflags "-s -w -X main.version=$pkgver" -o gecko ./cmd/gecko
+}
+
+check() {
+  cd "$pkgname-$pkgver"
+  ./gecko version
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+  install -Dm755 gecko "$pkgdir/usr/bin/gecko"
+  # The window: Gecko's Electron app on the system electron.
+  install -d "$pkgdir/usr/lib/gecko/desktop"
+  install -m644 desktop/main.js desktop/preload.js desktop/package.json desktop/build-id.json "$pkgdir/usr/lib/gecko/desktop/"
+  install -m644 packaging/linux/gecko-256.png "$pkgdir/usr/lib/gecko/desktop/icon.png"
+  install -Dm755 /dev/stdin "$pkgdir/usr/bin/gecko-desktop" <<'SH'
+#!/bin/sh
+# Gecko's window on the system Electron; `gecko open` starts it.
+export GECKO_BIN="${GECKO_BIN:-/usr/bin/gecko}"
+[ "${GECKO_DESKTOP_NO_SANDBOX:-}" = 1 ] && set -- --no-sandbox "$@"
+exec electron /usr/lib/gecko/desktop "$@"
+SH
+  install -Dm644 packaging/linux/gecko.service "$pkgdir/usr/lib/systemd/user/gecko.service"
+  install -d "$pkgdir/usr/share/applications"
+  sed 's|@BIN@|/usr/bin/gecko|' packaging/linux/gecko.desktop >"$pkgdir/usr/share/applications/gecko.desktop"
+  install -Dm644 packaging/linux/gecko.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/gecko.svg"
+  install -Dm644 packaging/linux/gecko-256.png "$pkgdir/usr/share/icons/hicolor/256x256/apps/gecko.png"
+  install -Dm644 packaging/linux/gecko.metainfo.xml "$pkgdir/usr/share/metainfo/dev.gecko.app.metainfo.xml"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/gecko/README.md"
+}

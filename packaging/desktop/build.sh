@@ -18,7 +18,7 @@ PKG_VERSION=${PKG_VERSION:-0.0.0}
 LDFLAGS=${LDFLAGS:--s -w -X main.version=$VERSION}
 BINS=dist/build/desktop
 mkdir -p "$BINS"
-target=${1:?usage: build.sh mac|appimage|windows}
+target=${1:?usage: build.sh mac|appimage|windows|linux-dir}
 
 gobuild() { # goos goarch electron-arch
 	ext=
@@ -56,6 +56,16 @@ appimage)
 	done
 	# shellcheck disable=SC2086
 	eb --linux AppImage $args
+	;;
+linux-dir)
+	# The unpacked Linux app, for the distro packages (packaging/build.sh).
+	args=
+	for a in ${ARCHS:-x64}; do
+		case $a in x64) gobuild linux amd64 x64 ;; arm64) gobuild linux arm64 arm64 ;; esac
+		args="$args --$a"
+	done
+	# shellcheck disable=SC2086
+	eb --linux dir $args
 	;;
 windows)
 	gobuild windows amd64 x64
