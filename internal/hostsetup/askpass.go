@@ -83,7 +83,7 @@ func askpassPath() string {
 		return AskpassProgram
 	}
 	p := filepath.Join(config.StateDir(), "gecko-askpass")
-	exe, err := os.Executable()
+	exe, err := config.Executable()
 	if err != nil {
 		return p
 	}

@@ -14,7 +14,7 @@ func TermuxPrefix() string {
 	if !IsAndroid() {
 		return ""
 	}
-	exe, _ := os.Executable()
+	exe, _ := Executable()
 	return termuxPrefix(os.Getenv("PREFIX"), exe, func(p string) bool {
 		st, err := os.Stat(p)
 		return err == nil && st.IsDir()

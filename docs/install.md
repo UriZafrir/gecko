@@ -11,6 +11,12 @@ make install    # ~/.local/bin/gecko, plus an app-menu launcher on Linux
 make dist       # cross-compiles linux/darwin/windows/freebsd × amd64/arm64
 ```
 
+`make dist` needs [zig](https://ziglang.org/download/) 0.13.0 on PATH (or
+`ZIG=/path/to/zig`): it links the Linux binaries as static PIEs, which also
+start where a program has to go through Android's linker (Termux from
+Google Play). The GitHub releases carry them as `gecko-linux-amd64` and
+`gecko-linux-arm64`.
+
 ## Installation packages
 
 ```sh

@@ -37,6 +37,7 @@ func Start(opts Options) (Pty, error) {
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir = opts.Dir
 	cmd.Env = opts.Env
+	execx.ThroughLinker(cmd) // Termux from Google Play
 	ptmx, tty, err := pty.Open()
 	if err != nil {
 		return nil, err

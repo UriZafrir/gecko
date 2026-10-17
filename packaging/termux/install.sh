@@ -5,7 +5,10 @@
 #
 # It puts gecko in $PREFIX/bin: the Linux build for the phone's CPU from the
 # latest GitHub release, or, with --source (or when a release has none), a
-# build from source with Termux's Go and Node. Run it again to update.
+# build from source with Termux's Go and Node. Run it again to update. Any
+# Termux build works, Google Play's too: that one starts programs through
+# Android's linker, and the release builds are static PIEs, which it can
+# start (older releases' builds can't be).
 #
 # Options (after `sh -s --` when piped):
 #   --app      also let the Gecko Android app start Gecko here: sets

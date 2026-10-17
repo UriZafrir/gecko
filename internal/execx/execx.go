@@ -11,6 +11,7 @@ import (
 func Command(name string, arg ...string) *exec.Cmd {
 	cmd := exec.Command(resolve(name), arg...)
 	hide(cmd)
+	ThroughLinker(cmd)
 	return cmd
 }
 
@@ -18,5 +19,6 @@ func Command(name string, arg ...string) *exec.Cmd {
 func CommandContext(ctx context.Context, name string, arg ...string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, resolve(name), arg...)
 	hide(cmd)
+	ThroughLinker(cmd)
 	return cmd
 }
