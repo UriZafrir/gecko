@@ -81,6 +81,14 @@ sleep 3
 screencapture -x "$OUT/mac-3-relaunch.png"
 "$G" capture "$S" >"$OUT/capture-2.txt" 2>&1
 check "session survived the relaunch" "grep -q 'same shell after relaunch: MARK2=43' '$OUT/capture-2.txt'"
+# The Gecko logo sits on its own row under the traffic lights; with the
+# sidebar hidden the tab bar starts after them.
+osascript -e 'tell application "System Events" to tell process "Gecko" to set frontmost to true' -e 'tell application "System Events" to keystroke "b" using command down' 2>>"$OUT/smoke.log"
+sleep 1.5
+screencapture -x "$OUT/mac-4-sidebar-hidden.png"
+osascript -e 'tell application "System Events" to keystroke "b" using command down' 2>>"$OUT/smoke.log"
+sleep 1.5
+screencapture -x "$OUT/mac-5-sidebar-shown.png"
 kill -TERM $APID; wait $APID 2>/dev/null
 touch "$OUT/.stop"
 sleep 1
