@@ -287,10 +287,11 @@ of `gecko url` back to the app. From then on it is a plain connection to
 
 ### Without the app
 
-The installer works on its own (no root needed): it puts the Linux build for
-the phone's CPU from the latest GitHub release in `$PREFIX/bin/gecko`
-(`--source` builds it with Termux's Go and Node instead). Run it again to
-update; a running Gecko is upgraded in place, keeping its tabs. Then:
+The installer works on its own (no root needed), in every Termux build: it
+puts the Linux build for the phone's CPU from the latest GitHub release in
+`$PREFIX/bin/gecko` (`--source` builds it with Termux's Go and Node
+instead). Run it again to update; a running Gecko is upgraded in place,
+keeping its tabs. Then:
 
 ```sh
 gecko               # starts the daemon, prints the link (open it in a browser, or Paste link in the app)
@@ -335,14 +336,19 @@ Android stops background work on its own, and Termux is no exception:
 
 ### F-Droid, GitHub and Google Play
 
-Use Termux from F-Droid or GitHub. The Google Play listing is a separate
-build, made and signed differently, and Termux's add-ons (Termux:Boot,
-Termux:API) have to come from the same place as Termux itself. It also
-targets a newer Android, where Termux may have to start programs through
-Android's own linker, which can't start Gecko's Linux build (a static
-program); on the F-Droid and GitHub builds it starts directly. Gecko is
-tested with the GitHub build, and the app warns when its Termux came from
-Play.
+Gecko runs in all three, but the app starts it only in Termux from F-Droid
+or GitHub. The Google Play listing is a separate build, made and signed
+differently, without the RUN_COMMAND intent the app uses, so with it there
+is no **Termux** setup: run `gecko` in Termux and open its link in a
+browser, or **Paste link** in the app. Termux's add-ons (Termux:Boot,
+Termux:API) have to come from the same place as Termux itself.
+
+The Play build targets a newer Android, which doesn't let Termux execute
+its own files, so it starts every program through Android's linker
+(`/system/bin/linker64 program args`). Gecko's Linux build starts that way
+too (it is a static PIE, see `internal/staticpie`), and then starts its
+shells, tmux and other Termux programs through the linker as well. The app
+warns when its Termux came from Play.
 
 ### Separate sandboxes
 

@@ -134,7 +134,7 @@
 
     <string name="termux_missing_title">Install Termux</string>
     <string name="termux_missing_text">Termux is a Linux environment for Android with its own packages: git, tmux, Node, Python, Go, ssh and more. Gecko runs inside it and opens it here like any machine: tabs, agents, notifications and the extra keys all work.\n\nGet Termux from F-Droid or from its GitHub releases, then come back.</string>
-    <string name="termux_play_warning">The Termux on Google Play is a separate build, made differently from the F-Droid and GitHub ones, and Gecko\'s Linux build may not start there; Gecko is tested with those. Termux builds from different places can\'t be mixed: their add-ons have to come from the same place.</string>
+    <string name="termux_play_warning">The Termux on Google Play is a separate build that takes no commands from other apps, so the app can\'t start Gecko there. Gecko does run in it: install it with Gecko\'s Termux installer, run gecko there and paste its link. For Gecko to start it from here, use Termux from F-Droid or GitHub. Termux builds from different places can\'t be mixed: their add-ons have to come from the same place.</string>
     <string name="termux_fdroid">F-Droid</string>
     <string name="termux_github">GitHub releases</string>
 

@@ -37,7 +37,7 @@ func handoffDir() string { return filepath.Join(config.StateDir(), "handoff") }
 // executable is the binary to exec: the file at the path we were started
 // from, which `make install` may have replaced since.
 func executable() (string, error) {
-	exe, err := os.Executable()
+	exe, err := config.Executable()
 	if err != nil {
 		return "", err
 	}
@@ -129,7 +129,12 @@ func upgrade(m *session.Manager, h *hub.Hub, ln, web net.Listener) error {
 		}
 	}
 	log.Printf("upgrading in place: %s (%d sessions)", exe, len(states))
-	err = syscall.Exec(exe, append([]string{exe}, os.Args[1:]...), env)
+	argv0, argv := exe, append([]string{exe}, os.Args[1:]...)
+	if l := config.Linker(); l != "" {
+		// Started through Android's linker (Termux from Google Play): so again.
+		argv0, argv = l, append([]string{exe}, argv...)
+	}
+	err = syscall.Exec(argv0, argv, env)
 	return fail(fmt.Errorf("exec %s: %w", exe, err)) // only reached if exec failed
 }
 

@@ -26,3 +26,17 @@ func TestTermuxPrefix(t *testing.T) {
 		t.Error("IsTermux on a computer")
 	}
 }
+
+func TestIsLinker(t *testing.T) {
+	for p, want := range map[string]bool{
+		"/system/bin/linker64":                      true,
+		"/apex/com.android.runtime/bin/linker64":    true,
+		"/system/bin/linker":                        true,
+		"/data/data/com.termux/files/usr/bin/gecko": false,
+		"/usr/local/bin/linker64":                   false,
+	} {
+		if isLinker(p) != want {
+			t.Errorf("isLinker(%q) != %v", p, want)
+		}
+	}
+}
