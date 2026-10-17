@@ -1,0 +1,11 @@
+#!/bin/sh
+# Chromium's setuid sandbox helper, for systems without unprivileged user
+# namespaces; and on Ubuntu 23.10+ the AppArmor profile that lets the window
+# use them.
+set -e
+chmod 4755 /usr/lib/gecko-desktop/chrome-sandbox || true
+if [ -f /etc/apparmor.d/gecko-desktop-package ] && command -v apparmor_parser >/dev/null 2>&1 &&
+	[ -d /sys/kernel/security/apparmor ]; then
+	apparmor_parser -r -T -W /etc/apparmor.d/gecko-desktop-package || true
+fi
+exit 0

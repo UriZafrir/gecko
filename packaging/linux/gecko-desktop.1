@@ -1,0 +1,19 @@
+.TH GECKO-DESKTOP 1 "October 2026" "gecko" "User Commands"
+.SH NAME
+gecko-desktop \- native window for the Gecko terminal multiplexer
+.SH SYNOPSIS
+.B gecko-desktop
+[\fB\-\-url=\fIurl\fR] [\fB\-\-size=\fIW,H\fR] [\fB\-\-position=\fIX,Y\fR]
+.SH DESCRIPTION
+A see-through window around Gecko's web UI. \fBgecko open\fR starts it with
+the daemon's URL. Without \fB\-\-url\fR it finds this user's running Gecko
+daemon, or starts one, and opens it.
+.SH ENVIRONMENT
+.TP
+.B GECKO_HOME
+Gecko's directory (default \fI~/.gecko-terminal\fR).
+.TP
+.B GECKO_DESKTOP_NO_SANDBOX=1
+Run without Chromium's sandbox, for systems where it can't start.
+.SH SEE ALSO
+.BR gecko (1)

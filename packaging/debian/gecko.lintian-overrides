@@ -1,0 +1,2 @@
+# Go builds one static binary on purpose: no runtime dependencies.
+gecko: statically-linked-binary [usr/bin/gecko]

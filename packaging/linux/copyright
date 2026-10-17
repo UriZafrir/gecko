@@ -1,0 +1,20 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: gecko
+Upstream-Contact: https://github.com/eternaleclipse/gecko/issues
+Source: https://github.com/eternaleclipse/gecko
+
+Files: *
+Copyright: 2026 Gecko contributors
+License: LicenseRef-Unspecified
+ The Gecko project has not chosen a license yet. Until it does, no rights
+ beyond those granted by law are given. Distribution channels that require a
+ free software license (Launchpad PPAs, Fedora, Debian, Arch) need one first;
+ see docs/linux-packages.md.
+
+Files: usr/lib/gecko-desktop/*
+Copyright: GitHub Inc., OpenJS Foundation and Electron contributors;
+ The Chromium Authors
+License: MIT and others
+ Electron is MIT licensed (usr/lib/gecko-desktop/LICENSE.electron.txt); the
+ licenses of Chromium and its components are in
+ usr/lib/gecko-desktop/LICENSES.chromium.html.

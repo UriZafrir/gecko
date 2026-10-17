@@ -1,0 +1,8 @@
+{
+  "name": "gecko-desktop-tour",
+  "private": true,
+  "description": "Drives the Gecko desktop app over DevTools for the feature tour videos",
+  "dependencies": {
+    "playwright-core": "1.63.0"
+  }
+}

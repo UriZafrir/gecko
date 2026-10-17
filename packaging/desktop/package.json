@@ -1,0 +1,8 @@
+{
+  "name": "gecko-desktop-packager",
+  "private": true,
+  "description": "Builds the Gecko desktop apps (dmg, AppImage, Windows setup) with electron-builder",
+  "devDependencies": {
+    "electron-builder": "26.15.3"
+  }
+}
