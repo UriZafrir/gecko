@@ -1,5 +1,10 @@
 export const isMac = /Mac|iPhone|iPad/.test(navigator.platform) || /Mac OS/.test(navigator.userAgent);
 export const isTouch = matchMedia('(pointer: coarse)').matches;
+// The compact layout (drawer, chip dock, no status line): narrow windows, and
+// windows too short for the desktop one (a phone in landscape). Keep in
+// sync with the "phones" block in style.css.
+export const COMPACT = '(max-width: 760px), (max-height: 500px)';
+export const compactLayout = () => matchMedia(COMPACT).matches;
 // The Gecko Android app's bridge (see android/), when running inside it.
 export const android = window.GeckoAndroid || null;
 

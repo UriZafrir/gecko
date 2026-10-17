@@ -612,9 +612,13 @@ input, textarea, [contenteditable] { cursor: text; user-select: text; -webkit-us
 
 #scrim { display: none; }
 
-/* ------------------------------------------------------------ phones */
+/* ------------------------------------------------------------ phones
 
-@media (max-width: 760px) {
+   Compact: narrow windows (phones, split screen, a folded foldable), and
+   windows too short for the desktop's sidebar, dock and status line (a
+   phone in landscape). Keep in sync with COMPACT in util.js. */
+
+@media (max-width: 760px), (max-height: 500px) {
   #app, body.side-hidden #app { grid-template-columns: 1fr; }
   body.side-hidden #side { display: flex; }
   #side {
@@ -870,10 +874,10 @@ html.has-image #side, html.has-image #main {
    and making it relative put it back in the grid as a row of its own above
    the terminal, splitting the screen in two. */
 html.has-image #main { position: relative; }
-@media (min-width: 761px) { html.has-image #side { position: relative; } }
+@media (min-width: 761px) and (min-height: 501px) { html.has-image #side { position: relative; } }
 /* The drawer slides over the terminal: under its blurred photo, whose
    edges fade out, it needs a solid floor or the terminal shows through. */
-@media (max-width: 760px) { html.has-image:not(.desktop) #side { background: var(--panel) !important; } }
+@media (max-width: 760px), (max-height: 500px) { html.has-image:not(.desktop) #side { background: var(--panel) !important; } }
 html.has-image #side::before, html.has-image #main::before {
   content: ""; position: absolute; z-index: -1; pointer-events: none;
   opacity: var(--win-opacity, 1);

@@ -44,7 +44,7 @@ import { attachPane, attachPage } from './touch.js';
 import { imeMirror } from './ime.js';
 import { BUILD, buildId } from './build.js';
 import { siClaude, siGooglegemini, siCursor, siGithubcopilot, siQwen, siOpencode } from 'simple-icons';
-import { $, esc, ago, shortPath, copyText, readClipboard, fuzzy, store, save, isTouch, isMac, android } from './util.js';
+import { $, esc, ago, shortPath, copyText, readClipboard, fuzzy, store, save, isTouch, isMac, android, compactLayout, COMPACT } from './util.js';
 
 const MAX_LIVE_PANES = 12;
 
@@ -187,7 +187,7 @@ function gitStateText(g) {
 }
 
 // The phone layout (style.css, "phones"): the same breakpoint.
-const phoneLayout = () => matchMedia('(max-width: 760px)').matches;
+const phoneLayout = compactLayout;
 
 // full: also show counts and ahead/behind (status line). Otherwise just a
 // dot when there are uncommitted changes (tabs).
@@ -1719,6 +1719,14 @@ class App {
     matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
       if (this.settings.theme === AUTO) this.applyTheme();
     });
+    // Rotated, folded, unfolded or resized into the other layout: no drawer
+    // left open over a sidebar, and the dock in that layout's shape.
+    matchMedia(COMPACT).addEventListener('change', () => {
+      document.body.classList.remove('drawer');
+      this.dockOpen = null;
+      this.renderDock();
+      this.activePane()?.layout(true);
+    });
     window.addEventListener('focus', () => {
       const p = this.activePane();
       if (p) p.sendSize(true);
@@ -2426,7 +2434,7 @@ class App {
 
   // Desktop: hide or show the sidebar (remembered). Phones: open the drawer.
   toggleSidebar() {
-    if (matchMedia('(max-width: 760px)').matches) {
+    if (phoneLayout()) {
       document.body.classList.toggle('drawer');
       return;
     }

@@ -23,6 +23,7 @@ import {
   MIN_FLING, flingTau, flingStep, flingDistance, boost, place, stretch, squeeze, spring, springDone, absorb,
   thumbSize, thumbTop, thumbLine, addSample, sampleStats, cells, cursorFling, wheelPlan, wheelDue,
 } from './gestures.js';
+import { compactLayout } from './util.js';
 
 const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -31,7 +32,7 @@ const noFling = (why, cancelled, flung) => ({
   flung: !!flung,
   why: [flung ? '' : why || 'slower than a fling', cancelled ? 'the browser cancelled the touch' : ''].filter(Boolean).join('; '),
 });
-const phoneLayout = () => matchMedia('(max-width: 760px)').matches;
+const phoneLayout = compactLayout;
 const point = (t) => ({ x: t.clientX, y: t.clientY });
 
 // How far in from the left edge a drawer swipe may start (CSS px). The
