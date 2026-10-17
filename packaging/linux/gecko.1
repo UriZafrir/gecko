@@ -1,0 +1,56 @@
+.TH GECKO 1 "October 2026" "gecko" "User Commands"
+.SH NAME
+gecko \- terminal multiplexer for coding agents across your machines
+.SH SYNOPSIS
+.B gecko
+[\fIcommand\fR] [\fIargs\fR]
+.SH DESCRIPTION
+Gecko keeps shells, tmux sessions, SSH connections and coding agents
+running in a daemon and shows them in a web UI and a native window
+(\fBgecko-desktop\fR(1)), on your desktop or your phone. Sessions survive
+closing the window.
+.PP
+Without a command, \fBgecko\fR starts the daemon if needed, sets up start
+at login the first time (undo with \fBgecko service uninstall\fR) and opens
+the app.
+.SH COMMANDS
+.TP
+.B open \fR|\fB url
+Open the app, or print its URL with the access token.
+.TP
+.B ls \fR[\fB\-\-json\fR]
+List sessions on all hosts.
+.TP
+.B new \fR[\fIflags\fR] [\fB\-\-\fR \fIcmd\fR]
+Create a session.
+.TP
+.B attach \fIsession\fR
+Attach this terminal (detach with Ctrl\-\e).
+.TP
+.B send \fIsession text\fR
+Type text into a session.
+.TP
+.B capture \fIsession\fR
+Print a session's text.
+.TP
+.B kill \fIsession\fR
+End a session.
+.TP
+.B daemon \fR[\fB\-\-listen\fR \fIaddr\fR]
+Run the daemon in the foreground.
+.TP
+.B stop
+Stop the daemon (ends all local sessions).
+.TP
+.B service install\fR|\fBuninstall
+Start the daemon at login, or stop doing so.
+.TP
+.B help
+All commands.
+.SH FILES
+.TP
+.I ~/.gecko-terminal
+Configuration, settings, access token and state; \fBGECKO_HOME\fR moves it.
+.SH SEE ALSO
+.BR gecko-desktop (1),
+https://github.com/eternaleclipse/gecko

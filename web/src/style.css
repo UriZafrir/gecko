@@ -43,9 +43,12 @@ html.desktop, html.desktop body { background: transparent; }
 html.desktop #main { background: var(--surface); }
 html.desktop #tabbar, html.desktop #stage { background: transparent; }
 html.desktop .tab:hover, html.desktop .tab.cur, html.desktop #dock, html.desktop #compose, html.desktop #keybar { background: var(--surface-raise); }
-/* macOS desktop app: room for the traffic lights, and drag the window by
-   the sidebar header or the empty part of the tab bar. */
-html.desktop-darwin .brand { padding-left: 80px; min-height: 38px; }
+/* macOS desktop app: the traffic lights get a strip of their own at the
+   top of the sidebar, with the logo on its own row under them. Drag the
+   window by that strip, the sidebar header or the empty part of the tab
+   bar. */
+html.desktop-darwin #side { padding-top: 28px; -webkit-app-region: drag; }
+html.desktop-darwin #side > :not(.brand) { -webkit-app-region: no-drag; }
 /* Without the sidebar beside it (hidden, or a drawer in a narrow window)
    the tab bar starts under the traffic lights; start it after them. */
 html.desktop-darwin body.side-hidden #tabbar { padding-left: 78px; }

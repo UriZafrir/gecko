@@ -1,0 +1,2 @@
+# The vendored modules and built web client are part of the orig tarball.
+tar-ignore = dist

@@ -1,0 +1,8 @@
+#!/bin/sh
+# Gecko's desktop window, from the gecko-desktop package (deb, rpm, Arch).
+# `gecko open` starts it with the daemon's URL; started without --url it
+# finds or starts the daemon itself. GECKO_DESKTOP_NO_SANDBOX=1 runs it
+# without Chromium's sandbox.
+export GECKO_BIN="${GECKO_BIN:-/usr/bin/gecko}"
+[ "${GECKO_DESKTOP_NO_SANDBOX:-}" = 1 ] && set -- --no-sandbox "$@"
+exec /usr/lib/gecko-desktop/gecko-desktop.bin "$@"

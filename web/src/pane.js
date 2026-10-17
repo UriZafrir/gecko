@@ -129,7 +129,7 @@ export class Pane {
   }
 
   layout(now = false) {
-    if (!this.visible || !this.el.clientWidth || !this.el.clientHeight) return;
+    if (this.holdSize || !this.visible || !this.el.clientWidth || !this.el.clientHeight) return;
     const dims = this.fit.proposeDimensions();
     if (!dims || !Number.isFinite(dims.cols) || !Number.isFinite(dims.rows)) return;
     const { cols, rows } = dims;
@@ -204,16 +204,36 @@ export class Pane {
     if (this.app.noDim) data = undim(data);
     if (off < this.replayUntil) {
       this.muted++;
-      this.term.write(data, () => this.muted--);
+      this.term.write(data, () => {
+        if (--this.muted === 0 && this.offset >= this.replayUntil) this.releaseSize();
+      });
     } else {
       this.term.write(data);
     }
   }
 
-  reset(off, prefix) {
+  // History is the program's raw output, laid out for the session's size:
+  // a shell's line editor wraps a long command line with tricks like " \r"
+  // that only work at that width. So replay it at the session's size, then
+  // fit the window (xterm re-wraps soft-wrapped lines on resize).
+  reset(off = 0, prefix) {
     this.term.reset();
+    const info = this.app.sessions.get(this.id);
+    if (info?.cols > 0 && info?.rows > 0 && off < this.replayUntil) {
+      if (info.cols !== this.term.cols || info.rows !== this.term.rows) this.term.resize(info.cols, info.rows);
+      this.holdSize = true;
+      clearTimeout(this.holdTimer);
+      this.holdTimer = setTimeout(() => this.releaseSize(), 5000);
+    }
     if (prefix) this.term.write(prefix);
     this.offset = off;
+  }
+
+  releaseSize() {
+    if (!this.holdSize) return;
+    this.holdSize = false;
+    clearTimeout(this.holdTimer);
+    this.layout(true);
   }
 
   markExited(code) {
@@ -244,6 +264,7 @@ export class Pane {
     cancelAnimationFrame(this.layoutFrame);
     clearTimeout(this.colsTimer);
     clearTimeout(this.sizeTimer);
+    clearTimeout(this.holdTimer);
     this.term.dispose();
     this.el.remove();
   }

@@ -1,0 +1,75 @@
+# Gecko as a snap (docs/linux-packages.md). Classic confinement: Gecko is a
+# terminal, so the shells, tools, ssh keys and coding agents it runs are the
+# user's own, from the host system, which strict confinement would hide.
+# Classic snaps need a manual review by the Snap Store before they are
+# published. Built by packaging/snap/build.sh from the release tarball.
+name: gecko
+title: Gecko
+base: core24
+version: '@VERSION@'
+summary: Terminal multiplexer for coding agents across your machines
+description: |
+  Gecko keeps shells, tmux sessions, SSH connections and coding agents
+  running in a daemon and shows them in a web UI and a native window, on
+  your desktop or your phone. Sessions survive closing the window, and you
+  can see at a glance which agent is working and which one is waiting.
+
+  `gecko` starts the daemon and opens the window; `gecko help` lists the
+  rest. Open Gecko from the app menu, or run `gecko open`.
+website: https://github.com/eternaleclipse/gecko
+issues: https://github.com/eternaleclipse/gecko/issues
+icon: payload/usr/share/icons/hicolor/256x256/apps/gecko.png
+grade: stable
+confinement: classic
+platforms:
+  amd64:
+
+apps:
+  gecko:
+    command: bin/gecko
+  desktop:
+    command: bin/gecko-desktop
+    desktop: usr/share/applications/gecko.desktop
+    common-id: dev.gecko.app
+
+parts:
+  gecko:
+    plugin: dump
+    source: payload
+    stage-packages:
+      - libnss3
+      - libgtk-3-0t64
+      - libasound2t64
+      - libgbm1
+      - libxss1
+      - libxtst6
+      - libnotify4
+      - libatspi2.0-0t64
+      - libsecret-1-0
+      - libdrm2
+      - libxkbcommon0
+      - libcups2t64
+      - libxshmfence1
+      - libxrandr2
+      - libxcomposite1
+      - libxdamage1
+      - libpango-1.0-0
+      - libcairo2
+      - libgl1
+      - libegl1
+    build-attributes:
+      - enable-patchelf
+    override-build: |
+      craftctl default
+      # The setuid helper can't be setuid in a snap; the launcher falls
+      # back to --no-sandbox where user namespaces are restricted.
+      rm -f "$CRAFT_PART_INSTALL/usr/lib/gecko-desktop/chrome-sandbox"
+      rm -rf "$CRAFT_PART_INSTALL/usr/share/gecko/apparmor"
+      sed -i 's|^Exec=.*|Exec=gecko.desktop|' "$CRAFT_PART_INSTALL/usr/share/applications/gecko.desktop"
+      sed -i 's|^TryExec=.*||; s|^Icon=.*|Icon=${SNAP}/usr/share/icons/hicolor/256x256/apps/gecko.png|' "$CRAFT_PART_INSTALL/usr/share/applications/gecko.desktop"
+  launchers:
+    plugin: dump
+    source: launchers
+    organize:
+      gecko: bin/gecko
+      gecko-desktop: bin/gecko-desktop
