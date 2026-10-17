@@ -73,6 +73,14 @@ final class TerminalViewController: UIViewController, WKNavigationDelegate, WKUI
         if #available(iOS 16.4, *) { web.isInspectable = true }
         web.accessibilityIdentifier = "terminal-web"
         web.hideInputAccessoryBar()
+        // UIKit's reading of a pinch, beside the page's own touches: the page
+        // uses it only when it didn't see the pinch itself (touch.js).
+        let pinch = UIPinchGestureRecognizer(target: self, action: #selector(pinched(_:)))
+        pinch.cancelsTouchesInView = false
+        pinch.delaysTouchesBegan = false
+        pinch.delaysTouchesEnded = false
+        pinch.delegate = self
+        web.addGestureRecognizer(pinch)
 
         keys.onKey = { [weak self] in self?.pressKey($0) }
         keys.onHideKeyboard = { [weak self] in self?.hideKeyboard() }
@@ -584,4 +592,16 @@ enum Texts {
     static let tokenRefused = "Gecko refused the token. It changes when Gecko is set up again: scan the QR code again."
     static let noToken = "That link has no access token in it. Use the link or QR code from Open on another device on the computer itself, or run gecko url there."
     static let backgroundOn = "Gecko keeps watching your agents for a short while after you leave the app, and checks now and then while iOS allows it."
+}
+
+extension TerminalViewController: UIGestureRecognizerDelegate {
+    func gestureRecognizer(_ g: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
+
+    @objc func pinched(_ g: UIPinchGestureRecognizer) {
+        guard g.state == .ended else { return }
+        let scale = Double(g.scale)
+        guard scale.isFinite, scale > 0 else { return }
+        let s = String(format: "%.3f", scale)
+        eval("window.__geckoNativePinch = \(s); window.gecko && window.gecko.nativePinch && window.gecko.nativePinch(\(s));")
+    }
 }

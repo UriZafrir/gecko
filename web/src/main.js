@@ -40,7 +40,7 @@ import { Pane, FONT } from './pane.js';
 import { THEMES, AUTO, resolveTheme, paintTheme, swatch } from './themes.js';
 import { Keys, prettyCombo, comboOf, ACTIONS, DEFAULTS, DEFAULT_TAB_MODIFIER, TAB_MODIFIERS } from './keys.js';
 import { startupChime } from './sound.js';
-import { attachPane, attachPage } from './touch.js';
+import { attachPane, attachPage, nativePinch } from './touch.js';
 import { imeMirror } from './ime.js';
 import { BUILD, buildId } from './build.js';
 import { siClaude, siGooglegemini, siCursor, siGithubcopilot, siQwen, siOpencode } from 'simple-icons';
@@ -932,6 +932,9 @@ class App {
     p.term.paste(text);
     p.focus();
   }
+
+  // The iOS app's pinch recognizer (touch.js).
+  nativePinch(scale) { nativePinch(this, scale); }
 
   setFont(n) {
     this.setSetting(this.touch ? 'mobileFontSize' : 'fontSize', Math.max(8, Math.min(32, n)));

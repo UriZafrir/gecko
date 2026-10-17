@@ -113,7 +113,8 @@ enum BridgeScript {
           if (t.log.length > 12) t.log.shift();
           if (e.touches && n === 2) {
             var d = Math.round(Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY));
-            if (k === 'touchstart') t.d0 = d; else t.d1 = d;
+            if (k === 'touchstart') { t.d0 = d; t.dmin = d; t.dmax = d; }
+            else { t.d1 = d; t.dmin = Math.min(t.dmin || d, d); t.dmax = Math.max(t.dmax || 0, d); }
           }
           if (k === 'gesturechange') t.scale = Math.round(e.scale * 100) / 100;
         }, { capture: true, passive: true });
@@ -147,8 +148,8 @@ enum BridgeScript {
         r.keybar = getComputedStyle(document.getElementById('keybar')).display;
         r.asset = window.__geckoAsset || '';
         var t = window.__geckoTouch;
-        if (t) r.touch = t.max + ' ' + t.log.map(function (x) { return x.k.replace('touch', '') + x.n + 'x' + x.c; }).join(','); + ' d ' + t.d0 + '>' + t.d1 + ' scale ' + t.scale;
-        if (g.touchStats) r.gesture = g.touchStats.kind + ' ' + (g.touchStats.what || '');
+        if (t) r.touch = t.max + ' ' + t.log.map(function (x) { return x.k.replace('touch', '') + x.n + 'x' + x.c; }).join(',') + ' d ' + t.d0 + '>' + t.d1 + ' [' + t.dmin + '..' + t.dmax + '] scale ' + t.scale + ' native ' + window.__geckoNativePinch;
+        if (g.touchStats) r.gesture = g.touchStats.kind + ' ' + (g.touchStats.what || '') + (g.touchStats.kind === 'two' ? ' ' + g.touchStats.d0 + '>' + g.touchStats.d1 : '');
         r.agents = g.allAgents().map(function (a) { return a.state.status; });
         r.ctrl = !!g.mods.ctrl; r.palette = !!g.paletteOpen; r.textview = !!g.textViewOpen;
         r.focus = document.activeElement ? document.activeElement.tagName + '.' + document.activeElement.className : '';

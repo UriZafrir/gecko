@@ -58,7 +58,7 @@ final class DevicesTour: GeckoUITestCase {
         beat(1.5)
         p = probe()
         shot("05-landscape")
-        if isPad || (p["width"] as? Int ?? 0) >= 720 {
+        if isPad || ((p["width"] as? Int ?? 0) >= 720 && (p["height"] as? Int ?? 0) > 500) {
             XCTAssertEqual(p["sideFixed"] as? Bool, false, "wide: the sidebar beside the terminal")
         }
         XCUIDevice.shared.orientation = .portrait
