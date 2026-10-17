@@ -1,0 +1,46 @@
+#!/bin/sh
+# A stand-in for Claude Code in the iOS demos and UI tests: it sets Claude's
+# window title, works for a few seconds, then asks a question with numbered
+# answers, the way Claude Code does, so Gecko sees an agent that needs you.
+# GECKO_FAKE_WORK: seconds of work before the question (default 8).
+title() { printf '\033]0;%s\007' "$1"; }
+work=${GECKO_FAKE_WORK:-8}
+title "✳ Claude Code"
+printf '\033[2J\033[H'
+printf '\033[38;5;173m✻\033[0m Welcome to \033[1mClaude Code\033[0m\n\n'
+printf '\033[2m> fix the failing test in parser_test.go\033[0m\n\n'
+title "◐ Fixing the parser test"
+i=0
+while [ "$i" -lt "$work" ]; do
+  printf '\r\033[38;5;173m✻\033[0m Fixing the parser test… \033[2m(%ss · esc to interrupt)\033[0m\033[K' "$i"
+  sleep 1
+  i=$((i + 1))
+done
+printf '\r\033[K● Read parser.go and parser_test.go\n\n'
+title "✳ Fixing the parser test"
+cat <<'Q'
+╭───────────────────────────────────────────────╮
+│ Edit file                                     │
+│ parser.go: handle an empty line at the end    │
+│                                               │
+│ Do you want to make this edit to parser.go?   │
+│ ❯ 1. Yes                                      │
+│   2. Yes, and don't ask again this session    │
+│   3. No, and tell Claude what to do (esc)     │
+╰───────────────────────────────────────────────╯
+Q
+old=$(stty -g 2>/dev/null)
+stty raw -echo 2>/dev/null
+key=$(dd bs=1 count=1 2>/dev/null)
+[ -n "$old" ] && stty "$old" 2>/dev/null
+printf '\033[2J\033[H'
+case "$key" in
+  1|2|y) printf '● Updated parser.go\n\n  All 14 tests pass.\n\n' ;;
+  *) printf '● Left parser.go as it was.\n\n' ;;
+esac
+title "✳ Fixing the parser test"
+printf '╭───────────────────────────────────────────────╮\n'
+printf '│ > \033[2mTry "write a test for the lexer"\033[0m           │\n'
+printf '╰───────────────────────────────────────────────╯\n'
+printf '  ? for shortcuts\n'
+sleep "${GECKO_FAKE_LINGER:-600}"

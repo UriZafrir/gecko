@@ -11,7 +11,7 @@ export GOTOOLCHAIN ?= local
 
 PREFIX ?= $(HOME)/.local
 DESKTOP_DIR := $(PREFIX)/share/gecko/desktop
-.PHONY: all web build test dist packages install install-desktop desktop clean dev android android-gecko android-test
+.PHONY: all web build test dist packages install install-desktop desktop clean dev android android-gecko android-test ios-web ios ios-test
 
 all: web build
 
@@ -78,6 +78,23 @@ android-gecko: web
 # Its unit tests; `./gradlew connectedDebugAndroidTest` runs the device tests.
 android-test:
 	cd android && ./gradlew --no-daemon testDebugUnitTest
+
+# iOS app (ios/): the web UI as one page for it, with the build id; any OS.
+ios-web: web
+	node ios/scripts/bundle-web.mjs web/dist ios/Gecko/Generated '$(BUILD_COMMIT)' '$(BUILD_TIME)'
+
+# The app for the iOS Simulator (macOS with Xcode and XcodeGen; see docs/ios.md).
+IOS_SIM ?= iPhone 16
+ios: ios-web
+	cd ios && xcodegen generate
+	xcodebuild build -project ios/Gecko.xcodeproj -scheme Gecko -destination 'generic/platform=iOS Simulator' \
+		-derivedDataPath ios/build CODE_SIGNING_ALLOWED=NO
+	@ls -d ios/build/Build/Products/Debug-iphonesimulator/Gecko.app
+
+ios-test: ios-web
+	cd ios && xcodegen generate
+	xcodebuild test -project ios/Gecko.xcodeproj -scheme Gecko -destination 'platform=iOS Simulator,name=$(IOS_SIM)' \
+		-derivedDataPath ios/build -only-testing:GeckoTests CODE_SIGNING_ALLOWED=NO
 
 # Native desktop app (Electron): see-through window with blur on macOS and
 # Windows. `gecko open` uses it automatically once installed.

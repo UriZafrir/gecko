@@ -1,0 +1,104 @@
+# The Xcode project, generated with XcodeGen (https://github.com/yonaskolb/XcodeGen):
+#   cd ios && xcodegen generate
+# Gecko.xcodeproj is not checked in; this file is the project.
+name: Gecko
+options:
+  bundleIdPrefix: io.github.geckoterm
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+  developmentLanguage: en
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1"
+    CURRENT_PROJECT_VERSION: "1"
+    TARGETED_DEVICE_FAMILY: "1,2"
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    DEAD_CODE_STRIPPING: YES
+targets:
+  Gecko:
+    type: application
+    platform: iOS
+    sources:
+      - path: Gecko
+        excludes:
+          - Generated
+      # The web UI and build id, from `make ios-web` (not checked in).
+      - path: Gecko/Generated
+        type: folder
+        buildPhase: resources
+    info:
+      path: Gecko/Info.plist
+      properties:
+        CFBundleDisplayName: Gecko
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSRequiresIPhoneOS: true
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        NSCameraUsageDescription: Gecko uses the camera to scan the QR code your computer shows under Open on another device.
+        NSLocalNetworkUsageDescription: Gecko connects to the computers you add, on your Wi-Fi or tailnet.
+        # Plain http, which Gecko on a LAN or tailnet speaks. The app allows it
+        # only to private and Tailscale addresses (NetPolicy.swift) and needs
+        # https anywhere else; ATS can't express address ranges.
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+        UIBackgroundModes:
+          - fetch
+        BGTaskSchedulerPermittedIdentifiers:
+          - io.github.geckoterm.ios.refresh
+        ITSAppUsesNonExemptEncryption: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.geckoterm.ios
+        PRODUCT_NAME: Gecko
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        INFOPLIST_KEY_CFBundleDisplayName: Gecko
+        CODE_SIGN_STYLE: Automatic
+  GeckoTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: GeckoTests
+    dependencies:
+      - target: Gecko
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.geckoterm.ios.tests
+        GENERATE_INFOPLIST_FILE: YES
+  GeckoUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: GeckoUITests
+    dependencies:
+      - target: Gecko
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.geckoterm.ios.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: Gecko
+schemes:
+  Gecko:
+    build:
+      targets:
+        Gecko: all
+        GeckoTests: [test]
+        GeckoUITests: [test]
+    test:
+      config: Debug
+      gatherCoverageData: false
+      targets:
+        - GeckoTests
+        - GeckoUITests
