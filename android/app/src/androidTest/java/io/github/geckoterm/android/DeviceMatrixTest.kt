@@ -253,6 +253,28 @@ class DeviceMatrixTest {
                 Thread.sleep(800)
                 sh("am start --windowingMode 1 -n $PKG/.TerminalActivity")
                 Thread.sleep(1500)
+                // Android 12 to 14 keep a task forced into split screen by am
+                // start in multi-window mode (the window full size, but the
+                // display then follows the portrait-only launcher behind and
+                // won't turn). Leaving split screen by hand doesn't do that;
+                // here the task is closed and the app opened again, in full
+                // screen, which reloads the page.
+                if (act().isInMultiWindowMode) {
+                    val tid = taskId()
+                    val was = recreated
+                    sh("am stack remove $tid")
+                    Thread.sleep(1500)
+                    sh("am start -n $PKG/.TerminalActivity")
+                    Thread.sleep(3000)
+                    act()
+                    waitFor("window.gecko&&gecko.conn.status==='online'&&gecko.firstSync===true&&gecko.activePane()&&screen().length>0", 60)
+                    Thread.sleep(1500)
+                    scrollTo("line 150 of the scrollback")
+                    note = "Android ${android.os.Build.VERSION.RELEASE} kept the task in multi-window mode after am start; opened it again in full screen" +
+                        if (recreated != was) "" else " (same activity)"
+                    if (act().isInMultiWindowMode) return "still in multi-window mode after opening it again"
+                }
+                dismissTips()
             }
             "mouse" -> {
                 // A mouse or trackpad: the wheel scrolls the scrollback, a click picks a tab.
@@ -315,13 +337,36 @@ class DeviceMatrixTest {
      */
     private var fixed = false
 
+    /**
+     * The launcher's split-screen tip ("Drag in another app for split
+     * screen", Got it) that Android 14 shows after the split steps: a
+     * portrait-only window over ours, so while it's up the display won't
+     * turn. A person taps Got it; so does the test.
+     */
+    private fun dismissTips() {
+        val got = device.findObject(androidx.test.uiautomator.By.text(java.util.regex.Pattern.compile("(?i)got it"))) ?: return
+        if (got.applicationPackage == PKG) return
+        got.click()
+        Thread.sleep(800)
+        note = (if (note.isEmpty()) "" else "$note; ") + "tapped Got it on the launcher's split-screen tip"
+    }
+
+    private fun waitShape(landscape: Boolean, ms: Long): Boolean {
+        val end = System.currentTimeMillis() + ms
+        while (System.currentTimeMillis() < end) { if (displayWide() == landscape) return true; Thread.sleep(200) }
+        return false
+    }
+
     private fun turn(landscape: Boolean) {
+        dismissTips()
         if (landscape) device.setOrientationLandscape() else device.setOrientationPortrait()
         val until = System.currentTimeMillis() + 4000
         while (System.currentTimeMillis() < until) {
             if (displayWide() == landscape) return
             Thread.sleep(200)
         }
+        dismissTips()
+        if (waitShape(landscape, 3000)) return
         val diag = sh("dumpsys window displays").lines().map { it.trim() }
             .filter { it.startsWith("mRotation") || it.contains("mUserRotation") || it.contains("FixedToUserRotation") || it.contains("mIgnoreOrientationRequest") }
             .joinToString(" ").take(240)
