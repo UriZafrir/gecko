@@ -39,4 +39,10 @@ The mobile layout has:
   paste.
 - A **compose** box for writing prompts with your keyboard's autocorrect.
   Multi-line text goes to agents as a single bracketed paste.
+- Voice typing straight into the terminal (Android): what the keyboard
+  writes reaches the shell or the agent as you speak, and its corrections
+  (a word replaced, a comma for a space, a word taken back) as backspaces
+  and the new text, so the line ends up as what you said. Enter or a key
+  from the key bar while it's still listening sends the phrase first. In
+  the compose box, Enter mid-phrase sends the whole phrase once it's in.
 

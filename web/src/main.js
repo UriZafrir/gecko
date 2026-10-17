@@ -41,6 +41,7 @@ import { THEMES, AUTO, resolveTheme, paintTheme, swatch } from './themes.js';
 import { Keys, prettyCombo, comboOf, ACTIONS, DEFAULTS, DEFAULT_TAB_MODIFIER, TAB_MODIFIERS } from './keys.js';
 import { startupChime } from './sound.js';
 import { attachPane, attachPage } from './touch.js';
+import { imeMirror } from './ime.js';
 import { BUILD, buildId } from './build.js';
 import { siClaude, siGooglegemini, siCursor, siGithubcopilot, siQwen, siOpencode } from 'simple-icons';
 import { $, esc, ago, shortPath, copyText, readClipboard, fuzzy, store, save, isTouch, isMac, android } from './util.js';
@@ -650,7 +651,10 @@ class App {
     this.switchWorkspace(all[(i + d + all.length) % all.length]);
   }
 
-  sendInput(id, data) {
+  // fromIme: a keyboard edit (ime.js). Anything else ends what the
+  // keyboard was writing: the shell has the line now.
+  sendInput(id, data, fromIme = false) {
+    if (!fromIme) this.panes.get(id)?.imeReset?.();
     if (this.exited.has(id)) {
       this.closeTab(id, true);
       return;
@@ -1661,6 +1665,7 @@ class App {
         // Typed, then Enter on its own, as if typed by hand; a long prompt
         // gets a moment to land first.
         const text = prompt.dataset.prompt;
+        this.panes.get(prompt.dataset.id)?.imeReset?.();
         this.conn.input(prompt.dataset.id, text);
         setTimeout(() => this.conn.input(prompt.dataset.id, '\r'), Math.min(400, 50 + text.length));
         return;
@@ -1668,6 +1673,7 @@ class App {
       const reply = ev.target.closest('[data-reply]');
       if (reply) {
         const id = reply.dataset.id;
+        this.panes.get(id)?.imeReset?.();
         const keys = { enter: '\r', esc: '\x1b', up: '\x1b[A', down: '\x1b[B' };
         this.conn.input(id, keys[reply.dataset.reply] ?? reply.dataset.reply);
         return;
@@ -2536,12 +2542,28 @@ class App {
       ta.style.height = '';
     };
     $('#compose [data-send]').onclick = send;
+    // Enter from a phone keyboard while it still composes (voice typing
+    // mid-phrase): send once the phrase is in.
+    let sendAfter = false;
     ta.addEventListener('keydown', (ev) => {
       if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing) {
         ev.preventDefault();
         send();
+      } else if (ev.key === 'Enter' && !ev.shiftKey && imeMirror) {
+        sendAfter = true;
       }
       if (ev.key === 'Escape') this.toggleCompose(false);
+    });
+    ta.addEventListener('beforeinput', (ev) => {
+      // The keyboard's Enter as a new line: that's send, too.
+      if (imeMirror && (ev.inputType === 'insertLineBreak' || ev.inputType === 'insertParagraph')) {
+        ev.preventDefault();
+        sendAfter = true;
+        setTimeout(() => { if (sendAfter) { sendAfter = false; send(); } }, 0);
+      }
+    });
+    ta.addEventListener('compositionend', () => {
+      if (sendAfter) setTimeout(() => { if (sendAfter) { sendAfter = false; ta.value = ta.value.replace(/\n$/, ''); send(); } }, 0);
     });
     ta.addEventListener('input', () => {
       ta.style.height = '';

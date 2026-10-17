@@ -1,4 +1,5 @@
 // A Pane is one xterm.js terminal bound to one session stream.
+import { imeMirror, mirrorIme } from './ime.js';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
@@ -70,6 +71,9 @@ export class Pane {
     this.el.addEventListener('mousedown', (ev) => { if (ev.button === 0) this.lastDown = Date.now(); }, true);
     this.term.open(this.el);
     this.loadRenderer();
+    // Android keyboards (voice typing above all) edit in place: Gecko sends
+    // their edits as keys itself (ime.js), not xterm.
+    if (imeMirror && this.term.textarea) this.imeReset = mirrorIme(this.term.textarea, (b) => app.sendInput(this.id, b, true), this.el);
 
     this.term.onData((d) => {
       // Replaying history makes xterm answer old queries (device attributes,
