@@ -24,7 +24,9 @@ import (
 //	5: updatehost, settings sync
 //	6: tmux windows and actions
 //	7: agents in tmux panes and from terminal titles (ssh, mosh)
-const Version = 7
+//	8: ping (latency), host rtt; WebTransport for browsers
+//	9: cloud (account, devices, approvals); host kind, machine id and path
+const Version = 9
 
 // Data frame kinds.
 const (
@@ -67,6 +69,7 @@ type Msg struct {
 	Host    string `json:"host,omitempty"`
 	Version int    `json:"version,omitempty"`
 	OS      string `json:"os,omitempty"`
+	Machine string `json:"machine,omitempty"` // hello reply: this machine's id in its account, if signed in
 
 	// session addressing
 	ID     string `json:"id,omitempty"`
@@ -107,6 +110,7 @@ type Msg struct {
 	Entries   []DirEntry    `json:"entries,omitempty"`
 	Text      string        `json:"text,omitempty"`
 	Prefix    string        `json:"prefix,omitempty"` // terminal modes to replay before data on reset
+	Cloud     *CloudState   `json:"cloud,omitempty"`
 }
 
 // Message types.
@@ -139,12 +143,18 @@ const (
 	TTrustHost   = "trusthost"   // target, data (the fingerprint the user saw) -> adds the host key to known_hosts
 	TAskpass     = "askpass"     // text (one-time id), data (prompt) -> reply{secret}; local socket only (gecko-askpass)
 	TShare       = "share"       // text: "on", "off" or "" (status), target: address to listen on -> reply{text: JSON ShareState}; local socket only
+	TCloud       = "cloud"       // name (status|approve|deny|revoke|reload|logout), data (code, device) -> reply{cloud}; also a push of {cloud}
 	TReset       = "reset"       // push: sub, offset, prefix
 	TExit        = "exit"        // push: sub - session ended, no more data
 	TSession     = "session"     // push: session changed
 	TClosed      = "closed"      // push: id removed
 	TState       = "state"       // push: hosts, tmux, templates
 	TSessions    = "sessions"    // push: full session list (on connect/reconnect of a host)
+	// TPing asks for an immediate empty reply, so a client can measure the
+	// round trip and notice a connection that stopped answering. Services
+	// before protocol 8 answer it with an error reply, which works as a
+	// pong just the same.
+	TPing = "ping" // -> reply
 )
 
 // ShareState is the listener for other devices that the Android app turns
@@ -288,6 +298,52 @@ type HostInfo struct {
 	Version int    `json:"version,omitempty"`
 	Error   string `json:"error,omitempty"`
 	OS      string `json:"os,omitempty"`
+	// RTT is the last measured round trip from this hub to that machine,
+	// in milliseconds (0 = not measured yet, or the local machine).
+	RTT int `json:"rtt,omitempty"`
+	// Kind is how Gecko reaches it: local, ssh or cloud (through the relay).
+	Kind    string `json:"kind,omitempty"`
+	Machine string `json:"machine,omitempty"` // id in the account, when signed in
+	Via     string `json:"via,omitempty"`     // path of the live link: ssh or relay
+	// LastSeen is when the relay last saw it connected (unix ms; cloud).
+	LastSeen int64 `json:"lastSeen,omitempty"`
+}
+
+// CloudState is this machine's account as the interface shows it.
+type CloudState struct {
+	SignedIn    bool           `json:"signedIn"`
+	Account     string         `json:"account,omitempty"`
+	Fingerprint string         `json:"fingerprint,omitempty"`
+	Relay       string         `json:"relay,omitempty"`
+	Self        string         `json:"self,omitempty"`      // this machine's device id
+	Connected   bool           `json:"connected,omitempty"` // to the relay
+	Error       string         `json:"error,omitempty"`
+	Notice      string         `json:"notice,omitempty"` // e.g. this machine was removed from the account
+	Devices     []CloudDevice  `json:"devices,omitempty"`
+	Pending     []CloudPending `json:"pending,omitempty"`
+}
+
+// CloudDevice is a trusted device of the account.
+type CloudDevice struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	OS       string `json:"os,omitempty"`
+	Kind     string `json:"kind"` // machine | recovery
+	Online   bool   `json:"online,omitempty"`
+	LastSeen int64  `json:"lastSeen,omitempty"`
+	IP       string `json:"ip,omitempty"`
+	Added    int64  `json:"added,omitempty"`
+	By       string `json:"by,omitempty"` // name of the device that approved it
+	Self     bool   `json:"self,omitempty"`
+}
+
+// CloudPending is a machine waiting for approval.
+type CloudPending struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	OS      string `json:"os,omitempty"`
+	IP      string `json:"ip,omitempty"`
+	Expires int64  `json:"expires"`
 }
 
 // Workspace is a saved project layout: a set of tabs on a host.
