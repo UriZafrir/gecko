@@ -1,0 +1,80 @@
+#!/bin/bash
+# A stand-in for Claude Code in the desktop feature tour. It draws screens
+# like Claude Code's (see internal/session/agent_test.go), so Gecko sees an
+# agent named claude go from working to needs input to idle. It changes
+# nothing on disk.
+NB=$'\xc2\xa0'
+RULE='────────────────────────────────────────────────────────────────'
+GREY=$'\e[2m' GREEN=$'\e[32m' ORANGE=$'\e[38;5;173m' BOLD=$'\e[1m' OFF=$'\e[0m'
+printf '\e[?1049h\e]0;✳ Claude Code\a'
+trap 'printf "\e[?1049l"' EXIT
+
+cls() { printf '\e[H\e[2J'; }
+# The input box: a rule, the prompt, a rule and the status line under it.
+box() { # $1 status line
+	printf '\n%s%s%s\n❯%s\n%s%s%s\n  %s%s%s' "$GREY" "$RULE" "$OFF" "$NB" "$GREY" "$RULE" "$OFF" "$GREY" "$1" "$OFF"
+	printf '\e[2A\e[3G' # back to the prompt line
+}
+said() { printf '%s●%s %s\n\n' "$ORANGE" "$OFF" "$1"; }
+# Working: what it is doing, a spinner with a clock, esc to interrupt.
+work() { # $1 seconds, $2 verb, then lines of what it said
+	local secs=$1 verb=$2 i spin=(✢ ✳ ✶ ✻ ✽)
+	shift 2
+	for ((i = 0; i < secs * 2; i++)); do
+		cls
+		for l in "$@"; do said "$l"; done
+		printf '%s%s %s… (%ds · ↓ %d.%dk tokens)%s\n' "$ORANGE" "${spin[i % 5]}" "$verb" $((i / 2 + 1)) $((i / 4 + 1)) $((i * 7 % 10)) "$OFF"
+		box '⏵⏵ accept edits on (shift+tab to cycle) · esc to interrupt'
+		sleep 0.5
+	done
+}
+idle() { cls; for l in "$@"; do said "$l"; done; box '⏵⏵ accept edits on (shift+tab to cycle)'; }
+
+cls
+printf '%s╭─────────────────────────────────────────────╮%s\n' "$ORANGE" "$OFF"
+printf '%s│%s %s✻%s Welcome to %sClaude Code%s!                    %s│%s\n' "$ORANGE" "$OFF" "$ORANGE" "$OFF" "$BOLD" "$OFF" "$ORANGE" "$OFF"
+printf '%s│%s   /help for help, /status for your setup    %s│%s\n' "$ORANGE" "$OFF" "$ORANGE" "$OFF"
+printf '%s│%s   cwd: ~/projects/webapp                    %s│%s\n' "$ORANGE" "$OFF" "$ORANGE" "$OFF"
+printf '%s╰─────────────────────────────────────────────╯%s\n' "$ORANGE" "$OFF"
+box '? for shortcuts'
+read -r task
+work 7 Clauding "I'll start with the failing test: ${task:-the login test}." \
+	"Read tests/login.test.js and src/auth/session.js" \
+	"Found it: the session cookie expires one second too early."
+# A permission prompt replaces the input box.
+cls
+said "Found it: the session cookie expires one second too early."
+cat <<BOX
+${GREY}╭──────────────────────────────────────────────────────────────╮${OFF}
+${GREY}│${OFF} ${BOLD}Edit file${OFF}                                                    ${GREY}│${OFF}
+${GREY}│${OFF}   src/auth/session.js                                        ${GREY}│${OFF}
+${GREY}│${OFF}   ${GREY}41${OFF} ${ORANGE}-  maxAge: Math.floor(ttl / 1000),${OFF}                        ${GREY}│${OFF}
+${GREY}│${OFF}   ${GREY}41${OFF} ${GREEN}+  maxAge: Math.ceil(ttl / 1000),${OFF}                         ${GREY}│${OFF}
+${GREY}│${OFF}                                                              ${GREY}│${OFF}
+${GREY}│${OFF} Do you want to make this edit to session.js?                 ${GREY}│${OFF}
+${GREY}│${OFF} ❯ 1. Yes                                                     ${GREY}│${OFF}
+${GREY}│${OFF}   2. Yes, allow all edits during this session (shift+tab)    ${GREY}│${OFF}
+${GREY}│${OFF}   3. No, and tell Claude what to do differently (esc)        ${GREY}│${OFF}
+${GREY}╰──────────────────────────────────────────────────────────────╯${OFF}
+BOX
+printf '\e]9;Claude needs your permission to edit session.js\a'
+IFS= read -rsn1 key
+case $key in
+1 | 2 | '') ;;
+*)
+	idle "OK, I won't make that edit. What should I do instead?"
+	read -r _
+	exit 0
+	;;
+esac
+work 5 Testing "Edited src/auth/session.js" "Running npm test -- login"
+idle "Done. The login test passes now: the cookie's expiry is rounded up instead of down."
+while read -r next; do
+	case $next in
+	*[Cc]ommit*)
+		work 4 Committing "Committing: Fix the session cookie expiring a second early"
+		idle "Committed 3f2a9c1 \"Fix the session cookie expiring a second early\" and pushed to origin/fix-login."
+		;;
+	*) work 4 Clauding "On it: $next"; idle "Done: $next" ;;
+	esac
+done

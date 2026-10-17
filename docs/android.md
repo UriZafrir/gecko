@@ -151,6 +151,9 @@ commands (`ls`, `ps`, `top`, `grep`, `getprop`, `am`, `pm`...), running as
 the Gecko app in its own sandbox. Its home is the app's private storage,
 with a `.mkshrc` you can edit.
 
+For git, tmux, Node, Python, compilers and the rest, use [Termux](#termux)
+instead: the app opens Gecko running inside it the same way.
+
 Gecko keeps running while you use other apps, with a "Gecko on this phone"
 notification: Android ends an app's processes along with it otherwise. Stop
 it from that notification, from **⋮** next to **This phone**, or from **⋮**
@@ -234,6 +237,123 @@ What that means:
 On a computer, the same listener is `gecko share on [addr]` and
 `gecko share off`.
 
+## Termux
+
+[Termux](https://termux.dev) is a Linux environment for Android with its
+own package manager: `pkg install git tmux nodejs python golang openssh`,
+and the coding agents that run on those (Claude Code's npm package now
+installs a native build, and it has none for Android, so it doesn't run
+there; agents in Node or Python do). Gecko runs
+inside it, and the app shows it as **Termux** in the machine list, right
+after **This phone**, whenever Termux is installed. Tap it and the app
+starts Gecko in Termux and opens it like any machine: tabs, workspaces, the
+agent dock and its notifications, the extra keys and touch all work the
+same, with Termux's shell (bash, or what `chsh` picked) and packages.
+
+### Set up
+
+The first tap walks you through what's missing, one screen at a time, and
+checks again when you come back from Termux:
+
+1. **Termux.** Install it from [F-Droid](https://f-droid.org/packages/com.termux/)
+   or its [GitHub releases](https://github.com/termux/termux-app/releases),
+   and open it once (it sets itself up on first start).
+2. **Permission.** Allow Gecko to "Run commands in Termux environment" when
+   Android asks. If you said no twice, the app opens its settings, where it is
+   under Permissions, Additional permissions.
+3. **Allow apps, install Gecko.** Termux takes commands from other apps only
+   when `~/.termux/termux.properties` says so. Run this line in Termux (the
+   app copies it for you and opens Termux): it installs Gecko and sets that.
+
+   ```sh
+   curl -fsSL https://raw.githubusercontent.com/eternaleclipse/gecko/main/packaging/termux/install.sh | sh -s -- --app
+   ```
+
+   By hand, the line for `~/.termux/termux.properties` is
+   `allow-external-apps=true`; then run `termux-reload-settings`. When apps
+   are already allowed but Gecko isn't installed, **Install in Termux** runs
+   the installer in a Termux session for you.
+
+Then the app starts `gecko daemon --listen 127.0.0.1:7683` in Termux, gets
+its link with `gecko url`, and connects. **⋮** next to Termux stops it
+(`gecko stop`, which ends its tabs), opens Termux, or shows the setup steps
+again.
+
+How it works: Termux's [RUN_COMMAND intent](https://github.com/termux/termux-app/wiki/RUN_COMMAND-Intent)
+runs `gecko` with Termux's `sh`, in the background (Termux's notification
+counts it as a task, which also keeps Termux running), and sends the output
+of `gecko url` back to the app. From then on it is a plain connection to
+`127.0.0.1:7683` with Gecko's token, as with a computer.
+
+### Without the app
+
+The installer works on its own (no root needed): it puts the Linux build for
+the phone's CPU from the latest GitHub release in `$PREFIX/bin/gecko`
+(`--source` builds it with Termux's Go and Node instead). Run it again to
+update; a running Gecko is upgraded in place, keeping its tabs. Then:
+
+```sh
+gecko               # starts the daemon, prints the link (open it in a browser, or Paste link in the app)
+gecko attach <tab>  # or use a tab right here in Termux
+gecko service install   # start at boot, with the Termux:Boot app
+```
+
+Inside Termux, Gecko takes Termux's shell, its `$PREFIX` (there is no
+`/bin` or `/usr`), its `resolv.conf` for names, and starts scripts with
+`#!/usr/bin/env node` or `#!/bin/sh` lines from `$PREFIX/bin` the way
+Termux's own programs do. There is no systemd, so plain `gecko` doesn't set
+up start at login; `gecko service install` writes a
+[Termux:Boot](https://f-droid.org/packages/com.termux.boot/) script instead
+(`~/.termux/boot/gecko`). A [termux-packages](https://github.com/termux/termux-packages)
+recipe is drafted in `packaging/termux/build.sh`.
+
+### Keeping it running
+
+Android stops background work on its own, and Termux is no exception:
+
+- **Phantom process killer** (Android 12 and newer): Android kills
+  processes that apps start beyond 32 across all apps, and ones that use
+  much CPU in the background, which can end Gecko and its tabs. On Android
+  14 and newer, turn on **Disable child process restrictions** in Developer
+  options. On Android 12 and 13, with adb from a computer:
+
+  ```sh
+  adb shell "/system/bin/device_config set_sync_disabled_for_tests persistent"
+  adb shell "/system/bin/device_config put activity_manager max_phantom_processes 2147483647"
+  adb shell settings put global settings_enable_monitor_phantom_procs false
+  ```
+
+- **Battery optimisation**: set Termux's battery use to unrestricted (App
+  info, Battery), or Android pauses it when the screen is off. Phone makers'
+  extra limits apply too (see [Notifications](#notifications) and
+  [dontkillmyapp.com](https://dontkillmyapp.com)).
+- **`termux-wake-lock`** (or **Acquire wakelock** in Termux's
+  notification) keeps the CPU awake for Termux while agents work with the
+  screen off; `termux-wake-unlock` lets go.
+- **Exit** in Termux's notification ends everything in Termux, Gecko
+  included. The app then starts it again the next time you tap Termux.
+
+### F-Droid, GitHub and Google Play
+
+Use Termux from F-Droid or GitHub. The Google Play listing is a separate
+build, made and signed differently, and Termux's add-ons (Termux:Boot,
+Termux:API) have to come from the same place as Termux itself. It also
+targets a newer Android, where Termux may have to start programs through
+Android's own linker, which can't start Gecko's Linux build (a static
+program); on the F-Droid and GitHub builds it starts directly. Gecko is
+tested with the GitHub build, and the app warns when its Termux came from
+Play.
+
+### Separate sandboxes
+
+Termux and the Gecko app are separate apps, and Android keeps their files
+apart: Gecko in Termux has Termux's home (`/data/data/com.termux/files/home`),
+its own `~/.gecko-terminal` (token, settings, tabs) and its own ssh keys,
+apart from **This phone**'s. The tabs of one aren't the other's, and Termux
+can't read the app's files or the other way round. `termux-setup-storage`
+gives Termux your shared storage (`~/storage`); the Gecko app has no storage
+permission. Both can reach each other only over `127.0.0.1`, with the token.
+
 ## Notifications
 
 When an agent in any tab stops for you, or finishes, you get a notification
@@ -292,7 +412,7 @@ On the phone's own terminal:
 
 - It is Android's shell and toybox, not a Linux distribution: no package
   manager, no git, tmux, ssh or compilers (unless you bring static
-  binaries). mksh has no shell integration, so Gecko knows the directory and
+  binaries). [Termux](#termux) has all of those. mksh has no shell integration, so Gecko knows the directory and
   the running program from the process table, but not command boundaries or
   exit codes.
 - No storage permission: `ls /sdcard` shows the folders, not your files. The

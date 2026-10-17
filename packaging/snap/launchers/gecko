@@ -1,0 +1,5 @@
+#!/bin/sh
+# gecko in the snap. $SNAP/bin first, so `gecko open` finds the window
+# (bin/gecko-desktop); nothing else from the snap goes on PATH.
+export PATH="$SNAP/bin:$PATH"
+exec "$SNAP/usr/bin/gecko" "$@"

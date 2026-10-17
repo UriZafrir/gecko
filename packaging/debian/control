@@ -1,0 +1,26 @@
+Source: gecko
+Section: utils
+Priority: optional
+Maintainer: Gecko contributors <gecko@users.noreply.github.com>
+Build-Depends: debhelper-compat (= 13), golang-1.24-go
+Standards-Version: 4.7.0
+Homepage: https://github.com/eternaleclipse/gecko
+Vcs-Browser: https://github.com/eternaleclipse/gecko
+Vcs-Git: https://github.com/eternaleclipse/gecko.git
+Rules-Requires-Root: no
+
+Package: gecko
+Architecture: amd64 arm64
+Depends: ${misc:Depends}
+Built-Using: ${misc:Built-Using}
+Recommends: gecko-desktop
+Suggests: tmux, mosh
+Description: terminal multiplexer for coding agents across your machines
+ Gecko keeps shells, tmux sessions, SSH connections and coding agents
+ running in a daemon and shows them in a web UI and a native window, on
+ your desktop or your phone. Sessions survive closing the window, and you
+ can see at a glance which agent is working and which one is waiting.
+ .
+ This package has the gecko command and daemon. The native window is the
+ gecko-desktop package (Gecko's apt repository or the snap); without it,
+ `gecko open` uses a browser app window.

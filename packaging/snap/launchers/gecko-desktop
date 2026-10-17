@@ -1,0 +1,12 @@
+#!/bin/sh
+# Gecko's window in the snap. Chromium's sandbox needs unprivileged user
+# namespaces (a snap can't carry the setuid helper), so where the system
+# restricts them (Ubuntu 23.10+) it runs with --no-sandbox and says so once.
+export GECKO_BIN="$SNAP/usr/bin/gecko"
+if [ "${GECKO_DESKTOP_NO_SANDBOX:-}" = 1 ]; then
+	set -- --no-sandbox "$@"
+elif ! unshare -Ur true 2>/dev/null; then
+	export GECKO_SANDBOX_FALLBACK=1
+	set -- --no-sandbox "$@"
+fi
+exec "$SNAP/usr/lib/gecko-desktop/gecko-desktop.bin" "$@"

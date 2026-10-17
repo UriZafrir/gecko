@@ -60,6 +60,15 @@ Usage:
   gecko upgrade              restart the daemon with this binary, keeping every session
   gecko stop                 stop the daemon (ends all local sessions)
   gecko service install|uninstall   start the daemon at login (done on first run)
+
+Account (optional; see docs/cloud.md):
+  gecko login [--relay URL] [--account name]   sign this machine in to an account on a relay
+  gecko whoami               the account, its machines and who is waiting for approval
+  gecko approve <code>       let a new machine join (the code it shows); gecko deny <code>
+  gecko revoke <machine>     remove a machine from the account; its links close
+  gecko logout               leave the account and delete this machine's keys
+  gecko relay [--listen a]   run a relay (self-hosted)
+
   gecko bridge               (internal) connect stdio to the daemon; used over ssh
   gecko version
 
@@ -82,6 +91,8 @@ func main() {
 	case "gecko-askpass":
 		os.Exit(askpass(os.Args[1:]))
 	}
+	// No /etc/resolv.conf on Android: use the app's or Termux's DNS file.
+	sshc.UseForDefault()
 	args := os.Args[1:]
 	cmd := ""
 	if len(args) > 0 {
@@ -144,6 +155,20 @@ func main() {
 		err = cmdUpgrade(args)
 	case "service":
 		err = cmdService(args)
+	case "login":
+		err = cmdLogin(args)
+	case "logout":
+		err = cmdLogout()
+	case "whoami", "devices":
+		err = cmdWhoami()
+	case "approve":
+		err = cmdApprove(args)
+	case "deny":
+		err = cmdDeny(args)
+	case "revoke":
+		err = cmdRevoke(args)
+	case "relay":
+		err = cmdRelay(args)
 	default:
 		err = fmt.Errorf("unknown command %q (see gecko help)", cmd)
 	}
@@ -167,6 +192,14 @@ func cmdDefault() error {
 	}
 	c.Close()
 	autoService()
+	if config.IsTermux() {
+		fmt.Println("gecko daemon is running in Termux. Open this link in a browser, or with Paste link in the Gecko app (or tap Termux there):")
+		if err := cmdURL(); err != nil {
+			return err
+		}
+		fmt.Println()
+		return cmdList(nil)
+	}
 	if headless() {
 		fmt.Println("gecko daemon is running. Over SSH, use `gecko attach <session>` or open the web UI:")
 		if err := cmdURL(); err != nil {
@@ -235,12 +268,19 @@ func desktopApp() (string, bool) {
 	if b, err := os.ReadFile("/proc/sys/kernel/apparmor_restrict_unprivileged_userns"); err != nil || strings.TrimSpace(string(b)) != "1" {
 		return p, true
 	}
-	if _, err := os.Stat("/etc/apparmor.d/gecko-desktop"); err == nil {
+	// gecko-desktop from `make desktop-sandbox`, gecko-desktop-package from
+	// the gecko-desktop .deb.
+	if m, _ := filepath.Glob("/etc/apparmor.d/gecko-desktop*"); len(m) > 0 {
 		return p, true
 	}
-	helper := filepath.Join(filepath.Dir(p), "..", "share", "gecko", "desktop", "node_modules", "electron", "dist", "chrome-sandbox")
-	if st, err := os.Stat(helper); err == nil && st.Mode()&os.ModeSetuid != 0 && ownedByRoot(st) {
-		return p, true
+	bin := filepath.Dir(p)
+	for _, helper := range []string{
+		filepath.Join(bin, "..", "share", "gecko", "desktop", "node_modules", "electron", "dist", "chrome-sandbox"), // make desktop
+		filepath.Join(bin, "..", "lib", "gecko-desktop", "chrome-sandbox"),                                          // packages
+	} {
+		if st, err := os.Stat(helper); err == nil && st.Mode()&os.ModeSetuid != 0 && ownedByRoot(st) {
+			return p, true
+		}
 	}
 	fmt.Fprintln(os.Stderr, "gecko: the desktop app's sandbox isn't set up on this system; using a browser window. Fix once with `make desktop-sandbox` in the gecko repo.")
 	return "", false

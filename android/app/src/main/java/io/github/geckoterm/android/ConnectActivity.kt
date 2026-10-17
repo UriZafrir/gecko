@@ -94,6 +94,7 @@ class ConnectActivity : AppCompatActivity() {
         when (item.itemId) {
             R.id.scan_image -> pickImage.launch("image/*")
             R.id.ssh_key -> SshKeyUi.show(this)
+            R.id.termux -> TermuxActivity.open(this)
             R.id.background -> {
                 if (item.isChecked) WatchService.stop(this)
                 else if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
@@ -108,12 +109,20 @@ class ConnectActivity : AppCompatActivity() {
 
     /** Whether Gecko runs on this phone right now (checked off the main thread). */
     private var localRunning = false
+    /** Whether Gecko in Termux answers (checked off the main thread). */
+    private var termuxRunning = false
 
     private fun render() {
-        val saved = store.list().sortedByDescending { it.lastUsed }
+        val all = store.list()
+        val saved = all.filter { it.id != Termux.ID }.sortedByDescending { it.lastUsed }
         val local = LocalGecko.available(this)
-        // This phone comes first; with no computers yet, how to add one follows.
-        val machines = (if (local) listOf(Machine(id = LocalGecko.ID, name = getString(R.string.this_phone), url = "http://127.0.0.1/", token = "")) else emptyList()) + saved
+        // Termux, when it's installed (or Gecko ran there before).
+        val termuxMachine = all.find { it.id == Termux.ID }
+        val termux = Termux.installed(this) || termuxMachine != null
+        // This phone comes first, then Termux; with no computers yet, how to add one follows.
+        val machines = (if (local) listOf(Machine(id = LocalGecko.ID, name = getString(R.string.this_phone), url = "http://127.0.0.1/", token = "")) else emptyList()) +
+            (if (termux) listOf(termuxMachine ?: Machine(id = Termux.ID, name = getString(R.string.termux), url = "http://127.0.0.1:${TermuxFlow.PORT}/", token = "")) else emptyList()) +
+            saved
         empty.visibility = if (saved.isEmpty()) View.VISIBLE else View.GONE
         list.visibility = if (machines.isEmpty()) View.GONE else View.VISIBLE
         list.layoutParams = (list.layoutParams as android.widget.LinearLayout.LayoutParams).apply {
@@ -123,6 +132,15 @@ class ConnectActivity : AppCompatActivity() {
         if (local) Thread {
             val running = LocalGecko.running(this)
             runOnUiThread { if (running != localRunning) { localRunning = running; list.adapter?.notifyItemChanged(0) } }
+        }.start()
+        if (termux) Thread {
+            val running = termuxMachine != null && Termux.listening(termuxMachine)
+            runOnUiThread {
+                if (running != termuxRunning) {
+                    termuxRunning = running
+                    list.adapter?.notifyItemChanged(if (local) 1 else 0)
+                }
+            }
         }.start()
     }
 
@@ -308,6 +326,41 @@ class ConnectActivity : AppCompatActivity() {
             }
         }
 
+        private fun bindTermux(h: Row, m: Machine) {
+            val a = this@ConnectActivity
+            h.icon.setImageResource(R.drawable.ic_termux)
+            h.name.text = getString(R.string.termux)
+            h.addr.text = if (termuxRunning) getString(R.string.termux_row_running, m.url.removePrefix("http://").removeSuffix("/"))
+            else getString(R.string.termux_row_idle)
+            h.itemView.setOnClickListener {
+                if (termuxRunning) TerminalActivity.open(a, m) else TermuxActivity.open(a)
+            }
+            h.more.setOnClickListener { anchor ->
+                PopupMenu(a, anchor).apply {
+                    if (termuxRunning) menu.add(0, 1, 0, R.string.termux_stop)
+                    if (Termux.installed(a)) menu.add(0, 2, 1, R.string.termux_open)
+                    menu.add(0, 3, 2, R.string.termux_setup)
+                    setOnMenuItemClickListener {
+                        when (it.itemId) {
+                            1 -> Thread {
+                                TermuxActivity.stop(a)
+                                runOnUiThread {
+                                    termuxRunning = false
+                                    WatchService.refresh(a)
+                                    render()
+                                    Snackbar.make(list, R.string.termux_stopped, Snackbar.LENGTH_SHORT).show()
+                                }
+                            }.start()
+                            2 -> Termux.open(a)
+                            3 -> TermuxActivity.open(a, start = false)
+                        }
+                        true
+                    }
+                    show()
+                }
+            }
+        }
+
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
             Row(LayoutInflater.from(parent.context).inflate(R.layout.item_machine, parent, false))
 
@@ -316,6 +369,7 @@ class ConnectActivity : AppCompatActivity() {
         override fun onBindViewHolder(h: Row, i: Int) {
             val m = items[i]
             if (m.id == LocalGecko.ID) return bindLocal(h)
+            if (m.id == Termux.ID) return bindTermux(h, m)
             h.icon.setImageResource(R.drawable.ic_machine)
             h.name.text = m.name
             h.addr.text = if (m.token.isEmpty()) getString(R.string.needs_link, m.url) else m.url.removeSuffix("/")

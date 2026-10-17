@@ -1,0 +1,24 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: gecko
+Upstream-Contact: https://github.com/eternaleclipse/gecko/issues
+Source: https://github.com/eternaleclipse/gecko
+
+Files: *
+Copyright: 2026 Gecko contributors
+License: LicenseRef-Unspecified
+ The Gecko project has not chosen a license yet. Until it does, no rights
+ beyond those granted by law are given. Distribution channels that require a
+ free software license (Launchpad PPAs, Fedora, Debian, Arch) need one first;
+ see docs/linux-packages.md.
+
+Files: vendor/*
+Copyright: The Go Authors; Creack; Gorilla WebSocket authors; UserExistsError
+License: BSD-3-Clause and MIT
+ See the LICENSE file in each directory under vendor/.
+
+Files: web/dist/*
+Copyright: 2026 Gecko contributors and the authors of the bundled npm packages
+License: LicenseRef-Unspecified and MIT and BSD-3-Clause and CC0-1.0 and OFL-1.1
+ The web client, built from web/src with esbuild. It bundles xterm.js and
+ qrcode-generator (MIT), js-base64 (BSD-3-Clause), simple-icons (CC0-1.0) and
+ the JetBrains Mono and DSEG fonts (SIL Open Font License 1.1).

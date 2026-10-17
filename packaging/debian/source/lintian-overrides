@@ -1,0 +1,4 @@
+# The web client is built into web/dist from web/src (packaging/debian/README.source).
+gecko source: source-is-missing [web/dist/*]
+# Inline SVG makes long lines; this is the source.
+gecko source: source-is-missing [web/src/index.html]

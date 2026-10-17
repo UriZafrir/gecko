@@ -1,0 +1,3 @@
+# Go builds one static binary on purpose.
+addFilter("statically-linked-binary /usr/bin/gecko")
+addFilter("spelling-error .* tmux")

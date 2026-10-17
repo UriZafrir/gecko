@@ -16,7 +16,8 @@ import (
 // Android has no /etc/resolv.conf, so Go's own resolver (in a static
 // build) has no DNS server to ask. The Gecko app writes the phone's current
 // DNS servers and search domains to the file in $GECKO_RESOLV_CONF, in
-// resolv.conf format, and names are looked up there.
+// resolv.conf format, and names are looked up there. Inside Termux it is
+// Termux's own $PREFIX/etc/resolv.conf.
 type resolvConf struct {
 	servers []string
 	search  []string
@@ -57,11 +58,12 @@ func appResolver() (*net.Resolver, []string) {
 	if systemResolver() {
 		return nil, nil
 	}
-	file := os.Getenv("GECKO_RESOLV_CONF")
-	if file == "" {
-		file = filepath.Join(geckoconfig.Home(), "resolv.conf") // where the app writes it
+	var rc *resolvConf
+	for _, file := range resolvConfFiles() {
+		if rc = readResolvConf(file); rc != nil {
+			break
+		}
 	}
-	rc := readResolvConf(file)
 	if rc == nil {
 		return nil, nil
 	}
@@ -78,6 +80,34 @@ func appResolver() (*net.Resolver, []string) {
 		return nil, last
 	}}
 	return r, rc.search
+}
+
+// resolvConfFiles are the DNS files to try, in order: the app's (named by
+// $GECKO_RESOLV_CONF, or in Gecko's home where the app writes it), then
+// Termux's.
+func resolvConfFiles() []string {
+	var files []string
+	if f := os.Getenv("GECKO_RESOLV_CONF"); f != "" {
+		files = append(files, f)
+	} else {
+		files = append(files, filepath.Join(geckoconfig.Home(), "resolv.conf"))
+	}
+	if p := geckoconfig.TermuxPrefix(); p != "" {
+		files = append(files, filepath.Join(p, "etc", "resolv.conf"))
+	}
+	return files
+}
+
+// UseForDefault makes the app's (or Termux's) DNS servers the process's
+// default resolver on Android, so everything else Gecko looks up (a
+// notification webhook, say) resolves too. Elsewhere it does nothing.
+func UseForDefault() {
+	if !geckoconfig.IsAndroid() {
+		return
+	}
+	if r, _ := appResolver(); r != nil {
+		net.DefaultResolver = r
+	}
 }
 
 // dnsServerPort is 53 (a variable for tests).

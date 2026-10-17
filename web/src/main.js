@@ -119,7 +119,11 @@ function newOrder(shown, old) {
 const SYNCED = ['theme', 'opacity', 'fontSize', 'mobileFontSize', 'copyOnSelect', 'smartCopy', 'optionIsMeta', 'renderer', 'sidebarHidden', 'keys', 'startupSound', 'order', 'quickReplies'];
 
 // Protocol version this client speaks; see internal/proto.
-const PROTOCOL = 7;
+const PROTOCOL = 9;
+
+// Round trips that feel slow at the keyboard (ms): echo starts to lag
+// noticeably past ~100 ms and gets hard to type against past ~300 ms.
+const latencyClass = (ms) => (ms == null ? '' : ms >= 300 ? 'bad' : ms >= 100 ? 'slow' : '');
 const WATCH_MIN_COLS = 20, WATCH_MIN_ROWS = 3; // the Digital Watch LCD
 const OUTDATED = 'The Gecko background service is older than this window, so some features are missing. Click to restart it.';
 
@@ -173,6 +177,7 @@ export function tabLabel(s) {
 // Git info drawn by Gecko itself, so prompts don't need powerline or a
 // patched font: branch icon, branch, and working-tree state.
 // A robot face: agents, counted next to it in a workspace's title.
+const DEVICES_ICON = '<svg class="agi" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="3" width="9.5" height="7" rx="1.3"/><path d="M4 12.75h4.5"/><rect x="11.5" y="5.75" width="3.25" height="7" rx="1"/></svg>';
 const AGENTS_ICON = '<svg class="agi" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="3.75" width="11" height="8.5" rx="2.2"/><circle cx="5.9" cy="8" r="1.05" class="f"/><circle cx="10.1" cy="8" r="1.05" class="f"/></svg>';
 const BRANCH_ICON = '<svg class="gi" viewBox="0 0 16 16" aria-hidden="true"><circle cx="4.5" cy="3.5" r="1.7"/><circle cx="4.5" cy="12.5" r="1.7"/><circle cx="11.5" cy="5" r="1.7"/><path d="M4.5 5.2v5.6M11.5 6.7c0 3-6.2 2.2-6.8 4.1"/></svg>';
 
@@ -218,6 +223,11 @@ function repoPath(s) {
 
 // Text with `code` spans, as in Markdown: hostnames, commands and names in
 // messages stand out from the sentence around them.
+// What machines call their OS, for people.
+function prettyOS(os) {
+  return { linux: 'Linux', darwin: 'macOS', windows: 'Windows', freebsd: 'FreeBSD' }[os] || os || '';
+}
+
 function md(text) {
   return esc(text).replace(/`([^`]+)`/g, '<code>$1</code>');
 }
@@ -282,6 +292,8 @@ class App {
   constructor() {
     this.sessions = new Map();
     this.hosts = [];
+    this.cloud = null; // the account, when this machine is signed in (gecko login)
+    this.cloudDismissed = new Set(); // waiting machines whose prompt was closed
     this.tmux = [];
     this.templates = [];
     this.hostName = '';
@@ -336,6 +348,7 @@ class App {
         if (a) a.sendSize(true);
       },
       onStatus: () => this.renderSoon(),
+      onRTT: () => this.renderNet(),
       onMessage: (m) => this.onMessage(m),
       onData: (sub, off, data) => this.panes.get(sub)?.write(off, data),
     });
@@ -407,6 +420,9 @@ class App {
       case 'hostlog':
         this.hostSetup?.log(m.sub, m.text);
         return;
+      case 'cloud':
+        this.onCloud(m.cloud);
+        break;
       case 'reset':
         this.panes.get(m.sub)?.reset(m.offset, m.prefix);
         break;
@@ -1542,6 +1558,195 @@ class App {
     try { await this.conn.request({ t: 'rmhost', name }); } catch (e) { this.toast(e.message); }
   }
 
+  // ------------------------------------------------------------ account
+
+  // The account pushes its state (devices, machines waiting to join)
+  // whenever it changes; nothing arrives when this machine isn't signed in.
+  onCloud(st) {
+    const was = this.cloud;
+    this.cloud = st?.signedIn ? st : null;
+    if (st?.notice && st.notice !== was?.notice) this.toast(st.notice);
+    if (was && this.cloud) {
+      for (const d of this.cloud.devices || []) {
+        if (d.kind === 'machine' && !was.devices?.some((x) => x.id === d.id)) this.toast(`\`${d.name}\` joined your account.`);
+      }
+    }
+    this.devicesView?.();
+  }
+
+  // What the sidebar says about a machine when signed in: how it is
+  // reached and, for one that is away, when the relay last saw it.
+  hostWhere(h) {
+    if (h.local) return 'this machine';
+    const os = prettyOS(h.os);
+    if (h.status === 'connected') return h.via === 'relay' ? `${os} · ${h.kind === 'cloud' ? 'relay' : 'via relay'}` : os;
+    if (h.status === 'offline') return h.lastSeen ? `seen ${ago(h.lastSeen)} ago` : 'offline';
+    return h.status;
+  }
+
+  // A machine asking to join the account: every signed-in machine shows
+  // this until someone approves or denies it, or the code expires.
+  renderCloudPrompt() {
+    let el = $('#cloud-prompt');
+    const now = Date.now();
+    const waiting = (this.cloud?.pending || []).filter((p) => p.expires > now && !this.cloudDismissed.has(p.id));
+    if (!waiting.length) {
+      el?.remove();
+      return;
+    }
+    const p = waiting[0];
+    const key = `${p.id}:${waiting.length}`;
+    if (el?.dataset.key === key) return;
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'cloud-prompt';
+      el.setAttribute('role', 'alertdialog');
+      el.setAttribute('aria-label', 'A machine wants to join your account');
+      el.addEventListener('click', (ev) => {
+        const b = ev.target.closest('[data-cp]');
+        const cur = el.pending;
+        if (!b || !cur) return;
+        if (b.dataset.cp === 'approve') this.approveMachine(cur);
+        else if (b.dataset.cp === 'deny') this.denyMachine(cur);
+        else { this.cloudDismissed.add(cur.id); this.renderCloudPrompt(); }
+      });
+      document.body.appendChild(el);
+    }
+    el.dataset.key = key;
+    el.pending = p;
+    el.innerHTML = `<p class="q"><b>${esc(p.name)}</b> (${esc(prettyOS(p.os))}, ${esc(p.ip)}) wants to join. Approve?</p>
+      <p class="sub">Approve only a machine you just ran <code>gecko login</code> on; you'll type the code it shows.${waiting.length > 1 ? ` ${waiting.length - 1} more waiting.` : ''}</p>
+      <div class="row"><button data-cp="later">Later</button><button data-cp="deny">Deny</button><button class="primary" data-cp="approve">Approve…</button></div>`;
+  }
+
+  // Approve a waiting machine. The code it shows is a hash of its keys, so
+  // typing it here proves the keys the relay passed on are really its.
+  approveMachine(p) {
+    this.devicesView = null;
+    const m = $('#modal');
+    m.innerHTML = `<div class="card setup approve" role="dialog" aria-modal="true" aria-labelledby="ap-title">
+      <h2 id="ap-title">Approve ${esc(p.name)}?</h2>
+      <p class="sub">${esc(p.name)} (${esc(prettyOS(p.os))}, ${esc(p.ip)}) asked to join <b>${esc(this.cloud?.account || '')}</b>. Once approved, your machines can open tabs on it and it on them.</p>
+      <label>Code shown on ${esc(p.name)}<input name="code" placeholder="XXXX-XXXX" autocomplete="off" spellcheck="false" autocapitalize="characters" maxlength="9"></label>
+      <div class="setup-status" role="status"></div>
+      <div class="row"><button data-no>Cancel</button><button class="primary" data-yes>Approve</button></div></div>`;
+    m.hidden = false;
+    const input = m.querySelector('input');
+    const status = m.querySelector('.setup-status');
+    const yes = m.querySelector('[data-yes]');
+    const done = () => { m.hidden = true; m.innerHTML = ''; this.activePane()?.focus(); };
+    const go = async () => {
+      const code = input.value.trim();
+      if (!/^[A-Za-z2-7]{4}-?[A-Za-z2-7]{4}$/.test(code)) {
+        status.textContent = `The code looks like ABCD-EFGH. ${p.name} printed it when you ran gecko login there.`;
+        status.className = 'setup-status bad';
+        return input.focus();
+      }
+      yes.disabled = true;
+      status.textContent = 'Approving…';
+      status.className = 'setup-status';
+      try {
+        const r = await this.conn.request({ t: 'cloud', name: 'approve', data: `${p.id} ${code}` });
+        done();
+        this.onCloud(r.cloud);
+        this.renderSoon();
+      } catch (e) {
+        status.textContent = e.message.charAt(0).toUpperCase() + e.message.slice(1) + '.';
+        status.className = 'setup-status bad';
+        yes.disabled = false;
+      }
+    };
+    yes.onclick = go;
+    m.querySelector('[data-no]').onclick = done;
+    m.onkeydown = (ev) => {
+      if (ev.key === 'Escape') done();
+      if (ev.key === 'Enter') { ev.preventDefault(); go(); }
+    };
+    input.focus();
+  }
+
+  async denyMachine(p) {
+    try {
+      await this.conn.request({ t: 'cloud', name: 'deny', data: p.id });
+      this.toast(`Denied \`${p.name}\`.`);
+    } catch (e) {
+      this.toast(e.message);
+    }
+  }
+
+  // Settings > Devices: the account's machines, with Revoke.
+  openDevices() {
+    const m = $('#modal');
+    const done = () => { this.devicesView = null; m.hidden = true; m.innerHTML = ''; this.activePane()?.focus(); };
+    const draw = () => {
+      const c = this.cloud;
+      if (!c) return done();
+      const now = Date.now();
+      let relay = c.relay;
+      try { relay = new URL(c.relay).host; } catch {}
+      const pend = (c.pending || []).filter((p) => p.expires > now).map((p) => `<li class="dev pend">
+          <i class="hdot"></i>
+          <div class="dev-main"><b>${esc(p.name)}</b> <span class="badge need">wants to join</span>
+            <span class="dev-sub">${esc(prettyOS(p.os))} · ${esc(p.ip)} · code expires in ${Math.max(1, Math.round((p.expires - now) / 60000))} min</span></div>
+          <button data-deny="${esc(p.id)}">Deny</button><button class="primary" data-approve="${esc(p.id)}">Approve…</button>
+        </li>`).join('');
+      const rows = (c.devices || []).map((d) => {
+        const rec = d.kind === 'recovery';
+        const status = rec ? 'adds a machine without approval' : d.self ? (c.connected ? 'online' : 'not connected') : d.online ? 'online' : d.lastSeen ? `seen ${ago(d.lastSeen)} ago` : 'not seen yet';
+        const sub = [!rec && prettyOS(d.os), status, !rec && d.ip, d.by && `approved by ${d.by}`].filter(Boolean).join(' · ');
+        return `<li class="dev${!rec && (d.online || (d.self && c.connected)) ? ' on' : ''}${rec ? ' rec' : ''}">
+          <i class="hdot"></i>
+          <div class="dev-main"><b>${esc(rec ? 'Recovery code' : d.name)}</b>${d.self ? ' <span class="badge">this machine</span>' : ''}
+            <span class="dev-sub">${esc(sub)}</span></div>
+          ${rec ? '' : `<button class="danger" data-revoke="${esc(d.id)}">${d.self ? 'Sign out' : 'Revoke'}</button>`}
+        </li>`;
+      }).join('');
+      m.innerHTML = `<div class="card devices" role="dialog" aria-modal="true" aria-labelledby="dev-title">
+        <h2 id="dev-title">Devices</h2>
+        <p class="sub">Account <b>${esc(c.account)}</b> on ${esc(relay)}, ${c.connected ? 'connected' : esc(c.error || 'not connected')}.<br>
+          Fingerprint <code>${esc(c.fingerprint)}</code>, the same on every machine in this account.</p>
+        ${pend ? `<ul class="devlist">${pend}</ul>` : ''}
+        <ul class="devlist">${rows}</ul>
+        <p class="sub">Revoking a machine takes it out of the account; its connections close within seconds. To add one, run <code>gecko login --relay ${esc(c.relay)} --account ${esc(c.account)}</code> on it.</p>
+        <div class="row"><button class="primary" data-no>Done</button></div></div>`;
+      const card = m.firstElementChild;
+      card.addEventListener('click', (ev) => {
+        const b = ev.target.closest('button');
+        if (!b) return;
+        if (b.hasAttribute('data-no')) return done();
+        const find = (id) => (c.pending || []).find((p) => p.id === id);
+        if (b.dataset.revoke) return this.revokeDevice(b.dataset.revoke);
+        if (b.dataset.approve && find(b.dataset.approve)) return this.approveMachine(find(b.dataset.approve));
+        if (b.dataset.deny && find(b.dataset.deny)) return this.denyMachine(find(b.dataset.deny));
+      });
+      card.querySelector('[data-no]').focus();
+    };
+    this.devicesView = draw;
+    m.hidden = false;
+    m.onkeydown = (ev) => { if (ev.key === 'Escape') done(); };
+    draw();
+  }
+
+  // Take a device out of the account (this machine: sign out).
+  async revokeDevice(id) {
+    const d = this.cloud?.devices?.find((x) => x.id === id);
+    if (!d) return;
+    const reopen = !!this.devicesView;
+    this.devicesView = null;
+    const text = d.self
+      ? `Sign this machine out of \`${this.cloud.account}\`? It leaves the account and its keys are deleted. Tabs here keep running.`
+      : `Revoke \`${d.name}\`? It leaves your account and its connections close within seconds. Tabs running there keep running. To bring it back, sign it in again and approve it.`;
+    if (await this.confirm(text, d.self ? 'Sign out' : 'Revoke')) {
+      try {
+        await this.conn.request({ t: 'cloud', name: d.self ? 'logout' : 'revoke', data: d.id });
+        this.toast(d.self ? 'Signed out of your account.' : `Revoked \`${d.name}\`.`);
+      } catch (e) {
+        this.toast(e.message);
+      }
+    }
+    if (reopen && this.cloud) this.openDevices();
+  }
+
   async openTemplate(name) {
     const p = this.activePane();
     try {
@@ -1632,6 +1837,11 @@ class App {
           return this.renderSidebar();
         }
         case 'add-host': return this.addHost();
+        case 'devices': return this.openDevices();
+        case 'host-revoke': {
+          const h = this.hosts.find((x) => x.name === d.host);
+          return h?.machine && this.revokeDevice(h.machine);
+        }
         case 'new-ws': return this.newWorkspace();
       }
     });
@@ -1884,10 +2094,13 @@ class App {
       const outdated = !h.local && h.status === 'connected' && (h.version || 0) < PROTOCOL;
       return [
         { label: `New tab on ${h.name}`, disabled: h.status !== 'connected', run: () => this.newTab({ host: h.name, cwd: '' }) },
-        !h.local && h.status === 'error' && { label: 'Fix connection…', run: () => this.addHost({ name: h.name, target: h.target, error: h.error }) },
-        !h.local && h.status === 'connected' && { label: outdated ? 'Update Gecko' : 'Reinstall Gecko', hint: 'Its tabs keep running', run: () => this.updateHost(h.name) },
+        !h.local && h.kind !== 'cloud' && h.status === 'error' && { label: 'Fix connection…', run: () => this.addHost({ name: h.name, target: h.target, error: h.error }) },
+        !h.local && h.kind !== 'cloud' && h.status === 'connected' && { label: outdated ? 'Update Gecko' : 'Reinstall Gecko', hint: 'Its tabs keep running', run: () => this.updateHost(h.name) },
+        this.cloud && { label: 'Devices…', hint: 'Your account', run: () => this.openDevices() },
         !h.local && sep,
-        !h.local && { label: 'Remove machine', hint: 'Its sessions keep running', danger: true, run: () => this.removeHost(h.name) },
+        h.kind === 'cloud'
+          ? { label: 'Revoke…', hint: 'Remove it from your account', danger: true, run: () => this.revokeDevice(h.machine) }
+          : !h.local && { label: 'Remove machine', hint: 'Its sessions keep running', danger: true, run: () => this.removeHost(h.name) },
       ];
     }
     const tpl = target.closest('.ws.template [data-name]');
@@ -2707,9 +2920,14 @@ class App {
     }
     add('Add a machine…', 'Run sessions on another computer over SSH', () => this.addHost(), 'Command', undefined, 'ssh host server remote connect computer');
     for (const h of this.hosts) {
-      if (!h.local && h.status === 'connected') add(`Update Gecko on ${h.name}`, (h.version || 0) < PROTOCOL ? 'It runs an older version; its tabs keep running' : 'Reinstall this version there; its tabs keep running', () => this.updateHost(h.name), 'Command', undefined, 'upgrade install remote machine host');
+      if (!h.local && h.kind !== 'cloud' && h.status === 'connected') add(`Update Gecko on ${h.name}`, (h.version || 0) < PROTOCOL ? 'It runs an older version; its tabs keep running' : 'Reinstall this version there; its tabs keep running', () => this.updateHost(h.name), 'Command', undefined, 'upgrade install remote machine host');
     }
-    for (const h of this.hosts) if (!h.local) add(`Remove machine ${h.name}`, 'Its sessions keep running there', () => this.removeHost(h.name), 'Command');
+    for (const h of this.hosts) if (!h.local && h.kind !== 'cloud') add(`Remove machine ${h.name}`, 'Its sessions keep running there', () => this.removeHost(h.name), 'Command');
+    if (this.cloud) {
+      add('Devices…', `Machines in account ${this.cloud.account}: approve, revoke, sign out`, () => this.openDevices(), 'Command', undefined, 'account cloud devices revoke approve sign out relay');
+      for (const p of this.cloud.pending || []) add(`Approve ${p.name}…`, `${prettyOS(p.os)} · ${p.ip} wants to join your account`, () => this.approveMachine(p), 'Command', undefined, 'account join enroll');
+      for (const d of this.cloud.devices || []) if (d.kind === 'machine' && !d.self) add(`Revoke ${d.name}…`, 'Remove it from your account', () => this.revokeDevice(d.id), 'Command', undefined, 'account remove cloud');
+    }
     add('Restart Gecko', 'Restarts the background service with the installed version; your tabs and what runs in them keep going', () => this.restartService(), 'Command', undefined, 'restart upgrade update reload daemon service');
     add('Open on another device', 'Phone or tablet: shows a link and QR code', () => this.openShare(), 'Command', undefined, 'phone mobile tablet qr share link');
     add('Notify me when agents need input', '', () => this.enableNotifications(), 'Setting', undefined, 'notifications alerts');
@@ -3262,6 +3480,7 @@ class App {
     this.renderEmpty();
     this.renderDock();
     this.renderStatus();
+    this.renderCloudPrompt();
     this.updateTitle();
   }
 
@@ -3303,18 +3522,33 @@ class App {
       if (open.has(t.name)) continue;
       parts.push(`<div class="ws template"><button class="ws-name" data-act="template" data-name="${esc(t.name)}">${esc(t.name)} <span class="hosts">open</span></button></div>`);
     }
-    parts.push('</div><div class="group"><h3>Machines <button class="mini" data-act="add-host" title="Add a machine" aria-label="Add a machine">+</button></h3><ul class="hostlist">');
+    const signedIn = !!this.cloud?.signedIn;
+    parts.push(signedIn
+      ? `</div><div class="group machines"><h3>Machines <span class="h3-actions"><button class="mini devices" data-act="devices" title="Devices in your account" aria-label="Devices in your account">${DEVICES_ICON}</button><button class="mini" data-act="add-host" title="Add a machine over SSH" aria-label="Add a machine">+</button></span></h3><ul class="hostlist">`
+      : '</div><div class="group"><h3>Machines <button class="mini" data-act="add-host" title="Add a machine" aria-label="Add a machine">+</button></h3><ul class="hostlist">');
     const next = this.defaultHost();
-    for (const h of this.sortedHosts()) {
+    const hostRow = (h) => {
       const tm = this.tmux.filter((t) => t.host === h.name);
-      const broken = !h.local && h.status === 'error';
+      const cloud = h.kind === 'cloud';
+      const broken = !h.local && !cloud && h.status === 'error';
       const outdated = !h.local && h.status === 'connected' && (h.version || 0) < PROTOCOL;
-      parts.push(`<li class="host st-${esc(h.status)}${h.name === next ? ' next' : ''}" data-host="${esc(h.name)}">
+      const where = signedIn ? this.hostWhere(h) : h.local ? 'this machine' : h.status === 'connected' ? h.os || '' : h.status;
+      let counts = '';
+      if (signedIn) {
+        const agents = [...this.sessions.values()].filter((t) => t.host === h.name && t.agent);
+        const need = agents.filter((t) => t.agent.status === 'needs-input').length;
+        const working = agents.filter((t) => t.agent.status === 'working').length;
+        if (need) counts += `<span class="agents need" title="Agents waiting for you on ${esc(h.name)}">${AGENTS_ICON}${need}</span>`;
+        if (working) counts += `<span class="agents work" title="Agents working on ${esc(h.name)}">${AGENTS_ICON}${working}</span>`;
+      }
+      return `<li class="host st-${esc(h.status)}${h.name === next ? ' next' : ''}" data-host="${esc(h.name)}">
         <div class="host-row" data-drag="host" data-key="${esc(h.name)}">
           <button class="host-main" data-act="${broken ? 'host-fix' : outdated ? 'host-update' : 'host-new'}" data-host="${esc(h.name)}" title="${esc(broken ? 'Fix the connection to ' + h.name : outdated ? h.name + ' runs an older Gecko; click to update it (its tabs keep running)' : 'New tab on ' + h.name + (h.name === next ? `. New tabs (${prettyCombo(this.keys.first('newTab'))}) open here, on the current tab's machine` : ''))}">
-            <i class="hdot"></i><span class="nm">${esc(h.name)}</span><span class="where">${esc(h.local ? 'this machine' : h.status === 'connected' ? h.os || '' : h.status)}</span><span class="plus${outdated ? ' upd' : ''}">${broken ? 'fix' : outdated ? 'update' : '+'}</span>
+            <i class="hdot"></i><span class="nm">${esc(h.name)}</span>${counts}<span class="where">${esc(where)}</span>${!h.local && h.status === 'connected' && h.rtt ? `<span class="rtt ${latencyClass(h.rtt)}" title="${esc(`Round trip from this Gecko to ${h.name}: ${h.rtt} ms`)}">${h.rtt} ms</span>` : ''}<span class="plus${outdated ? ' upd' : ''}">${broken ? 'fix' : outdated ? 'update' : '+'}</span>
           </button>
-          ${h.local ? '' : `<button class="x" data-act="host-rm" data-host="${esc(h.name)}" aria-label="Remove ${esc(h.name)}" title="Remove ${esc(h.name)}">×</button>`}
+          ${h.local ? '' : cloud
+            ? `<button class="x" data-act="host-revoke" data-host="${esc(h.name)}" aria-label="Revoke ${esc(h.name)}" title="Revoke ${esc(h.name)}: remove it from your account">×</button>`
+            : `<button class="x" data-act="host-rm" data-host="${esc(h.name)}" aria-label="Remove ${esc(h.name)}" title="Remove ${esc(h.name)}">×</button>`}
         </div>
         ${h.error && h.status !== 'connected' ? `<div class="err">${esc(h.error)}</div>` : ''}
         ${tm.map((t) => {
@@ -3326,7 +3560,20 @@ class App {
             <button class="tmux" data-act="tmux" data-host="${esc(h.name)}" data-name="${esc(t.name)}" title="${esc((tab ? 'Go to tab ' + nums.get(tab.id) + ', which shows this session' : 'Open in a new tab') + '. Double-click to rename.')}">${TMUX_ICON}<b>${esc(t.name)}</b><span class="where">${t.windows} ${t.windows === 1 ? 'window' : 'windows'}</span>${tab ? numGlyph(tab, nums.get(tab.id)) : ''}</button>
           </div>${open ? `<div class="tmux-wins">${wins}</div>` : ''}`;
         }).join('')}
-      </li>`);
+      </li>`;
+    };
+    if (!signedIn) {
+      for (const h of this.sortedHosts()) parts.push(hostRow(h));
+    } else {
+      // Signed in: grouped by how Gecko reaches each machine.
+      const groups = [['Local', (h) => h.local], ['SSH', (h) => !h.local && h.kind !== 'cloud'], ['Cloud', (h) => h.kind === 'cloud']];
+      for (const [title, test] of groups) {
+        const hs = this.sortedHosts().filter(test);
+        if (!hs.length && title !== 'Cloud') continue;
+        parts.push(`<li class="hgroup" aria-hidden="true">${title}</li>`);
+        if (!hs.length) parts.push(`<li class="hnone">No other machines yet. On one, run <code>gecko login</code>.</li>`);
+        for (const h of hs) parts.push(hostRow(h));
+      }
     }
     parts.push('</ul></div>');
     $('#side-body').innerHTML = parts.join('');
@@ -3461,8 +3708,32 @@ class App {
     const right = [];
     if (s.notice) right.push(`<span class="notice" title="${esc(s.notice)}">${esc(s.notice)}</span>`);
     if (p) right.push(`<span>${p.term.cols}×${p.term.rows}</span>`);
-    right.push(`<span class="conn-dot ${this.conn.status}" title="Connection: ${this.conn.status}"></span>`);
+    right.push(`<span id="sl-net" class="net">${this.netHTML()}</span>`);
     el.innerHTML = `<div class="l">${bits.join('')}</div><div class="r">${right.join('')}</div>`;
+  }
+
+  // The connection in the status line: transport and round trip, or
+  // "reconnecting". Updated in place on every ping (every 2 s).
+  netHTML() {
+    const c = this.conn;
+    const st = c.status;
+    let text, title, cls = '';
+    if (st === 'online') {
+      const quic = c.transport === 'quic';
+      text = `<span class="via">${quic ? 'QUIC' : 'WS'}</span>${c.rtt != null ? `${c.rtt} ms` : ''}`;
+      title = `Connected over ${quic ? 'QUIC (WebTransport, UDP)' : 'a WebSocket (TCP)'}${c.rtt != null ? `. Round trip to the Gecko service: ${c.rtt} ms` : ''}`;
+      cls = latencyClass(c.rtt);
+    } else {
+      text = st === 'unauthorized' ? 'not signed in' : st === 'offline' ? 'reconnecting' : 'connecting';
+      title = st === 'offline' ? 'The connection stopped answering; reconnecting (tabs keep running and pick up where they were)' : '';
+      cls = st === 'unauthorized' ? 'bad' : 'slow';
+    }
+    return `<span class="conn-dot ${st}"></span><span class="ms ${cls}" title="${esc(title)}">${text}</span>`;
+  }
+
+  renderNet() {
+    const el = document.getElementById('sl-net');
+    if (el) el.innerHTML = this.netHTML();
   }
 
   updateTitle() {
@@ -3477,6 +3748,12 @@ class App {
 
 // Colors first, so the page never flashes the default theme.
 if (window.geckoDesktop) document.documentElement.classList.add('desktop', 'desktop-' + window.geckoDesktop.platform);
+// The desktop app's build ("a1b2c3d · Oct 17 02:15") on the Gecko title, as
+// in its About panel.
+if (window.geckoDesktop?.build) {
+  const brand = document.querySelector('#side .brand > span');
+  if (brand) brand.title = `Gecko desktop ${window.geckoDesktop.build}`;
+}
 if (window.GeckoAndroid) document.documentElement.classList.add('android'); // its own extra keys row
 if (window.GeckoIOS) document.documentElement.classList.add('ios'); // the same
 paintTheme(

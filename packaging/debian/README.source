@@ -1,0 +1,11 @@
+gecko for Debian and Ubuntu (Launchpad PPA)
+-------------------------------------------
+
+This directory is packaging/debian in the Gecko repository; it becomes
+debian/ in the source tree. The orig tarball is made by
+packaging/linux/source-tarball.sh: the git tree, the Go modules vendored
+(vendor/) and the web client built (web/dist), so the package builds
+without network, as Launchpad requires. To rebuild web/dist from source:
+cd web && npm ci && node build.mjs (needs Node 18+ and network).
+
+docs/linux-packages.md has the steps to upload to a PPA.

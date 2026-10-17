@@ -1,0 +1,4 @@
+# Electron, as published: Chromium carries its own copies of these
+# libraries, and its helper libraries sit next to the binary.
+gecko-desktop: embedded-library *
+gecko-desktop: missing-dependency-on-libc *
