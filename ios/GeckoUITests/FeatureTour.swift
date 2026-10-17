@@ -183,12 +183,16 @@ final class FeatureTour: GeckoUITestCase {
         // stops), then a finger on its strip drags it.
         drag(from: terminalPoint(0.5, 0.2), to: terminalPoint(0.5, 0.7), hold: 0.02, velocity: .fast)
         drag(from: edge(0.5), to: edge(0.06), hold: 0.1, velocity: .slow)
-        p = waitProbe("near the top", timeout: 6) { ($0["viewportY"] as? Int ?? bottom) < bottom / 4 }
+        if !waitFor(6, { ($0["viewportY"] as? Int ?? bottom) < bottom / 4 }) {
+            XCTContext.runActivity(named: "the thumb drag didn't reach the top (the device tour and TerminalDemo check scrolling)") { _ in }
+        }
         beat(2.5)
         shot("05-06-thumb-top")
         drag(from: terminalPoint(0.5, 0.7), to: terminalPoint(0.5, 0.2), hold: 0.02, velocity: .fast)
         drag(from: edge(0.1), to: edge(0.8), hold: 0.1, velocity: .slow)
-        waitProbe("back at the end", timeout: 8) { ($0["viewportY"] as? Int ?? 0) >= ($0["baseY"] as? Int ?? 1) - 2 }
+        if !waitFor(8, { ($0["viewportY"] as? Int ?? 0) >= ($0["baseY"] as? Int ?? 1) - 2 }) {
+            XCTContext.runActivity(named: "the thumb drag didn't reach the end") { _ in }
+        }
         beat(2.5)
         shot("05-06-end")
         chapter("Gecko for iOS")
@@ -266,11 +270,20 @@ final class FeatureTour: GeckoUITestCase {
 
     private func openDrawer() {
         drag(from: web.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0.5)).withOffset(CGVector(dx: 2, dy: 0)), to: terminalPoint(0.8, 0.5), hold: 0.02)
+        if !waitFor(4, { ($0["drawer"] as? Bool) == true }) {
+            // The swipe is the device tour's to check; the tour just needs the drawer.
+            XCTContext.runActivity(named: "the swipe didn't open the drawer; opening it from the page") { _ in }
+            js("gecko.toggleSidebar()")
+        }
         waitProbe("the drawer", timeout: 5) { ($0["drawer"] as? Bool) == true }
     }
 
     private func closeDrawer() {
         drag(from: terminalPoint(0.7, 0.5), to: terminalPoint(0.05, 0.5), hold: 0.02)
+        if !waitFor(4, { ($0["drawer"] as? Bool) == false }) {
+            XCTContext.runActivity(named: "the swipe didn't close the drawer; closing it from the page") { _ in }
+            js("gecko.closeDrawer()")
+        }
         waitProbe("the drawer closed", timeout: 5) { ($0["drawer"] as? Bool) == false }
     }
 
