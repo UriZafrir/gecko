@@ -268,9 +268,17 @@ class DeviceMatrixTest {
                 Thread.sleep(800)
                 mouseTab = js("gecko.activeId()") != shellId
                 js("gecko.focusSession($shellId)")
-                // The wheel's scrolling coasts a little: let it end, then back
-                // to the marker for the layout checks.
-                Thread.sleep(1500)
+                // The wheel's scrolling coasts a little: let it end (the
+                // position still for a while), then back to the marker for
+                // the layout checks.
+                var still = 0
+                var y = ""
+                val coastUntil = System.currentTimeMillis() + 6000
+                while (still < 3 && System.currentTimeMillis() < coastUntil) {
+                    Thread.sleep(250)
+                    val now = js("gecko.activePane().term.buffer.active.viewportY")
+                    if (now == y) still++ else { still = 0; y = now }
+                }
                 scrollTo("line 150 of the scrollback")
                 Thread.sleep(1000)
             }
@@ -298,10 +306,15 @@ class DeviceMatrixTest {
 
     /**
      * Turns the display to this shape. UiAutomator freezes the rotation it
-     * asks for, but some images (seen on Android 14 after split screen and
-     * back) ignore it: then the rotation is locked through the window
-     * manager, and the result says so.
+     * asks for, but on Android 12 to 14, after the split-screen steps (a
+     * window forced into split screen with am start, then back to full
+     * screen), the display keeps following the launcher behind (portrait
+     * only) and ignores it. Then the rotation is locked through the window
+     * manager and, if needed, pinned to it over what apps ask for; the
+     * result says so.
      */
+    private var fixed = false
+
     private fun turn(landscape: Boolean) {
         if (landscape) device.setOrientationLandscape() else device.setOrientationPortrait()
         val until = System.currentTimeMillis() + 4000
@@ -313,17 +326,36 @@ class DeviceMatrixTest {
             .filter { it.startsWith("mRotation") || it.contains("mUserRotation") || it.contains("FixedToUserRotation") || it.contains("mIgnoreOrientationRequest") }
             .joinToString(" ").take(240)
         @Suppress("DEPRECATION") val now = ctx.getSystemService(android.view.WindowManager::class.java).defaultDisplay.rotation
-        val rot = (now + 1) % 4 // a quarter turn from here changes the shape
         locked = true
-        if (android.os.Build.VERSION.SDK_INT >= 34) sh("wm user-rotation lock $rot")
-        else { sh("settings put system accelerometer_rotation 0"); sh("settings put system user_rotation $rot") }
-        val until2 = System.currentTimeMillis() + 4000
-        while (System.currentTimeMillis() < until2 && displayWide() != landscape) Thread.sleep(200)
-        note = "UiAutomator's rotation didn't take ($diag); locked rotation $rot through the window manager"
+        // A quarter turn either way changes the shape. Asking again for the
+        // rotation already asked for changes nothing, so go through the
+        // current one first, then each quarter turn, then pin it to the
+        // user rotation (ignoring what apps ask for).
+        val tried = mutableListOf<String>()
+        fun lock(r: Int) {
+            if (android.os.Build.VERSION.SDK_INT >= 34) sh("wm user-rotation lock $r")
+            else { sh("settings put system accelerometer_rotation 0"); sh("settings put system user_rotation $r") }
+        }
+        fun waitWide(ms: Long): Boolean {
+            val end = System.currentTimeMillis() + ms
+            while (System.currentTimeMillis() < end) { if (displayWide() == landscape) return true; Thread.sleep(200) }
+            return false
+        }
+        for (r in listOf((now + 1) % 4, (now + 3) % 4)) {
+            lock(now); Thread.sleep(400); lock(r); tried += "rotation $r"
+            if (waitWide(3000)) break
+        }
+        if (displayWide() != landscape && android.os.Build.VERSION.SDK_INT >= 29) {
+            sh("wm fixed-to-user-rotation enabled"); fixed = true; tried += "fixed to the user rotation"
+            waitWide(3000)
+        }
+        val rot = tried.joinToString(", then ")
+        note = "UiAutomator's rotation didn't take ($diag); tried $rot through the window manager: ${if (displayWide() == landscape) "that took" else "still not turned"}"
     }
 
     private fun restore(states: Map<String, Int>) {
         try { device.unfreezeRotation() } catch (_: Exception) {}
+        if (fixed) sh("wm fixed-to-user-rotation default")
         if (locked) { if (android.os.Build.VERSION.SDK_INT >= 34) sh("wm user-rotation free") else sh("settings put system accelerometer_rotation 1") }
         sh("settings put system font_scale 1.0")
         sh("cmd uimode night no")
