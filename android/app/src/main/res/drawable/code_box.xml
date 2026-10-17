@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A command to copy, terminal-colored in light and dark mode alike. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/gecko_bg" />
+    <corners android:radius="10dp" />
+</shape>

@@ -29,6 +29,10 @@ func cmdService(args []string) error {
 		return err
 	}
 	fmt.Println("installed", p)
+	if config.IsTermux() {
+		fmt.Println("it runs when the phone starts, with the Termux:Boot app (F-Droid or GitHub, from the same place as Termux); open Termux:Boot once")
+		return nil
+	}
 	if runtime.GOOS == "linux" {
 		fmt.Println("to keep sessions alive after you log out everywhere, run: loginctl enable-linger $USER")
 		fmt.Println("(stop a running daemon with `gecko stop`, then `systemctl --user start gecko`)")
@@ -40,6 +44,11 @@ func cmdService(args []string) error {
 // a reboot doesn't leave the machine without a daemon until someone
 // remembers `gecko service install`. It never fails the command.
 func autoService() {
+	// Android has no systemd. In Termux, start at boot needs the Termux:Boot
+	// app, so it is set up only when asked (`gecko service install`).
+	if config.IsAndroid() {
+		return
+	}
 	p := servicePath()
 	if p == "" || fileExists(p) || fileExists(serviceOptOut()) {
 		return
@@ -102,6 +111,12 @@ func serviceOptOut() string { return filepath.Join(config.Home(), "no-login-serv
 // Gecko can't install one.
 func servicePath() string {
 	home, _ := os.UserHomeDir()
+	if config.IsTermux() {
+		return filepath.Join(home, ".termux", "boot", "gecko")
+	}
+	if config.IsAndroid() {
+		return "" // the Gecko app starts it
+	}
 	switch runtime.GOOS {
 	case "linux":
 		return filepath.Join(home, ".config", "systemd", "user", "gecko.service")
@@ -127,8 +142,12 @@ func installService(start bool) (string, error) {
 	exe, _ = filepath.EvalSymlinks(exe)
 	home, _ := os.UserHomeDir()
 	var body string
-	switch runtime.GOOS {
-	case "linux":
+	switch {
+	case config.IsTermux():
+		// A Termux:Boot script: it runs when the phone starts. The wake lock
+		// keeps Android from pausing Termux while nobody looks at it.
+		body = fmt.Sprintf("#!%s/bin/sh\n# Starts Gecko when the phone starts (Termux:Boot). Written by `gecko service install`.\ntermux-wake-lock\nexec %s daemon\n", config.TermuxPrefix(), exe)
+	case runtime.GOOS == "linux":
 		body = fmt.Sprintf(`[Unit]
 Description=Gecko terminal daemon
 
@@ -140,7 +159,7 @@ KillMode=process
 [Install]
 WantedBy=default.target
 `, exe)
-	case "darwin":
+	case runtime.GOOS == "darwin":
 		body = fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
@@ -151,23 +170,28 @@ WantedBy=default.target
   <key>StandardErrorPath</key><string>%s/Library/Logs/gecko.log</string>
 </dict></plist>
 `, exe, home)
-	case "windows":
+	case runtime.GOOS == "windows":
 		body = fmt.Sprintf("CreateObject(\"WScript.Shell\").Run \"\"\"%s\"\" daemon\", 0, False\r\n", exe)
 	}
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+	mode := os.FileMode(0o644)
+	if config.IsTermux() {
+		mode = 0o755
+	}
+	if err := os.WriteFile(p, []byte(body), mode); err != nil {
 		return "", err
 	}
-	switch runtime.GOOS {
-	case "linux":
+	switch {
+	case config.IsTermux():
+	case runtime.GOOS == "linux":
 		_ = exec.Command("systemctl", "--user", "daemon-reload").Run()
 		if out, err := exec.Command("systemctl", "--user", "enable", "gecko.service").CombinedOutput(); err != nil {
 			os.Remove(p)
 			return "", fmt.Errorf("systemctl: %s", out)
 		}
-	case "darwin":
+	case runtime.GOOS == "darwin":
 		if start {
 			_ = exec.Command("launchctl", "load", "-w", p).Run()
 		}
@@ -183,7 +207,7 @@ func uninstallService() error {
 		return fmt.Errorf("not supported on %s", runtime.GOOS)
 	}
 	// Not `launchctl unload`: that would stop the daemon and its sessions.
-	if runtime.GOOS == "linux" {
+	if runtime.GOOS == "linux" && !config.IsAndroid() {
 		_ = exec.Command("systemctl", "--user", "disable", "gecko.service").Run()
 	}
 	if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {

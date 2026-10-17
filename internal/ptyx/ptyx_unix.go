@@ -33,7 +33,8 @@ func Start(opts Options) (Pty, error) {
 	if p, err := execx.LookPath(name); err == nil {
 		name = p // not exec's own lookup: it can crash on Android (see execx.LookPath)
 	}
-	cmd := exec.Command(name, opts.Argv[1:]...)
+	argv := execx.Shebang(append([]string{name}, opts.Argv[1:]...)) // scripts in Termux
+	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir = opts.Dir
 	cmd.Env = opts.Env
 	ptmx, tty, err := pty.Open()

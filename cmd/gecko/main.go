@@ -91,6 +91,8 @@ func main() {
 	case "gecko-askpass":
 		os.Exit(askpass(os.Args[1:]))
 	}
+	// No /etc/resolv.conf on Android: use the app's or Termux's DNS file.
+	sshc.UseForDefault()
 	args := os.Args[1:]
 	cmd := ""
 	if len(args) > 0 {
@@ -190,6 +192,14 @@ func cmdDefault() error {
 	}
 	c.Close()
 	autoService()
+	if config.IsTermux() {
+		fmt.Println("gecko daemon is running in Termux. Open this link in a browser, or with Paste link in the Gecko app (or tap Termux there):")
+		if err := cmdURL(); err != nil {
+			return err
+		}
+		fmt.Println()
+		return cmdList(nil)
+	}
 	if headless() {
 		fmt.Println("gecko daemon is running. Over SSH, use `gecko attach <session>` or open the web UI:")
 		if err := cmdURL(); err != nil {
