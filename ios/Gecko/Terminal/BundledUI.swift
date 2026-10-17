@@ -102,6 +102,17 @@ enum BridgeScript {
       i.onload = function () { window.__geckoAsset = 'ok'; };
       i.onerror = function () { window.__geckoAsset = 'error'; };
       i.src = 'gecko-asset://ui/icon.svg';
+      // What touches reach the page (the last few events, and the most fingers at once).
+      var t = window.__geckoTouch = { max: 0, log: [] };
+      ['touchstart', 'touchmove', 'touchend', 'touchcancel', 'gesturestart', 'gestureend'].forEach(function (k) {
+        window.addEventListener(k, function (e) {
+          var n = e.touches ? e.touches.length : -1;
+          if (n > t.max) t.max = n;
+          var last = t.log[t.log.length - 1];
+          if (last && last.k === k && last.n === n) last.c++; else t.log.push({ k: k, n: n, c: 1 });
+          if (t.log.length > 12) t.log.shift();
+        }, { capture: true, passive: true });
+      });
     })();
     """
 
@@ -130,6 +141,9 @@ enum BridgeScript {
         r.ios = document.documentElement.classList.contains('ios');
         r.keybar = getComputedStyle(document.getElementById('keybar')).display;
         r.asset = window.__geckoAsset || '';
+        var t = window.__geckoTouch;
+        if (t) r.touch = t.max + ' ' + t.log.map(function (x) { return x.k.replace('touch', '') + x.n + 'x' + x.c; }).join(',');
+        if (g.touchStats) r.gesture = g.touchStats.kind + ' ' + (g.touchStats.what || '');
         r.agents = g.allAgents().map(function (a) { return a.state.status; });
         r.ctrl = !!g.mods.ctrl; r.palette = !!g.paletteOpen; r.textview = !!g.textViewOpen;
         r.focus = document.activeElement ? document.activeElement.tagName + '.' + document.activeElement.className : '';
