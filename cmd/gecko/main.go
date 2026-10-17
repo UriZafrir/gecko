@@ -25,6 +25,7 @@ import (
 	"github.com/gecko-term/gecko/internal/client"
 	"github.com/gecko-term/gecko/internal/config"
 	"github.com/gecko-term/gecko/internal/daemon"
+	"github.com/gecko-term/gecko/internal/execx"
 	"github.com/gecko-term/gecko/internal/hostsetup"
 	"github.com/gecko-term/gecko/internal/proto"
 	"github.com/gecko-term/gecko/internal/server"
@@ -350,7 +351,7 @@ func cmdOpen() error {
 				return exec.Command(p, append([]string{app, "--class=gecko"}, flags...)...).Start()
 			}
 		}
-		return exec.Command("xdg-open", u).Start()
+		return execx.Command("xdg-open", u).Start() // Termux: its termux-open script
 	}
 }
 

@@ -20,6 +20,7 @@ import (
 
 	"github.com/gecko-term/gecko/internal/cloud"
 	"github.com/gecko-term/gecko/internal/config"
+	"github.com/gecko-term/gecko/internal/execx"
 	"github.com/gecko-term/gecko/internal/hub"
 	"github.com/gecko-term/gecko/internal/inspect"
 	"github.com/gecko-term/gecko/internal/proto"
@@ -242,7 +243,7 @@ func LogPath() string { return filepath.Join(config.StateDir(), "daemon.log") }
 // Spawn starts the daemon in the background, detached from this terminal
 // and session so it outlives SSH / mosh disconnects.
 func Spawn() error {
-	exe, err := os.Executable()
+	exe, err := config.Executable()
 	if err != nil {
 		return err
 	}
@@ -264,6 +265,7 @@ func Spawn() error {
 		cmd.Dir = home
 	}
 	detach(cmd)
+	execx.ThroughLinker(cmd)
 	if err := cmd.Start(); err != nil {
 		return err
 	}

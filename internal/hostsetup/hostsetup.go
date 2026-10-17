@@ -197,7 +197,7 @@ func splitPlatform(p string) (string, string) {
 // Binary finds a gecko binary for goos/goarch: this one if it matches, else
 // one built by `make dist` next to it or in ./dist.
 func Binary(goos, goarch string) (string, error) {
-	exe, err := os.Executable()
+	exe, err := config.Executable()
 	if err != nil {
 		return "", err
 	}

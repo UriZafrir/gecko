@@ -53,7 +53,7 @@ func autoService() {
 	if p == "" || fileExists(p) || fileExists(serviceOptOut()) {
 		return
 	}
-	exe, err := os.Executable()
+	exe, err := config.Executable()
 	if err != nil || notTheInstalledGecko(exe) {
 		return
 	}
@@ -135,7 +135,7 @@ func installService(start bool) (string, error) {
 	if p == "" {
 		return "", fmt.Errorf("not supported on %s; run `gecko daemon` from your init system", runtime.GOOS)
 	}
-	exe, err := os.Executable()
+	exe, err := config.Executable()
 	if err != nil {
 		return "", err
 	}

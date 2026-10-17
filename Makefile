@@ -26,10 +26,30 @@ test:
 	$(GO) test ./...
 	node --test web/src/gestures.test.mjs web/src/build.test.mjs web/src/ime.test.mjs
 
-# Cross-compiled binaries; `gecko host install` picks the right one.
+# Cross-compiled binaries; `gecko host install` picks the right one, and
+# the Termux installer downloads the Linux ones.
+#
+# The Linux binaries are static-PIE: they run on any Linux, and also where
+# a program has to be started by Android's linker (/system/bin/linker64,
+# as Termux from Google Play does), which loads only position-independent
+# programs. Go's own linker can't make a static PIE, so these are linked by
+# zig (https://ziglang.org, 0.13.0) against musl. Only the startup code and
+# the linker come from there: net and os/user stay pure Go (netgo,
+# osusergo), as in every other build. internal/staticpie (tag staticpie)
+# has the entry point that lets Android's linker start them, and zigcc, the
+# C compiler for Go. ZIG names the zig to use.
+ZIG ?= zig
 dist: web
+	@command -v $(ZIG) >/dev/null 2>&1 || { echo "make dist needs zig 0.13.0 for the static-PIE Linux binaries: get it from https://ziglang.org/download/ and put it on PATH, or set ZIG=/path/to/zig" >&2; exit 1; }
 	@mkdir -p dist
-	for t in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64 freebsd/amd64; do \
+	for t in linux/amd64:x86_64 linux/arm64:aarch64; do \
+		arch=$${t%:*}; arch=$${arch#*/}; \
+		ZIG="$(ZIG)" CGO_ENABLED=1 GOOS=linux GOARCH=$$arch CC="$(CURDIR)/internal/staticpie/zigcc $${t#*:}-linux-musl" \
+			$(GO) build -trimpath -tags netgo,osusergo,staticpie -buildmode=pie \
+			-ldflags "$(LDFLAGS) -linkmode=external '-extldflags=-static-pie -Wl,-e,gecko_start -Wl,--strip-all'" \
+			-o dist/gecko-linux-$$arch ./cmd/gecko || exit 1; \
+	done
+	for t in darwin/amd64 darwin/arm64 windows/amd64 windows/arm64 freebsd/amd64; do \
 		os=$${t%/*}; arch=$${t#*/}; ext=; [ $$os = windows ] && ext=.exe; \
 		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch $(GO) build -trimpath -ldflags "$(LDFLAGS)" -o dist/gecko-$$os-$$arch$$ext ./cmd/gecko || exit 1; \
 	done

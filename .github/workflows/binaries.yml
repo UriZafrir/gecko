@@ -1,0 +1,128 @@
+# The plain Linux binaries (make dist): dist/gecko-linux-amd64 and -arm64,
+# static-PIE, linked by zig against musl (see the Makefile). The Termux
+# installer downloads them, and `gecko host install` copies them to other
+# machines. Each is smoke-tested on its own CPU with a fresh GECKO_HOME,
+# started directly and through Android's linker (as Termux from Google Play
+# does, packaging/termux/linker-smoke.sh); a v* tag attaches them to the
+# draft GitHub release.
+name: Linux binaries
+
+on:
+  push:
+    branches: [feature/pie]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: binaries-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ZIG_VERSION: 0.13.0
+  # sha256 of zig-linux-x86_64-0.13.0.tar.xz, from ziglang.org/download/index.json.
+  ZIG_SHA256: d45312e61ebcc48032b77bc4cf7fd6915c11fa16e4aad116b66c9468211230ea
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: zig
+        run: |
+          f=zig-linux-x86_64-$ZIG_VERSION
+          curl -fsSL -o /tmp/zig.tar.xz https://ziglang.org/download/$ZIG_VERSION/$f.tar.xz
+          echo "$ZIG_SHA256  /tmp/zig.tar.xz" | sha256sum -c
+          tar -C "$RUNNER_TEMP" -xf /tmp/zig.tar.xz
+          echo "$RUNNER_TEMP/$f" >>"$GITHUB_PATH"
+      - name: make dist
+        run: make dist
+      - name: Static-PIE
+        run: |
+          for a in amd64 arm64; do
+            file dist/gecko-linux-$a | tee /dev/stderr | grep -q 'static-pie linked'
+          done
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: gecko-linux
+          path: |
+            dist/gecko-linux-amd64
+            dist/gecko-linux-arm64
+          retention-days: 14
+
+  smoke:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: amd64, runner: ubuntu-24.04 }
+          - { arch: arm64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: gecko-linux
+          path: bin
+      - name: gecko version, daemon, /api/info
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          g=bin/gecko-linux-$ARCH
+          chmod 755 bin/*
+          uname -m; file $g
+          $g version </dev/null | tee /dev/stderr | grep -q "linux/$ARCH"
+          export GECKO_HOME=$(mktemp -d)
+          $g daemon --listen 127.0.0.1:7690 </dev/null >"$GECKO_HOME/daemon.log" 2>&1 &
+          for i in $(seq 50); do [ -s "$GECKO_HOME/token" ] && curl -fsS -o /dev/null http://127.0.0.1:7690/ && break; sleep 0.2; done
+          curl -fsS -H "Authorization: Bearer $(cat "$GECKO_HOME/token")" http://127.0.0.1:7690/api/info | tee /dev/stderr | grep -q '"version"'
+          $g ls </dev/null
+          $g stop </dev/null
+          cat "$GECKO_HOME/daemon.log"
+      # Termux from Google Play starts programs through Android's linker.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: src
+          sparse-checkout: packaging/termux
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/gecko-android-linker
+          key: android-linker-${{ matrix.arch }}-${{ hashFiles('src/packaging/termux/linker-smoke.sh') }}
+      - name: Through Android's linker
+        run: src/packaging/termux/linker-smoke.sh bin/gecko-linux-${{ matrix.arch }} ${{ matrix.arch }}
+
+  # A v* tag: the binaries go to the draft GitHub release for that tag.
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build, smoke]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: gecko-linux
+          path: rel
+      - name: Attach to the draft release for this tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          R: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release view "$TAG" -R "$R" >/dev/null 2>&1 ||
+            gh release create "$TAG" -R "$R" --draft --verify-tag --title "Gecko $TAG" \
+              --notes "Installers built by the Desktop and Linux packages workflows. Draft: review before publishing." ||
+            sleep 10
+          gh release upload "$TAG" -R "$R" --clobber rel/gecko-linux-amd64 rel/gecko-linux-arm64
