@@ -20,8 +20,8 @@
 //   TOUR_AGENTS         0: skip the agents chapter (no agent detection)
 //   TOUR_AGENTS_WHY     caption when it is skipped
 //   TOUR_TMUX           0: no tmux part in the scrolling chapter
-//   TOUR_SEE_THROUGH    caption on how this platform shows what is behind
-//                       the window (vibrancy, acrylic, a compositor)
+//   TOUR_SEE_THROUGH    caption at 70% opacity: what shows through the
+//                       window on this platform (and when it doesn't, why)
 //   TOUR_SKIP           comma-separated chapter numbers to skip
 const fs = require('fs');
 let pw;
@@ -427,13 +427,13 @@ async function transparency() {
     await palette('background opacity');
     await sleep(1200);
     await steps(3);
-    caption('85%: a hint of what is behind');
+    caption('85%: the background starts to fade');
     await sleep(3200);
     await steps(3);
-    caption('70%: the notes window and the wallpaper clearly show through');
+    caption(`70%: ${env.TOUR_SEE_THROUGH || 'what is behind the window shows through'}`);
     await sleep(3000);
     await steps(2);
-    caption(`50%: very see-through. ${env.TOUR_SEE_THROUGH || ''}`.trim());
+    caption('50%: the lowest step');
     await sleep(3500);
     await page.keyboard.press('ArrowUp');
     await sleep(700);
@@ -446,7 +446,7 @@ async function transparency() {
     await sleep(800);
     await page.keyboard.press('Enter');
     await sleep(600);
-    caption('Cyberpunk at 60%: the photo fades into what is behind the window');
+    caption('Cyberpunk at 60%: the photo fades as well');
     await sleep(5000);
     await palette('change theme');
     await sleep(800);

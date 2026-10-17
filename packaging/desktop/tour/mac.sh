@@ -91,7 +91,7 @@ TOUR_CDP=$CDP TOUR_PLATFORM=mac TOUR_CAPTIONS=$OUT/captions.txt TOUR_BOUNDS=0,25
 	TOUR_PHONE_LABEL='a second client (Chrome, sized like a phone)' \
 	TOUR_REMOTE=localhost TOUR_REMOTE_NAME=$([ $REMOTE_ADDED = 1 ] && echo second || echo mac-ci-2) \
 	TOUR_REMOTE_LABEL="$REMOTE_LABEL" TOUR_REMOTE_ADDED=$REMOTE_ADDED TOUR_TMUX=$(command -v tmux >/dev/null && echo 1 || echo 0) \
-	TOUR_SEE_THROUGH='macOS blurs what is behind (vibrancy)' \
+	TOUR_SEE_THROUGH='on macOS this is a vibrancy blur, which renders as plain gray on this CI virtual machine, so nothing shows through here' \
 	node "$HERE/tour.cjs" </dev/null 2>&1 | tee "$OUT/tour.log"
 rc=${PIPESTATUS[0]}
 sleep 1
