@@ -188,7 +188,10 @@ async function windowsFrame(check) {
   const before = g;
   mouseDrag(g.x + g.iw * 0.6, g.y + 16, g.x + g.iw * 0.6 + 50, g.y + 16 + 30);
   g = await geo();
-  ok('windows: dragging the tab bar moves the window', g.x === before.x + 50 && g.y === before.y + 30, `from ${before.x},${before.y} to ${g.x},${g.y}`);
+  // Windows starts a drag a few pixels in (SM_CXDRAG), so the window lags
+  // the mouse by that much.
+  const near = (v, want) => Math.abs(v - want) <= 8;
+  ok('windows: dragging the tab bar moves the window', near(g.x, before.x + 50) && near(g.y, before.y + 30), `mouse moved by 50,30; window from ${before.x},${before.y} to ${g.x},${g.y}`);
   const b2 = g;
   mouseDrag(g.x + g.w - 3, g.y + g.h - 3, g.x + g.w + 77, g.y + g.h + 37);
   g = await geo();

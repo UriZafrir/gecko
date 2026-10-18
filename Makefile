@@ -24,7 +24,7 @@ build:
 test:
 	$(GO) vet ./...
 	$(GO) test ./...
-	node --test web/src/gestures.test.mjs web/src/build.test.mjs web/src/ime.test.mjs web/src/themes.test.mjs
+	node --test web/src/gestures.test.mjs web/src/build.test.mjs web/src/ime.test.mjs web/src/themes.test.mjs web/src/transparency.test.mjs
 
 # Cross-compiled binaries; `gecko host install` picks the right one, and
 # the Termux installer downloads the Linux ones.

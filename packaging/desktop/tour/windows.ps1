@@ -44,7 +44,7 @@ Log "ffmpeg: $ff"
 
 # Behind the window, for the transparency chapter: a photo wallpaper and a
 # Chrome window with big text, opened before Gecko so Gecko is on top.
-# Transparency effects on, so acrylic can render.
+# Transparency effects on, as on most desktops.
 $chrome = @("C:\Program Files\Google\Chrome\Application\chrome.exe", "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
 $pers = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
 New-Item -Force -Path $pers -ErrorAction SilentlyContinue | Out-Null
@@ -83,7 +83,6 @@ $env:TOUR_PHONE_PROFILE = Join-Path $env:RUNNER_TEMP "phone"
 $env:TOUR_PHONE_LABEL = "a second client (Chrome, sized like a phone)"
 $env:TOUR_REMOTE_NAME = "second"; $env:TOUR_REMOTE_ADDED = "1"
 $env:TOUR_REMOTE_LABEL = "a second Gecko daemon on this runner (own home and port), connected with gecko bridge"
-$env:TOUR_SEE_THROUGH = "on Windows this is acrylic, which renders as plain gray on this Windows Server CI runner, so nothing shows through here"
 $env:TOUR_AGENTS = "0"
 $env:TOUR_OUTSIDE = "1"; $env:TOUR_GECKO = $G
 $env:TOUR_AGENTS_WHY = "skipped on Windows: the Windows daemon can't inspect processes yet, so it doesn't detect agents"
