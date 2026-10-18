@@ -247,6 +247,18 @@ class TerminalActivity : AppCompatActivity() {
         super.onPause()
     }
 
+    /**
+     * A hardware keyboard's keys go to the view with focus, and until the
+     * terminal has been touched that can be none (the app's first start
+     * after the phone boots, before any touch): the page had its terminal
+     * focused, but Shift+Tab, Tab and the rest went nowhere. With nothing
+     * focused, the web view takes them.
+     */
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (currentFocus == null && event.keyCode != android.view.KeyEvent.KEYCODE_BACK && ::web.isInitialized && web.isShown) web.requestFocus()
+        return super.dispatchKeyEvent(event)
+    }
+
     private val keyboards = object : android.hardware.input.InputManager.InputDeviceListener {
         override fun onInputDeviceAdded(id: Int) = keys.setHardwareKeyboard(hasHardwareKeyboard())
         override fun onInputDeviceRemoved(id: Int) = keys.setHardwareKeyboard(hasHardwareKeyboard())
@@ -495,6 +507,7 @@ class TerminalActivity : AppCompatActivity() {
                         applyKeepScreenOn()
                     }
                     R.id.background -> if (item.isChecked) WatchService.stop(this@TerminalActivity) else startBackground()
+                    R.id.shift_tab -> pressKey("shift-tab")
                     R.id.palette -> web.evaluateJavascript("window.gecko&&gecko.openPalette()", null)
                     R.id.reload -> load()
                     R.id.machines -> leave()

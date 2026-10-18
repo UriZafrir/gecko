@@ -2,6 +2,15 @@
    Beyond the accent, color carries meaning only for agent state:
    green = working, spot orange = needs you, grey-green = idle. */
 
+/* The terminal's fallback for the technical symbols (fonts/make-symbols.py),
+   among them Claude Code's mode marks: Android has no U+23F5 (a box) and
+   draws U+23F8 and U+23FA as colour emoji. Each file is fetched only when
+   a character in its range is on screen. */
+@font-face { font-family: "Gecko Symbols"; font-display: swap; src: url("fonts/gecko-symbols-b.woff2") format("woff2");
+  unicode-range: U+2300-23E8; }
+@font-face { font-family: "Gecko Symbols"; font-display: swap; src: url("fonts/gecko-symbols-a.woff2") format("woff2");
+  unicode-range: U+2316-23FF; }
+
 :root {
   --bg: #323c35;
   --panel: #2c352f;
@@ -17,7 +26,7 @@
   --on-accent: #323c35;
   --brand: #a3be8c; /* the foot in the start animation */
   --ui: "Instrument Sans Variable", "Instrument Sans", system-ui, sans-serif;
-  --mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  --mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, Menlo, Consolas, "Gecko Symbols", monospace;
   --side: 256px;
   /* Big surfaces. Opaque in the browser; the desktop app makes them
      translucent (see paintTheme), while cards, menus and inputs stay solid. */
@@ -714,7 +723,10 @@ input, textarea, [contenteditable] { cursor: text; user-select: text; -webkit-us
   .dock-fold.s-needs-input { color: var(--need); box-shadow: inset 0 0 0 1.5px var(--need); }
   .dock-fold.s-needs-input b { color: var(--need); }
   #dock:not(.folded) .dock-fold { width: 30px; padding: 0; justify-content: center; }
-  #dock:not(.folded) .dock-fold span { display: inline-block; transform: rotate(90deg); font-size: 16px; }
+  #dock:not(.folded) .dock-fold .chev {
+    display: block; width: 12px; height: 12px; flex: none;
+    fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round;
+  }
   #dock.folded { padding: 4px 6px; }
   #dock.folded .agent { display: none; }
   .agent {
@@ -749,10 +761,12 @@ input, textarea, [contenteditable] { cursor: text; user-select: text; -webkit-us
   #keybar::-webkit-scrollbar { display: none; }
   #keybar button {
     flex: none; min-width: 40px; height: 36px; padding: 0 9px; border-radius: 7px;
+    display: inline-flex; align-items: center; justify-content: center;
     font: 13px var(--mono); background: var(--bg); box-shadow: inset 0 0 0 1px var(--line), 0 1px 0 var(--line);
     touch-action: manipulation;
   }
   #keybar button.on { background: var(--accent); color: var(--on-accent); }
+  #keybar .ki { display: block; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
   #keybar [data-k=select], #keybar [data-k=paste], #keybar [data-k=compose] { font-family: var(--ui); }
 }
 
