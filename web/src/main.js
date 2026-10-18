@@ -2748,7 +2748,7 @@ class App {
   // esc, tab, ctrl, alt, arrows, ctrl-c, pgup... or text to type.
   pressKey(k, text) {
     const seq = {
-      esc: '\x1b', tab: '\t', up: '\x1b[A', down: '\x1b[B', left: '\x1b[D', right: '\x1b[C',
+      esc: '\x1b', tab: '\t', 'shift-tab': '\x1b[Z', up: '\x1b[A', down: '\x1b[B', left: '\x1b[D', right: '\x1b[C',
       pgup: '\x1b[5~', pgdn: '\x1b[6~', home: '\x1b[H', end: '\x1b[F', 'ctrl-c': '\x03', 'ctrl-d': '\x04',
       pipe: '|', slash: '/', dash: '-', tilde: '~',
     };

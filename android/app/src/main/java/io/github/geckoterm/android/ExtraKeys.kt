@@ -23,9 +23,9 @@ import android.widget.TextView
  * The row of keys a phone keyboard lacks, above the keyboard: Esc, Tab,
  * sticky Ctrl and Alt, arrows (they repeat while held) and the symbols that
  * are awkward to reach. Keys never take focus, so the keyboard stays up.
- * Arrows and the menu are drawn icons, centred in their keys,
+ * Arrows, Shift+Tab and the menu are drawn icons, centred in their keys,
  * not text: a font's arrow characters sit wherever its baseline puts them
- * and differ from phone to phone.
+ * and differ from phone to phone. Holding Tab sends Shift+Tab too.
  */
 class ExtraKeys @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = null) : LinearLayout(ctx, attrs) {
     data class Key(val name: String, val label: String, val repeat: Boolean = false, val wide: Boolean = false, val description: String? = null, val icon: Int = 0)
@@ -134,11 +134,25 @@ class ExtraKeys @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = n
         }
         size(v, k)
         var repeating: Runnable? = null
+        var held: Runnable? = null
+        var heldFired = false
         v.setOnTouchListener { view, ev ->
             when (ev.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     view.isPressed = true
                     view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                    if (k.name == "tab") {
+                        // Tab on release; held, it's Shift+Tab (Claude Code's mode switch).
+                        heldFired = false
+                        val r = Runnable {
+                            heldFired = true
+                            view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                            press(KEYS.first { it.name == "shift-tab" })
+                        }
+                        held = r
+                        handler.postDelayed(r, HOLD_MS)
+                        return@setOnTouchListener true
+                    }
                     press(k)
                     if (k.repeat) {
                         val r = object : Runnable {
@@ -155,6 +169,11 @@ class ExtraKeys @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = n
                     view.isPressed = false
                     repeating?.let { handler.removeCallbacks(it) }
                     repeating = null
+                    held?.let {
+                        handler.removeCallbacks(it)
+                        if (!heldFired && ev.actionMasked == MotionEvent.ACTION_UP) press(k)
+                    }
+                    held = null
                     if (ev.actionMasked == MotionEvent.ACTION_UP) view.performClick()
                 }
             }
@@ -201,7 +220,8 @@ class ExtraKeys @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = n
     companion object {
         val KEYS = listOf(
             Key("esc", "esc", wide = true),
-            Key("tab", "tab", wide = true),
+            Key("tab", "tab", wide = true, description = "Tab (hold for Shift+Tab)"),
+            Key("shift-tab", "", wide = true, description = "Shift+Tab", icon = R.drawable.key_backtab),
             Key("ctrl", "ctrl", wide = true),
             Key("alt", "alt", wide = true),
             Key("left", "", repeat = true, description = "Left", icon = R.drawable.key_left),
@@ -224,9 +244,12 @@ class ExtraKeys @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = n
 
         val MENU = Key("menu", "", icon = R.drawable.key_menu)
 
+        /** How long Tab is held before it's Shift+Tab. */
+        const val HOLD_MS = 450L
+
         /** What each key sends when the web UI is too old to have pressKey. */
         val FALLBACK = mapOf(
-            "esc" to "\u001b", "tab" to "\t", "up" to "\u001b[A", "down" to "\u001b[B", "left" to "\u001b[D", "right" to "\u001b[C",
+            "esc" to "\u001b", "tab" to "\t", "shift-tab" to "\u001b[Z", "up" to "\u001b[A", "down" to "\u001b[B", "left" to "\u001b[D", "right" to "\u001b[C",
             "pipe" to "|", "tilde" to "~", "slash" to "/", "dash" to "-", "ctrl-c" to "\u0003",
             "home" to "\u001b[H", "end" to "\u001b[F", "pgup" to "\u001b[5~", "pgdn" to "\u001b[6~",
         )
