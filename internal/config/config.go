@@ -18,10 +18,16 @@ import (
 )
 
 // Host is a remote machine reached through SSH (or any command that runs
-// `gecko bridge` on the other side).
+// `gecko bridge` on the other side), or directly at its Gecko link.
 type Host struct {
-	Name    string   `json:"name"`
-	SSH     string   `json:"ssh,omitempty"`     // ssh destination, e.g. me@devbox
+	Name string `json:"name"`
+	SSH  string `json:"ssh,omitempty"` // ssh destination, e.g. me@devbox
+	// URL and Token: a Gecko reached at its web address (what `gecko url`
+	// prints) instead of over SSH, such as Gecko in Termux next to the
+	// Android app's own. The token is a secret: this file is mode 0600,
+	// and it is never shown in the interface.
+	URL     string   `json:"url,omitempty"`
+	Token   string   `json:"token,omitempty"`
 	Gecko   string   `json:"gecko,omitempty"`   // path to gecko on the remote
 	Command []string `json:"command,omitempty"` // custom transport, overrides SSH
 	// Machine is its id in your Gecko account, learned when it is signed

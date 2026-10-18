@@ -128,7 +128,7 @@ const (
 	TSearch      = "search"      // text -> reply{matches}: lines in any session containing text
 	TInput       = "input"       // id, data (text) - JSON alternative to binary input frames
 	TOpenWS      = "openws"      // name -> creates the tabs of a workspace template
-	TAddHost     = "addhost"     // name, target, data (gecko path on the host)
+	TAddHost     = "addhost"     // name, target, data (gecko path on the host); kind "link": secret is the Gecko link, data "nocheck" adds it without connecting first
 	TProbeHost   = "probehost"   // target, data, sub -> "hostlog" pushes, reply{os, text (version), missing}
 	TInstall     = "installhost" // target, os ("linux/amd64"), sub -> "hostlog" pushes, reply
 	THostLog     = "hostlog"     // push: sub, text (one line of ssh output)
@@ -301,10 +301,12 @@ type HostInfo struct {
 	// RTT is the last measured round trip from this hub to that machine,
 	// in milliseconds (0 = not measured yet, or the local machine).
 	RTT int `json:"rtt,omitempty"`
-	// Kind is how Gecko reaches it: local, ssh or cloud (through the relay).
+	// Kind is how Gecko reaches it: local, ssh, link (its Gecko link, see
+	// hub.KindLink; Target is then its address, never the token) or cloud
+	// (through the relay).
 	Kind    string `json:"kind,omitempty"`
 	Machine string `json:"machine,omitempty"` // id in the account, when signed in
-	Via     string `json:"via,omitempty"`     // path of the live link: ssh or relay
+	Via     string `json:"via,omitempty"`     // path of the live link: ssh, link or relay
 	// LastSeen is when the relay last saw it connected (unix ms; cloud).
 	LastSeen int64 `json:"lastSeen,omitempty"`
 }

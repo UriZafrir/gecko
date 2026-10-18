@@ -126,7 +126,8 @@ fi
 
 cat <<'MSG'
 
-Start it: run `gecko` (it prints the link to open), or tap Termux in the
-Gecko app. Worth having too: pkg install git tmux nodejs openssh
+Start it: run `gecko` (it prints the link to open), or in the Gecko app tap
+Termux under This phone: it becomes one of This phone's machines.
+Worth having too: pkg install git tmux nodejs openssh
 To keep it running in the background: termux-wake-lock
 MSG
