@@ -36,7 +36,7 @@ splash.set(0.4); // the app's code is here
 import { Conn } from './conn.js';
 import { Terminal } from '@xterm/xterm';
 import { WebglAddon } from '@xterm/addon-webgl';
-import { Pane, FONT } from './pane.js';
+import { Pane, FONT, SYMBOLS_SAMPLE } from './pane.js';
 import { THEMES, AUTO, resolveTheme, paintTheme, swatch } from './themes.js';
 import { Keys, prettyCombo, comboOf, ACTIONS, DEFAULTS, DEFAULT_TAB_MODIFIER, TAB_MODIFIERS } from './keys.js';
 import { startupChime } from './sound.js';
@@ -1144,7 +1144,9 @@ class App {
     if (this.termFontWanted === f) return;
     this.termFontWanted = f;
     const first = f.split(',')[0].trim();
-    try { await document.fonts.load(`${this.termFontSize()}px ${first}`); } catch {}
+    // The symbols fallback too: the WebGL renderer draws on a canvas, which
+    // doesn't fetch a font for a character it lacks (the DOM renderer does).
+    try { await Promise.all([document.fonts.load(`${this.termFontSize()}px ${first}`), document.fonts.load(`${this.termFontSize()}px "Gecko Symbols"`, SYMBOLS_SAMPLE)]); } catch {}
     if (this.termFontWanted !== f) return; // changed again meanwhile
     this.termFont = f; // new terminals use it from now on
     for (const p of this.panes?.values() || []) p.setFontFamily(f);

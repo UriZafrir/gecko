@@ -2,6 +2,15 @@
    Beyond the accent, color carries meaning only for agent state:
    green = working, spot orange = needs you, grey-green = idle. */
 
+/* The terminal's fallback for the technical symbols (fonts/make-symbols.py),
+   among them Claude Code's mode marks: Android has no U+23F5 (a box) and
+   draws U+23F8 and U+23FA as colour emoji. Each file is fetched only when
+   a character in its range is on screen. */
+@font-face { font-family: "Gecko Symbols"; font-display: swap; src: url("fonts/gecko-symbols-b.woff2") format("woff2");
+  unicode-range: U+2300-23E8; }
+@font-face { font-family: "Gecko Symbols"; font-display: swap; src: url("fonts/gecko-symbols-a.woff2") format("woff2");
+  unicode-range: U+2316-23FF; }
+
 :root {
   --bg: #323c35;
   --panel: #2c352f;
@@ -17,7 +26,7 @@
   --on-accent: #323c35;
   --brand: #a3be8c; /* the foot in the start animation */
   --ui: "Instrument Sans Variable", "Instrument Sans", system-ui, sans-serif;
-  --mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  --mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, Menlo, Consolas, "Gecko Symbols", monospace;
   --side: 256px;
   /* Big surfaces. Opaque in the browser; the desktop app makes them
      translucent (see paintTheme), while cards, menus and inputs stay solid. */
