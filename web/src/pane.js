@@ -8,6 +8,7 @@ import { SearchAddon } from '@xterm/addon-search';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { ClipboardAddon, Base64 } from '@xterm/addon-clipboard';
 import { copyText } from './util.js';
+import { fixWebglBlending, fixWebglDim } from './webgl.js';
 
 // "Gecko Symbols" (style.css) before the generic monospace: symbols none of
 // the fonts before it have (Claude Code's ⏵⏵ and ⏸) come from it, not from
@@ -107,9 +108,11 @@ export class Pane {
     const want = this.app.settings.renderer;
     if (want === 'dom' || (want === 'auto' && this.app.touch)) return;
     try {
+      fixWebglBlending();
       const gl = new WebglAddon();
       gl.onContextLoss(() => gl.dispose()); // fall back to the DOM renderer
       this.term.loadAddon(gl);
+      fixWebglDim(gl);
     } catch {
       // DOM renderer is fine
     }

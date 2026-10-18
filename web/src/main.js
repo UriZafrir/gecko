@@ -37,7 +37,7 @@ import { Conn } from './conn.js';
 import { Terminal } from '@xterm/xterm';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { Pane, FONT, SYMBOLS_SAMPLE } from './pane.js';
-import { THEMES, AUTO, resolveTheme, paintTheme, swatch } from './themes.js';
+import { THEMES, AUTO, resolveTheme, paintTheme, swatch, termContrast } from './themes.js';
 import { Keys, prettyCombo, comboOf, ACTIONS, DEFAULTS, DEFAULT_TAB_MODIFIER, TAB_MODIFIERS } from './keys.js';
 import { startupChime } from './sound.js';
 import { attachPane, attachPage } from './touch.js';
@@ -1029,7 +1029,7 @@ class App {
       for (const p of this.panes?.values() || []) p.setFontSize(this.termFontSize());
     }
     this.setTermFont(theme.termFont || FONT);
-    this.termContrast = theme.contrast || 1.1;
+    this.termContrast = termContrast(theme);
     this.noDim = !!theme.noDim;
     for (const p of this.panes?.values() || []) { p.setTheme(this.termTheme); p.term.options.minimumContrastRatio = this.termContrast; }
     if (this.panes) this.setWatchLayout(theme.layout === 'watch');
