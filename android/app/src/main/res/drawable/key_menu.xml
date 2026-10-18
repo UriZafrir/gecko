@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Extra keys row: the menu (three dots), centred on a 16-unit grid; ExtraKeys tints it. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="16dp" android:height="16dp" android:viewportWidth="16" android:viewportHeight="16">
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M8,2.5a1.5,1.5 0 1,0 0,3a1.5,1.5 0 1,0 0,-3zM8,6.5a1.5,1.5 0 1,0 0,3a1.5,1.5 0 1,0 0,-3zM8,10.5a1.5,1.5 0 1,0 0,3a1.5,1.5 0 1,0 0,-3z" />
+</vector>
