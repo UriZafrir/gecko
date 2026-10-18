@@ -752,10 +752,12 @@ input, textarea, [contenteditable] { cursor: text; user-select: text; -webkit-us
   #keybar::-webkit-scrollbar { display: none; }
   #keybar button {
     flex: none; min-width: 40px; height: 36px; padding: 0 9px; border-radius: 7px;
+    display: inline-flex; align-items: center; justify-content: center;
     font: 13px var(--mono); background: var(--bg); box-shadow: inset 0 0 0 1px var(--line), 0 1px 0 var(--line);
     touch-action: manipulation;
   }
   #keybar button.on { background: var(--accent); color: var(--on-accent); }
+  #keybar .ki { display: block; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
   #keybar [data-k=select], #keybar [data-k=paste], #keybar [data-k=compose] { font-family: var(--ui); }
 }
 

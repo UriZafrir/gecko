@@ -4,7 +4,9 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.LayerDrawable
 import android.os.Handler
 import android.os.Looper
 import android.util.AttributeSet
@@ -21,9 +23,12 @@ import android.widget.TextView
  * The row of keys a phone keyboard lacks, above the keyboard: Esc, Tab,
  * sticky Ctrl and Alt, arrows (they repeat while held) and the symbols that
  * are awkward to reach. Keys never take focus, so the keyboard stays up.
+ * Arrows and the menu are drawn icons, centred in their keys,
+ * not text: a font's arrow characters sit wherever its baseline puts them
+ * and differ from phone to phone.
  */
 class ExtraKeys @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = null) : LinearLayout(ctx, attrs) {
-    data class Key(val name: String, val label: String, val repeat: Boolean = false, val wide: Boolean = false, val description: String? = null)
+    data class Key(val name: String, val label: String, val repeat: Boolean = false, val wide: Boolean = false, val description: String? = null, val icon: Int = 0)
 
     /** Pressed: the web UI's key name (main.js pressKey). */
     var onKey: (String) -> Unit = {}
@@ -53,7 +58,7 @@ class ExtraKeys @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = n
         setPadding(pad, pad, pad, pad)
         addView(scroll, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
         for (k in KEYS) row.addView(button(k))
-        menu = button(Key("menu", "⋮", description = ctx.getString(R.string.key_menu)))
+        menu = button(MENU.copy(description = ctx.getString(R.string.key_menu)))
         menu.setOnTouchListener(null)
         menu.setOnClickListener { onMenu(it) }
         addView(menu)
@@ -101,7 +106,7 @@ class ExtraKeys @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = n
             val v = row.getChildAt(i) as TextView
             size(v, KEYS.first { it.name == v.tag })
         }
-        size(menu, Key("menu", "⋮"))
+        size(menu, MENU)
         requestLayout()
     }
 
@@ -120,6 +125,7 @@ class ExtraKeys @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = n
         val v = TextView(context).apply {
             text = k.label
             contentDescription = k.description ?: k.label
+            if (k.icon != 0) setTag(R.id.key_icon, context.getDrawable(k.icon)!!.mutate())
             gravity = Gravity.CENTER
             isFocusable = false
             isFocusableInTouchMode = false
@@ -170,11 +176,23 @@ class ExtraKeys @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = n
         setBackgroundColor(palette.bar)
         for ((name, v) in keyViews) {
             val on = (name == "ctrl" && ctrl) || (name == "alt" && alt)
-            v.background = GradientDrawable().apply {
+            val fill = GradientDrawable().apply {
                 cornerRadius = dp(6).toFloat()
                 setColor(if (on) palette.accent else palette.key)
             }
-            v.setTextColor(if (on) palette.onAccent else palette.text)
+            val fg = if (on) palette.onAccent else palette.text
+            v.background = (v.getTag(R.id.key_icon) as Drawable?)?.let { icon -> iconOn(fill, icon, fg) } ?: fill
+            v.setTextColor(fg)
+        }
+    }
+
+    /** The key's fill with its icon on top, at the exact centre, in the text colour. */
+    private fun iconOn(fill: Drawable, icon: Drawable, color: Int): Drawable {
+        icon.setTint(color)
+        val side = dp((16 * textScale()).toInt())
+        return LayerDrawable(arrayOf(fill, icon)).apply {
+            setLayerGravity(1, Gravity.CENTER)
+            setLayerSize(1, side, side)
         }
     }
 
@@ -186,10 +204,10 @@ class ExtraKeys @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = n
             Key("tab", "tab", wide = true),
             Key("ctrl", "ctrl", wide = true),
             Key("alt", "alt", wide = true),
-            Key("left", "←", repeat = true, description = "Left"),
-            Key("up", "↑", repeat = true, description = "Up"),
-            Key("down", "↓", repeat = true, description = "Down"),
-            Key("right", "→", repeat = true, description = "Right"),
+            Key("left", "", repeat = true, description = "Left", icon = R.drawable.key_left),
+            Key("up", "", repeat = true, description = "Up", icon = R.drawable.key_up),
+            Key("down", "", repeat = true, description = "Down", icon = R.drawable.key_down),
+            Key("right", "", repeat = true, description = "Right", icon = R.drawable.key_right),
             Key("pipe", "|"),
             Key("tilde", "~"),
             Key("slash", "/"),
@@ -203,6 +221,8 @@ class ExtraKeys @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = n
             Key("select", "select"),
             Key("compose", "compose"),
         )
+
+        val MENU = Key("menu", "", icon = R.drawable.key_menu)
 
         /** What each key sends when the web UI is too old to have pressKey. */
         val FALLBACK = mapOf(

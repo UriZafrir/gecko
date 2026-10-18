@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ExtraKeys: a key's icon (drawn over its fill in the theme's colours). -->
+    <item name="key_icon" type="id" />
+</resources>

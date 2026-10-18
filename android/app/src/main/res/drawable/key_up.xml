@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Extra keys row: up arrow. Drawn on a 16-unit grid around its centre (8,8),
+     so it sits exactly in the middle of its key; ExtraKeys tints it. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="16dp" android:height="16dp" android:viewportWidth="16" android:viewportHeight="16">
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="1.6" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M8,13V3M4,7L8,3L12,7" />
+</vector>

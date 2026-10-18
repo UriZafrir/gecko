@@ -89,8 +89,9 @@ window.__splash = (function () {
     <div id="keybar" aria-label="Extra keys">
       <button data-k="esc">esc</button><button data-k="tab">tab</button>
       <button data-k="ctrl">ctrl</button><button data-k="alt">alt</button>
-      <button data-k="left" aria-label="Left">←</button><button data-k="up" aria-label="Up">↑</button>
-      <button data-k="down" aria-label="Down">↓</button><button data-k="right" aria-label="Right">→</button>
+      <!-- Arrows drawn, not text: a font's arrow characters sit off centre. -->
+      <button data-k="left" aria-label="Left"><svg class="ki" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8H3M7 4 3 8l4 4"/></svg></button><button data-k="up" aria-label="Up"><svg class="ki" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13V3M4 7l4-4 4 4"/></svg></button>
+      <button data-k="down" aria-label="Down"><svg class="ki" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M4 9l4 4 4-4"/></svg></button><button data-k="right" aria-label="Right"><svg class="ki" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"/></svg></button>
       <button data-k="ctrl-c">^C</button><button data-k="pipe" data-text="|">|</button>
       <button data-k="slash" data-text="/">/</button><button data-k="dash" data-text="-">-</button>
       <button data-k="tilde" data-text="~">~</button>
