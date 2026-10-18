@@ -237,9 +237,9 @@ final class SafariPWATests: XCTestCase {
         // Share, then Add to Home Screen, then Add.
         // The page may have minimized Safari's toolbar: a tap on the address brings it back.
         func shareButton() -> XCUIElement? {
-            for q in [safari.buttons["ShareButton"], safari.buttons["Share"], safari.buttons.matching(NSPredicate(format: "label == 'Share'"))] where q.firstMatch.exists && q.firstMatch.isHittable {
-                return q.firstMatch
-            }
+            let candidates: [XCUIElement] = [safari.buttons["ShareButton"].firstMatch, safari.buttons["Share"].firstMatch,
+                                             safari.buttons.matching(NSPredicate(format: "label == 'Share'")).firstMatch]
+            for e in candidates where e.exists && e.isHittable { return e }
             return nil
         }
         var found = shareButton()
