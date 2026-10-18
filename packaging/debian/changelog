@@ -1,3 +1,13 @@
+gecko (0.3.0-1) unstable; urgency=medium
+
+  * New upstream release 0.3.0: see-through windows on macOS and Windows
+    (no vibrancy or acrylic material), the anchor (protocol 10: the Gecko
+    you connect to manages every other machine, and relay peers get a
+    scope the server enforces), and the web app on phones (install, a
+    Settings sheet, pinch changes the text size, tabs switch on every tap).
+
+ -- Gecko contributors <gecko@users.noreply.github.com>  Sun, 18 Oct 2026 18:00:00 +0000
+
 gecko (0.2.2-1) unstable; urgency=medium
 
   * New upstream release 0.2.2: light themes readable on desktop (WebGL
