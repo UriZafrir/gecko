@@ -377,6 +377,8 @@ export function paintTheme(s, opacity = 1) {
   document.querySelector('meta[name=theme-color]')?.setAttribute('content', s.term.background);
   // The Android and iOS apps color their system bars and extra keys to match.
   try { (window.GeckoAndroid || window.GeckoIOS)?.theme(JSON.stringify({ ...ui, dark: !!s.dark })); } catch {}
+  // The Windows desktop app's caption buttons, drawn over the tab bar.
+  try { window.geckoDesktop?.setTitleBar?.({ symbolColor: ui.text }); } catch {}
   const fg = s.term.foreground;
   return {
     ...s.term,

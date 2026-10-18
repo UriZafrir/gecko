@@ -63,10 +63,6 @@ fi
 # Behind the window, for the transparency chapter: a photo wallpaper and a
 # Chrome window with big text, opened before Gecko so Gecko is on top.
 CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-# The vibrancy blur only shows with Reduce transparency off.
-log "reduce transparency was: $(defaults read com.apple.universalaccess reduceTransparency 2>&1)"
-defaults write com.apple.universalaccess reduceTransparency -bool false >>"$OUT/tour-setup.log" 2>&1
-log "reduce transparency now: $(defaults read com.apple.universalaccess reduceTransparency 2>&1)"
 WALL=$(cd "$HERE/../../.." && pwd)/web/public/themes/jellyfish.jpg
 osascript -e "tell application \"System Events\" to tell every desktop to set picture to \"$WALL\"" >>"$OUT/tour-setup.log" 2>&1 || log "wallpaper not set"
 if [ -x "$CHROME" ]; then
@@ -91,7 +87,6 @@ TOUR_CDP=$CDP TOUR_PLATFORM=mac TOUR_CAPTIONS=$OUT/captions.txt TOUR_BOUNDS=0,25
 	TOUR_PHONE_LABEL='a second client (Chrome, sized like a phone)' \
 	TOUR_REMOTE=localhost TOUR_REMOTE_NAME=$([ $REMOTE_ADDED = 1 ] && echo second || echo mac-ci-2) \
 	TOUR_REMOTE_LABEL="$REMOTE_LABEL" TOUR_REMOTE_ADDED=$REMOTE_ADDED TOUR_TMUX=$(command -v tmux >/dev/null && echo 1 || echo 0) \
-	TOUR_SEE_THROUGH='on macOS this is a vibrancy blur, which renders as plain gray on this CI virtual machine, so nothing shows through here' \
 	node "$HERE/tour.cjs" </dev/null 2>&1 | tee "$OUT/tour.log"
 rc=${PIPESTATUS[0]}
 sleep 1
