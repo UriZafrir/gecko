@@ -248,6 +248,14 @@ test.describe('layout', () => {
   });
 });
 
+test('opens with the keyboard down', async ({ page }) => {
+  await open(page, ['shell']);
+  await page.reload();
+  await page.waitForFunction(() => window.gecko?.firstSync && document.querySelector('.pane'));
+  await sleep(800);
+  expect(await page.evaluate(() => !!document.activeElement?.closest('.xterm'))).toBe(false);
+});
+
 test.describe('install', () => {
   test('manifest, icons and the service worker', async ({ page, request, browserName }) => {
     await open(page, ['shell']);

@@ -616,7 +616,9 @@ class App {
       }
       // With a finger, switching tabs keeps the keyboard as it was: up if
       // a terminal had it, else down (no keyboard jumping up on a tap).
-      const keepDown = this.touch && !document.activeElement?.closest?.('.xterm') && this.firstSync && this.shownBefore;
+      // The web app also opens with it down: an installed one on iOS would
+      // raise it at launch (the native apps keep their own behaviour).
+      const keepDown = this.touch && !document.activeElement?.closest?.('.xterm') && ((this.firstSync && this.shownBefore) || !native);
       this.shownBefore = true;
       if (!this.paletteOpen && !this.textViewOpen && !keepDown && !(this.touch && document.activeElement?.closest('#compose'))) p.focus();
     });

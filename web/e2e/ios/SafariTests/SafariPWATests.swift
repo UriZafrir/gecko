@@ -159,6 +159,16 @@ final class SafariPWATests: XCTestCase {
         web.pinch(withScale: 0.6, velocity: -1)
         beat(1.5)
         p = probe(safari)
+        if p.isEmpty, safari.buttons["Done"].exists {
+            // Pinching in at the smallest size is Safari's own gesture for
+            // its tab overview (a browser one: the page can't stop it, and
+            // the Home Screen app has none). Back to the page.
+            results["pinchInOpenedSafariTabs"] = true
+            shot("safari-05-pinch-in-safari-tabs")
+            safari.buttons["Done"].tap()
+            beat(1.5)
+            p = probe(safari)
+        }
         results["pinchIn"] = ["font": settings()["mobileFontSize"] ?? p["font"] ?? -1, "pageScale": nums(p["vv"]).last ?? -1]
         shot("safari-05-pinch-in")
 
@@ -302,10 +312,13 @@ final class SafariPWATests: XCTestCase {
         shot("home-04-standalone")
         // The web app runs as its own app; find its page through the probe.
         var app: XCUIApplication? = nil
-        for id in ["com.apple.webapp", "com.apple.WebSheet", "com.apple.mobilesafari"] {
+        var states: [String: Int] = [:]
+        for id in ["com.apple.webapp", "com.apple.webapp1", "com.apple.WebSheet", "com.apple.mobilesafari", "com.apple.springboard"] {
             let a = XCUIApplication(bundleIdentifier: id)
-            if a.state == .runningForeground, !probe(a).isEmpty { app = a; results["standaloneApp"] = id; break }
+            states[id] = Int(a.state.rawValue)
+            if a.state != .notRunning, !probe(a).isEmpty { app = a; results["standaloneApp"] = id; break }
         }
+        results["appStates"] = states
         guard let app else {
             results["standaloneApp"] = "not found"
             return
