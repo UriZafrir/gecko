@@ -248,7 +248,7 @@ body.reordering, body.reordering * { cursor: grabbing !important; }
 .host.prev-anchor .where { font-style: italic; }
 /* A long machine name (Android's are model names) shortens, never spills. */
 .host-main .nm, .host-main .where { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.host-main .nm { flex: 0 1 auto; }
+.host-main .nm { flex: 0 0 auto; max-width: 55%; }
 .host-main .where { flex: 0 1000 auto; } /* the place gives way before the name */
 .host.prev-anchor .plus.back { opacity: 1; color: var(--accent); display: inline-flex; }
 .hostlist .anchor-problem { margin: 2px 8px 6px; padding: 8px 10px; border-radius: 8px; font-size: 12px; line-height: 1.4; background: color-mix(in srgb, var(--need) 14%, transparent); color: var(--text); overflow-wrap: anywhere; }
