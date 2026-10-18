@@ -45,6 +45,9 @@
   sessions: sign in to one account on each machine and they reach each other
   through a relay you run, end-to-end encrypted, with no open ports.
   See [Machines](docs/machines.md) and [Accounts and the relay](docs/cloud.md).
+- **[The anchor](docs/anchor.md).** Open one Gecko from your phone or anywhere
+  else and manage every machine through it. Peers that reach it over the
+  relay only ever see that machine's own tabs.
 - **Latency you can see.** The status line shows the round trip and the
   transport (WebTransport over QUIC, or WebSocket), and each machine shows its
   own hop. A dead connection is noticed in about 3 seconds and redialed at
@@ -57,7 +60,11 @@
 - **[iOS app](docs/ios.md).** The same UI on iPhone and iPad, built for the
   iOS Simulator for now (no App Store yet).
 - **[Desktop apps](docs/desktop-packages.md).** A macOS dmg, a Windows setup
-  or zip, and a Linux AppImage, each with the daemon inside.
+  or zip, and a Linux AppImage, each with the daemon inside, with windows you
+  can see through on all three.
+- **[Web app](docs/mobile.md#as-an-app-on-the-home-screen-pwa).** Add Gecko to
+  your phone's home screen: Settings on the tab bar, pinch for text size,
+  tabs that switch on every tap.
 - **[Linux packages](docs/linux-packages.md).** deb, rpm, snap and Arch, plus
   static Linux binaries that run anywhere, Termux included.
 - **[Termux](docs/android.md#termux).** Gecko runs in Termux on the phone, and
