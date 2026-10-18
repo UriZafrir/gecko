@@ -79,8 +79,8 @@ centered, and remembers the right size after the first time.
 
 - **Desktop app (`make desktop`):** a small native Electron window with a
   see-through background. **Background opacity…** in the palette sets how
-  see-through it is. On macOS you get vibrancy blur, on Windows 11 acrylic,
-  and on Linux transparency (needs a compositor). Text, menus and dialogs
+  see-through it is: what is behind the window shows through on macOS,
+  Windows and Linux (Linux needs a compositor). Text, menus and dialogs
   stay solid. On Ubuntu 23.10+ Chromium's sandbox needs an AppArmor profile;
   run `make desktop-sandbox` once (it uses sudo). Until then `gecko open`
   falls back to a browser window. `GECKO_DESKTOP_NO_SANDBOX=1` runs without

@@ -1,0 +1,104 @@
+# The desktop app's see-through background, checked for real on each
+# platform: Gecko opens over a solid magenta window, its opacity setting is
+# changed live, and screenshots must show the magenta through the window at
+# 50% and not at all at 100% (packaging/desktop/transparency/check.cjs).
+# Pull requests and feature branches also run the latest release the same
+# way ("before"), so the screenshots show what a change fixed. Screenshots
+# and results are uploaded per platform.
+name: Transparency
+
+on:
+  push:
+    branches: [main, 'feature/**']
+    paths: [desktop/**, web/src/**, packaging/desktop/transparency/**, .github/workflows/transparency.yml]
+  pull_request:
+    paths: [desktop/**, web/src/**, packaging/desktop/transparency/**, .github/workflows/transparency.yml]
+  workflow_dispatch:
+    inputs:
+      baseline:
+        description: Also check this tag or commit as "before" (empty for none)
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: transparency-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-15, name: mac }
+          - { os: windows-2025, name: windows }
+          - { os: ubuntu-24.04, name: linux }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: Linux display (Xvfb with a compositor, for see-through windows)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb xcompmgr imagemagick >/dev/null
+          Xvfb :99 -screen 0 1280x800x24 +extension Composite -nolisten tcp </dev/null >/dev/null 2>&1 &
+          sleep 2
+          DISPLAY=:99 xcompmgr </dev/null >/dev/null 2>&1 &
+          echo DISPLAY=:99 >>"$GITHUB_ENV"
+      - name: Pick the baseline
+        id: base
+        env:
+          INPUT: ${{ inputs.baseline }}
+        run: |
+          b=$INPUT
+          # Pull requests and feature branches: compare with the latest release.
+          if [ -z "$b" ] && { [ "${{ github.event_name }}" = pull_request ] || [[ "${{ github.ref }}" == refs/heads/feature/* ]]; }; then
+            b=$(git describe --tags --abbrev=0 --match 'v*' HEAD)
+          fi
+          echo "ref=$b" >>"$GITHUB_OUTPUT"
+          echo "baseline: ${b:-none}"
+      - name: Build
+        env:
+          BASE: ${{ steps.base.outputs.ref }}
+        run: |
+          build() {
+            (cd "$1/web" && npm ci --no-audit --no-fund --silent && node build.mjs >/dev/null)
+            (cd "$1" && go build -trimpath -o "bin/gecko$([ "$RUNNER_OS" = Windows ] && echo .exe)" ./cmd/gecko)
+            (cd "$1/desktop" && npm ci --no-audit --no-fund --silent)
+          }
+          build .
+          if [ -n "$BASE" ]; then git worktree add -q ../before "$BASE" && build ../before; fi
+      - name: Before
+        if: steps.base.outputs.ref != ''
+        continue-on-error: true
+        env:
+          CHECK_PORT: "17688"
+          CHECK_CDP: "17689"
+        run: node packaging/desktop/transparency/check.cjs ../before out/${{ matrix.name }} before-${{ steps.base.outputs.ref }}
+      - name: After
+        env:
+          CHECK_PORT: "17698"
+          CHECK_CDP: "17699"
+        run: node packaging/desktop/transparency/check.cjs . out/${{ matrix.name }} after
+      - name: Upload
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: transparency-${{ matrix.name }}
+          path: out/${{ matrix.name }}
+          if-no-files-found: warn

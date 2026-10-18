@@ -14,9 +14,11 @@ window.addEventListener('DOMContentLoaded', () => setTimeout(() => ipcRenderer.s
 
 contextBridge.exposeInMainWorld('geckoDesktop', {
   platform: process.platform,
-  // Background transparency: real on macOS/Linux, acrylic on Windows.
+  // The window is see-through on every platform (main.js, windowStyle).
   transparent: true,
   // Which desktop build this is, e.g. "a1b2c3d · Oct 17 02:15".
   build: process.env.GECKO_DESKTOP_BUILD || '',
   setBounds: (b) => ipcRenderer.invoke('gecko:set-bounds', b),
+  // Windows: the color of the caption buttons drawn over the tab bar.
+  setTitleBar: (c) => ipcRenderer.send('gecko:title-bar', c),
 });

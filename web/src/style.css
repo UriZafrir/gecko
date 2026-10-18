@@ -62,8 +62,16 @@ html.desktop-darwin #side > :not(.brand) { -webkit-app-region: no-drag; }
    the tab bar starts under the traffic lights; start it after them. */
 html.desktop-darwin body.side-hidden #tabbar { padding-left: 78px; }
 @media (max-width: 719px) { html.desktop-darwin #tabbar { padding-left: 78px; } }
-html.desktop-darwin .brand, html.desktop-darwin #tabbar { -webkit-app-region: drag; }
-html.desktop-darwin .brand *, html.desktop-darwin #tabbar button, html.desktop-darwin .tab { -webkit-app-region: no-drag; }
+html.desktop-darwin .brand, html.desktop-darwin #tabbar,
+html.desktop-win32 .brand, html.desktop-win32 #tabbar { -webkit-app-region: drag; }
+html.desktop-darwin .brand *, html.desktop-darwin #tabbar button, html.desktop-darwin .tab,
+html.desktop-win32 .brand *, html.desktop-win32 #tabbar button, html.desktop-win32 .tab { -webkit-app-region: no-drag; }
+/* Windows desktop app: no native title bar (a see-through window can't
+   have one); the minimize, maximize and close buttons are drawn over the
+   right end of the tab bar (desktop/main.js), so the tab bar ends before
+   them. Drag the window by the empty part of the tab bar or the sidebar
+   header. */
+html.desktop-win32 #tabbar { padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw)); }
 body {
   background: var(--surface);
   color: var(--text);
@@ -420,7 +428,11 @@ body.side-hidden #ws-title {
 .pane.active { visibility: visible; }
 .pane .xterm { height: 100%; }
 .pane .xterm, .pane .xterm-viewport, .pane .xterm-screen { background: var(--surface-term) !important; }
-.pane .xterm-viewport { scrollbar-width: thin; }
+/* xterm draws its own scrollbar; the viewport's native one has nothing to
+   scroll and was an opaque strip down the right edge (classic scrollbars:
+   Linux, Windows, macOS with a mouse), solid even over a see-through
+   window. */
+.pane .xterm-viewport { scrollbar-width: none; }
 
 /* Phones and tablets (touch.js): the scrollback moves by the pixel and
    stretches past the ends, so the pane clips it; the fast-scroll thumb

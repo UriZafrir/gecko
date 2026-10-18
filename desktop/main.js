@@ -1,6 +1,6 @@
 // Gecko desktop: a native window around the Gecko web client. It exists for
-// what a browser window can't do: a see-through background (with blur on
-// macOS/Windows) and no browser chrome in the way. Everything else is the
+// what a browser window can't do: a see-through background and no browser
+// chrome in the way. Everything else is the
 // same client the daemon serves.
 //
 //   gecko-desktop --url=http://127.0.0.1:7681/?token=... [--size=W,H] [--position=X,Y]
@@ -224,6 +224,31 @@ function menu() {
   ]);
 }
 
+// The Windows caption buttons sit over the right end of the tab bar, as
+// tall as it is (style.css, #tabbar).
+const TITLE_BAR_HEIGHT = 38;
+
+// See-through background: a transparent window on every platform, and the
+// page decides how opaque each surface is (the opacity setting, see
+// paintTheme in web/src/themes.js). Not macOS vibrancy or Windows acrylic:
+// those put a blurred system material between the page and the desktop, so
+// nothing behind the window showed through, at any opacity. They are
+// plain gray in a VM, with Reduce transparency or transparency effects
+// off, and acrylic goes solid whenever the window isn't focused.
+// A transparent window on Windows can't have the native frame, so its
+// title bar is hidden and Windows draws the caption buttons over the page
+// (titleBarOverlay), in the theme's text color (gecko:title-bar).
+// transparency.test.mjs keeps this as it is.
+function windowStyle(platform) {
+  const style = { transparent: true, backgroundColor: '#00000000' };
+  if (platform === 'darwin') style.titleBarStyle = 'hiddenInset';
+  if (platform === 'win32') {
+    style.titleBarStyle = 'hidden';
+    style.titleBarOverlay = { color: '#00000000', symbolColor: '#c0caf5', height: TITLE_BAR_HEIGHT };
+  }
+  return style;
+}
+
 function createWindow() {
   const w = new BrowserWindow({
     width: size[0],
@@ -235,13 +260,7 @@ function createWindow() {
     title: 'Gecko',
     icon: path.join(__dirname, 'icon.png'),
     autoHideMenuBar: true,
-    // See-through background: real transparency on macOS/Linux, acrylic on
-    // Windows 11 (which needs its native frame). The page decides how
-    // opaque each surface is.
-    transparent: !win32,
-    backgroundColor: '#00000000',
-    ...(mac ? { vibrancy: 'under-window', visualEffectState: 'active', titleBarStyle: 'hiddenInset' } : {}),
-    ...(win32 ? { backgroundMaterial: 'acrylic' } : {}),
+    ...windowStyle(process.platform),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -296,6 +315,13 @@ ipcMain.handle('gecko:set-bounds', (ev, b) => {
   w.setBounds({ x, y, width, height });
 });
 
+// Windows: the caption buttons follow the theme (preload's setTitleBar).
+ipcMain.on('gecko:title-bar', (ev, c) => {
+  const w = BrowserWindow.fromWebContents(ev.sender);
+  if (!win32 || !w || !/^#[0-9a-f]{6}$/i.test(c?.symbolColor || '')) return;
+  w.setTitleBarOverlay({ color: '#00000000', symbolColor: c.symbolColor, height: TITLE_BAR_HEIGHT });
+});
+
 // Without --url (the packaged app, double-clicked): find or start the daemon.
 async function resolveURL() {
   if (url) return true;
@@ -345,3 +371,5 @@ if (!app.requestSingleInstanceLock()) {
     if (url && BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 }
+
+module.exports = { windowStyle }; // for transparency.test.mjs
