@@ -16,6 +16,24 @@ Then pick **Open on another device** in the palette and scan the QR code. The
 link carries your access token. It is kept as a cookie, so treat the link like
 a password.
 
+## As an app on the home screen (PWA)
+
+The page installs as a web app, with no store and nothing to download:
+
+- **iPhone and iPad:** open the link in Safari, tap **Share**, then **Add to
+  Home Screen**.
+- **Android:** open the link in Chrome, open the menu, then **Install app**
+  (or **Add to Home screen**).
+
+It then opens full screen like an app, under the status bar and clear of the
+notch and the home indicator. The **Settings** button at the right of the tab
+bar has what the native apps keep in their own menus: the theme, the text
+size, the key bar and the compose box, plus search, selecting text and
+renaming the tab. Pinching a terminal changes its text size; the page itself
+never zooms. With the keyboard up, the key bar sits right above it. When
+the machine can't be reached, the app still opens and connects by itself
+once it can, and after an upgrade it reloads into the new version.
+
 On Android there is also a native app with notifications that reach you
 when it's closed: see [Android app](android.md).
 
