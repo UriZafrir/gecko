@@ -10,7 +10,7 @@ const geckoDark = {
   ui: { panel: '#2c352f', raise: '#404d44', line: '#46564b', muted: '#90a095', faint: '#6b7d70', idle: '#90a095' },
   term: {
     background: '#323c35', foreground: '#dbe6df',
-    black: '#404d44', red: '#bf616a', green: '#a3be8c', yellow: '#ebcb8b',
+    black: '#404d44', red: '#c26971', green: '#a3be8c', yellow: '#ebcb8b',
     blue: '#81a1c1', magenta: '#b48ead', cyan: '#88c0b0', white: '#e3ebe5',
     brightBlack: '#6b7d70', brightRed: '#d07a83', brightGreen: '#b6cfa1', brightYellow: '#f0d7a3',
     brightBlue: '#9ab6d1', brightMagenta: '#c5a3c0', brightCyan: '#9fd0c2', brightWhite: '#eef2ef',
@@ -24,8 +24,8 @@ const geckoLight = {
     background: '#eef2ee', foreground: '#323c35',
     black: '#323c35', red: '#b5545e', green: '#5d8a4a', yellow: '#a07f2e',
     blue: '#5e81ac', magenta: '#9a6a92', cyan: '#4c8a86', white: '#b8c4bb',
-    brightBlack: '#627267', brightRed: '#c4656f', brightGreen: '#6f9c5b', brightYellow: '#b08f3e',
-    brightBlue: '#6f92bd', brightMagenta: '#ab7ba3', brightCyan: '#5d9b97', brightWhite: '#ffffff',
+    brightBlack: '#627267', brightRed: '#c4656f', brightGreen: '#6b9657', brightYellow: '#a5863a',
+    brightBlue: '#6b8cb5', brightMagenta: '#ab7ba3', brightCyan: '#599591', brightWhite: '#ffffff',
   },
 };
 
@@ -57,8 +57,15 @@ export const THEMES = [
   {
     // Picture themes: a CC0 photo fills the window (see public/themes/CREDITS.md).
     // `veil` is how strongly the theme color tints the photo under the
-    // terminal, so text stays readable.
-    id: 'mt-fuji', name: 'Mt. Fuji', dark: true, image: '/themes/fuji.jpg', position: 'center 38%', veil: 0.6,
+    // terminal, so text stays readable; `sideVeil` the same for the
+    // sidebar (default 0.5; higher where the photo behind it would take
+    // its small text under AA). `tone` is the photo's color where it fights
+    // the text most (its lightest parts for a dark theme, darkest for a
+    // light one: the 97th or 3rd luminance percentile at 1280x800, blurred
+    // 20px like the sidebar's copy, 2px for the main area), so contrast is
+    // checked against the worst spot rather than the theme color alone.
+    id: 'mt-fuji', name: 'Mt. Fuji', dark: true, image: '/themes/fuji.jpg', position: 'center 38%', veil: 0.62, sideVeil: 0.9,
+    tone: { side: '#a6bbd2', main: '#feeacc' },
     accent: '#f5a8a0', need: '#ffd27a', brand: '#f5c4b0',
     ui: { panel: '#1a2140', raise: '#2a3258', line: '#384170', muted: '#aab0cc', faint: '#737a9c', idle: '#aab0cc' },
     term: ansi('#121935', '#eef0f7',
@@ -67,6 +74,7 @@ export const THEMES = [
   },
   {
     id: 'jellyfish', name: 'Jellyfish', dark: true, image: '/themes/jellyfish.jpg', position: '30% center', veil: 0.55,
+    tone: { side: '#3e575c', main: '#ccbe8f' },
     accent: '#f5b45e', need: '#ff7f73', brand: '#f5b45e',
     ui: { panel: '#06222c', raise: '#0d3442', line: '#164252', muted: '#93b9c2', faint: '#5d828d', idle: '#93b9c2' },
     term: ansi('#041b24', '#e2f3f5',
@@ -75,7 +83,8 @@ export const THEMES = [
   },
   {
     // Light: petal white, plum text, blossom pink. Rounded and soft.
-    id: 'sakura', name: 'Sakura', dark: false, skin: 'sakura', image: '/themes/sakura.jpg', position: 'center 35%', veil: 0.87,
+    id: 'sakura', name: 'Sakura', dark: false, skin: 'sakura', image: '/themes/sakura.jpg', position: 'center 35%', veil: 0.87, sideVeil: 0.9,
+    tone: { side: '#3d393a', main: '#15161a' },
     accent: '#d93a78', need: '#d9781f', brand: '#f47ba8',
     ui: { panel: '#ffeef3', raise: '#ffdce8', line: '#f2c2d3', muted: '#86576b', faint: '#b38799', idle: '#86576b' },
     term: ansi('#fff6f9', '#3a1f2c',
@@ -85,6 +94,7 @@ export const THEMES = [
   {
     // Neon on night violet: hot magenta, electric cyan, warning yellow.
     id: 'cyberpunk', name: 'Cyberpunk', dark: true, skin: 'cyberpunk', image: '/themes/cyberpunk.jpg', position: 'center', veil: 0.62,
+    tone: { side: '#230e28', main: '#8c8bc9' },
     accent: '#ff2a6d', need: '#f9f002', brand: '#ff2a6d',
     termFont: '"Share Tech Mono", ui-monospace, monospace',
     ui: { panel: '#120424', raise: '#22093d', line: '#3a0f5e', muted: '#b494d8', faint: '#7a5a9c', idle: '#b494d8' },
@@ -95,6 +105,7 @@ export const THEMES = [
   {
     // Shinjuku at night: signal red on deep navy, heavy display type.
     id: 'neo-tokyo', name: 'Neo-Tokyo', dark: true, skin: 'neotokyo', image: '/themes/neo-tokyo.jpg', position: 'center 60%', veil: 0.64,
+    tone: { side: '#29384a', main: '#3a8fd1' },
     accent: '#ff3b3b', need: '#ffd166', brand: '#ff3b3b',
     ui: { panel: '#0b1124', raise: '#172042', line: '#232f57', muted: '#9aa6c8', faint: '#5d6890', idle: '#9aa6c8' },
     term: ansi('#070b18', '#eaf0ff',
@@ -103,7 +114,8 @@ export const THEMES = [
   },
   {
     // Race orange on mud, lime for attention, number-plate tabs.
-    id: 'dirt-bike', name: 'Dirt Bike', dark: true, skin: 'dirtbike', image: '/themes/dirt-bike.jpg', position: 'center 40%', veil: 0.66,
+    id: 'dirt-bike', name: 'Dirt Bike', dark: true, skin: 'dirtbike', image: '/themes/dirt-bike.jpg', position: 'center 40%', veil: 0.66, sideVeil: 0.9,
+    tone: { side: '#ad957a', main: '#b9c66b' },
     accent: '#ff6a00', need: '#c6ff00', brand: '#ff6a00',
     ui: { panel: '#1c1612', raise: '#2c231b', line: '#3b2f24', muted: '#b8a48f', faint: '#7d6a57', idle: '#b8a48f' },
     term: ansi('#15110d', '#f4ece2',
@@ -112,7 +124,8 @@ export const THEMES = [
   },
   {
     // Alpenglow on night slate, glacier blue, classic outdoor-poster type.
-    id: 'summit', name: 'Summit', dark: true, skin: 'summit', image: '/themes/summit.jpg', position: '70% 40%', veil: 0.6,
+    id: 'summit', name: 'Summit', dark: true, skin: 'summit', image: '/themes/summit.jpg', position: '70% 40%', veil: 0.6, sideVeil: 0.85,
+    tone: { side: '#787d80', main: '#ddac73' },
     accent: '#ff9a52', need: '#ffcf5c', brand: '#ff9a52',
     ui: { panel: '#101a24', raise: '#1c2a38', line: '#2a3b4c', muted: '#a3b3c2', faint: '#687a8c', idle: '#a3b3c2' },
     term: ansi('#0c141c', '#eef3f7',
@@ -121,7 +134,8 @@ export const THEMES = [
   },
   {
     // Walnut and oak, safety red, slab serif, a workshop mono.
-    id: 'wood-shop', name: 'Wood Shop', dark: true, skin: 'woodshop', image: '/themes/wood-shop.jpg', position: 'center 45%', veil: 0.66,
+    id: 'wood-shop', name: 'Wood Shop', dark: true, skin: 'woodshop', image: '/themes/wood-shop.jpg', position: 'center 45%', veil: 0.66, sideVeil: 0.75,
+    tone: { side: '#695a3d', main: '#e7d6cc' },
     accent: '#e8a24a', need: '#e4572e', brand: '#e8a24a',
     termFont: '"IBM Plex Mono", ui-monospace, monospace',
     ui: { panel: '#21170f', raise: '#33241a', line: '#4a3424', muted: '#c2a68a', faint: '#8a6e55', idle: '#c2a68a' },
@@ -131,7 +145,8 @@ export const THEMES = [
   },
   {
     // Lantern red and broth gold on lacquer, playful rounded type, a noren tab.
-    id: 'ramen', name: 'Ramen', dark: true, skin: 'ramen', image: '/themes/ramen.jpg', position: 'center', veil: 0.72, sideVeil: 0.8,
+    id: 'ramen', name: 'Ramen', dark: true, skin: 'ramen', image: '/themes/ramen.jpg', position: 'center', veil: 0.72, sideVeil: 0.95,
+    tone: { side: '#bcb9bc', main: '#c69086' },
     accent: '#f2b33d', need: '#e63946', brand: '#e63946',
     ui: { panel: '#1d0f0a', raise: '#2e1811', line: '#47241a', muted: '#d0a98a', faint: '#8e6a55', idle: '#d0a98a' },
     term: ansi('#170c08', '#fbefe0',
@@ -146,6 +161,7 @@ export const THEMES = [
     // `lcd`: the terminal is drawn on a CSS LCD (it can light up).
     id: 'digital-watch', name: 'Digital Watch', dark: true, skin: 'casio', lcd: true, layout: 'watch',
     contrast: 4.5, // darken faint greys on the light LCD
+    cursor: '#121a10', // LCD ink: the yellow accent doesn't show on the LCD
     noDim: true, // dim text would be half transparent: show it at full strength
     accent: '#f2c230', need: '#e0473c', brand: '#f2c230',
     termFont: '"VT323", ui-monospace, monospace',
@@ -153,7 +169,7 @@ export const THEMES = [
     ui: { bg: '#141414', text: '#e8e8e8', panel: '#181818', raise: '#2a2a2a', line: '#3a3a3a', muted: '#a8a8a8', faint: '#6c6c6c', idle: '#a8a8a8' },
     term: ansi('#b4bea0', '#121a10',
       ['#121a10', '#8a1f14', '#2a5418', '#5c4600', '#1d3f7a', '#6b2a6b', '#1d5a5a', '#2c3428'],
-      ['#3a4434', '#a8281b', '#367020', '#8a6a00', '#2a54a0', '#8a3a8a', '#267575', '#000000']),
+      ['#3a4434', '#a8281b', '#367020', '#7e6000', '#2a54a0', '#8a3a8a', '#246f6f', '#000000']),
   },
   {
     id: 'dracula', name: 'Dracula', dark: true, accent: '#bd93f9', need: '#ffb86c',
@@ -186,9 +202,11 @@ export const THEMES = [
       ['#5c6370', '#e06c75', '#98c379', '#e5c07b', '#61afef', '#c678dd', '#56b6c2', '#ffffff']),
   },
   {
+    // Upstream palettes below are kept, except where a color fell under 3:1
+    // on its background (themes.test.mjs): those are nudged just enough.
     id: 'gruvbox-dark', name: 'Gruvbox Dark', dark: true, accent: '#fabd2f', need: '#fe8019',
     term: ansi('#282828', '#ebdbb2',
-      ['#282828', '#cc241d', '#98971a', '#d79921', '#458588', '#b16286', '#689d6a', '#a89984'],
+      ['#282828', '#d13831', '#98971a', '#d79921', '#458588', '#b16286', '#689d6a', '#a89984'],
       ['#928374', '#fb4934', '#b8bb26', '#fabd2f', '#83a598', '#d3869b', '#8ec07c', '#ebdbb2']),
   },
   {
@@ -200,14 +218,15 @@ export const THEMES = [
   {
     id: 'catppuccin-latte', name: 'Catppuccin Latte', dark: false, accent: '#8839ef', need: '#fe640b',
     term: ansi('#eff1f5', '#4c4f69',
-      ['#5c5f77', '#d20f39', '#40a02b', '#df8e1d', '#1e66f5', '#ea76cb', '#179299', '#acb0be'],
-      ['#6c6f85', '#d20f39', '#40a02b', '#df8e1d', '#1e66f5', '#ea76cb', '#179299', '#bcc0cc']),
+      ['#5c5f77', '#d20f39', '#3f9e2b', '#c07a19', '#1e66f5', '#cc67b1', '#179299', '#acb0be'],
+      ['#6c6f85', '#d20f39', '#3f9e2b', '#c07a19', '#1e66f5', '#cc67b1', '#179299', '#bcc0cc']),
   },
   {
+    // Body text is Solarized's emphasized base01 (base00 is under 4.5:1).
     id: 'solarized-light', name: 'Solarized Light', dark: false, accent: '#268bd2', need: '#cb4b16',
-    term: ansi('#fdf6e3', '#657b83',
-      ['#073642', '#dc322f', '#859900', '#b58900', '#268bd2', '#d33682', '#2aa198', '#eee8d5'],
-      ['#586e75', '#cb4b16', '#859900', '#b58900', '#268bd2', '#6c71c4', '#2aa198', '#002b36']),
+    term: ansi('#fdf6e3', '#586e75',
+      ['#073642', '#dc322f', '#849700', '#b38800', '#268bd2', '#d33682', '#299e95', '#eee8d5'],
+      ['#586e75', '#cb4b16', '#849700', '#b38800', '#268bd2', '#6c71c4', '#299e95', '#002b36']),
   },
   {
     id: 'github-light', name: 'GitHub Light', dark: false, accent: '#0969da', need: '#bc4c00',
@@ -221,7 +240,7 @@ export const THEMES = [
 export const AUTO = 'gecko';
 
 export function resolveTheme(id) {
-  if (!id || id === AUTO) return matchMedia('(prefers-color-theme: dark)').matches ? geckoDark : geckoLight;
+  if (!id || id === AUTO) return matchMedia('(prefers-color-scheme: dark)').matches ? geckoDark : geckoLight;
   return THEMES.find((s) => s.id === id) || geckoDark;
 }
 
@@ -236,11 +255,57 @@ function mix(a, b, t) {
   return '#' + x.map((v, i) => Math.round(v + (y[i] - v) * t).toString(16).padStart(2, '0')).join('');
 }
 
-// UI tokens for a theme, derived where the theme doesn't set them.
+// WCAG relative luminance and contrast ratio of #rrggbb colors.
+export function luminance(c) {
+  const lin = (v) => (v /= 255) <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  const [r, g, b] = hex(c).map(lin);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+export function contrast(a, b) {
+  const x = luminance(a), y = luminance(b);
+  return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+}
+export const isLight = (c) => luminance(c) > 0.18;
+
+// c, moved toward `toward` just far enough to reach `ratio` against every
+// color in bgs (unchanged if it already does).
+export function legible(c, bgs, ratio, toward) {
+  for (let i = 0; i <= 100; i++) {
+    const x = i ? mix(c, toward, i / 100) : c;
+    if (bgs.every((b) => contrast(x, b) >= ratio)) return x;
+  }
+  return toward;
+}
+
+// WCAG AA for normal text. Chrome text and icons meet it on every surface
+// they sit on (bg, panel, raise; over a photo, a halo of those, see
+// style.css).
+export const AA = 4.5;
+const TEXT = 6;
+
+// The xterm minimumContrastRatio for a theme. Light terminals get AA:
+// xterm then darkens just the colors that would be too faint (white or
+// pale yellow from programs that assume a dark terminal, light greys), and
+// asks half of it for dim text so dim still looks dim. Dark themes keep
+// their palettes exactly as designed.
+export function termContrast(s) {
+  return s.contrast ?? (isLight(s.term.background) ? AA : 1.1);
+}
+
+// The photo through the main veil at its worst spot (see `tone`): what
+// terminal text in a picture theme has to stand out from.
+export function photoBackdrop(s) {
+  const bg = s.ui?.bg ?? s.term.background;
+  return s.image && s.tone ? mix(bg, s.tone.main, 1 - (s.veil ?? 0.7)) : bg;
+}
+
+// UI tokens for a theme, derived where the theme doesn't set them, then
+// made legible (see AA above). Greys move toward the text color, colors
+// toward black or white, so each keeps its hue and its place.
 export function uiTokens(s) {
   const bg = s.term.background, fg = s.term.foreground;
   const k = s.dark ? 1 : 1.3;
-  return {
+  const t = {
     bg: s.ui?.bg ?? bg,
     panel: s.ui?.panel ?? mix(bg, fg, 0.04 * k),
     raise: s.ui?.raise ?? mix(bg, fg, 0.09 * k),
@@ -252,8 +317,24 @@ export function uiTokens(s) {
     need: s.need,
     idle: s.ui?.idle ?? mix(bg, fg, 0.55),
     red: s.term.red,
-    'on-accent': s.dark ? bg : '#ffffff',
   };
+  const light = isLight(t.bg);
+  const away = light ? '#000000' : '#ffffff';
+  const behind = [t.bg, t.panel, t.raise];
+  const worst = (c) => Math.min(...behind.map((b) => contrast(c, b)));
+  // Text a step above AA, so muted and faint have room under it.
+  t.text = legible(t.text, behind, TEXT, away);
+  t.faint = legible(t.faint, behind, AA, t.text);
+  // muted stays a step above faint
+  t.muted = legible(t.muted, behind, Math.min(Math.max(AA, worst(t.faint) * 1.25), worst(t.text)), t.text);
+  t.idle = legible(t.idle, behind, AA, t.text);
+  for (const c of ['accent', 'need', 'red']) t[c] = legible(t[c], behind, AA, away);
+  // Text on accent-colored buttons: the theme background (dark themes) or
+  // white, unless that doesn't read; then whichever of the two, or black, does best.
+  const onAccent = s.dark ? t.bg : '#ffffff';
+  t['on-accent'] = contrast(onAccent, t.accent) >= AA ? onAccent
+    : [t.bg, '#ffffff', '#000000'].sort((a, b) => contrast(b, t.accent) - contrast(a, t.accent))[0];
+  return t;
 }
 
 function alpha(c, a) {
@@ -301,8 +382,12 @@ export function paintTheme(s, opacity = 1) {
     ...s.term,
     // An LCD theme keeps a solid background: the window's opacity applies to
     // the whole window anyway, and xterm needs it to keep text readable.
-    background: s.lcd ? s.term.background : opacity < 1 || s.image ? '#00000000' : s.term.background,
-    cursor: s.accent,
+    // A see-through background keeps its color at alpha 0: xterm measures
+    // contrast (minimumContrastRatio) and blends selections against it, and
+    // transparent black made light themes look like dark ones to it.
+    // In a picture theme that is the photo's worst spot under the veil.
+    background: s.lcd ? s.term.background : s.image ? photoBackdrop(s) + '00' : opacity < 1 ? s.term.background + '00' : s.term.background,
+    cursor: s.cursor || s.accent,
     cursorAccent: s.term.background,
     selectionBackground: s.accent + '4d',
     selectionInactiveBackground: s.accent + '26',
