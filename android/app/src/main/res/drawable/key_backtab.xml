@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- Extra keys row: Shift+Tab (a tab stop backwards). Drawn on a 16-unit grid around its centre (8,8),
-     so it sits exactly in the middle of its key; ExtraKeys tints it. -->
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="16dp" android:height="16dp" android:viewportWidth="16" android:viewportHeight="16">
-    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="1.6" android:strokeLineCap="round" android:strokeLineJoin="round"
-        android:pathData="M14,8H4.5M8.5,4L4.5,8L8.5,12M2,3.5V12.5" />
-</vector>

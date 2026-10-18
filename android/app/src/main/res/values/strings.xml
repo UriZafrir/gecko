@@ -43,6 +43,8 @@
     <string name="no_machine">Add a machine first.</string>
 
     <string name="key_menu">More options</string>
+    <!-- The menu's way to send Shift+Tab (holding Tab in the extra keys does too). -->
+    <string name="menu_shift_tab">Send Shift+Tab (or hold Tab)</string>
     <string name="menu_palette">Search and commands</string>
     <string name="menu_keep_screen_on">Keep screen on</string>
     <string name="menu_background">Notify in background</string>
