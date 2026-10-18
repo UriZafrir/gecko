@@ -1,0 +1,106 @@
+# The web app (PWA) on phones, for every pull request and release tag:
+# - make test, then the Playwright suite (make test-pwa) on WebKit and
+#   Chromium with phone and tablet profiles (web/e2e);
+# - Safari in the iOS Simulator, as a page and as a Home Screen web app
+#   (web/e2e/ios): tapping tabs, pinching, settings and themes, the
+#   keyboard; screenshots and results come back as an artifact.
+name: PWA
+
+on:
+  pull_request:
+  push:
+    branches: [feature/pwa]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pwa-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  XCODE_APP: /Applications/Xcode_16.4.app
+  XCODEGEN_VERSION: "2.46.0"
+
+jobs:
+  ios-safari:
+    runs-on: macos-15
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - device: iPhone 16
+            slug: iphone-16
+          - device: iPhone SE (3rd generation)
+            slug: iphone-se
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: Xcode
+        run: |
+          sudo xcode-select -s "$XCODE_APP"
+          xcodebuild -version
+      - name: XcodeGen
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/xcodegen.zip" "https://github.com/yonaskolb/XcodeGen/releases/download/$XCODEGEN_VERSION/xcodegen.zip"
+          unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP/xcodegen"
+          dirname "$(find "$RUNNER_TEMP/xcodegen" -type f -name xcodegen -perm -u+x | head -1)" >> "$GITHUB_PATH"
+      - name: Web UI and gecko
+        run: make web build
+      - name: Build the Safari tests
+        run: |
+          set -o pipefail
+          cd web/e2e/ios && xcodegen generate
+          xcodebuild build-for-testing -project GeckoSafari.xcodeproj -scheme SafariTests \
+            -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/dd" 2>&1 | tail -5
+      - name: Simulator
+        run: ios/scripts/ci-simulator.sh "${{ matrix.device }}"
+      - name: A throwaway Gecko (Tokyo Night)
+        run: |
+          home=$RUNNER_TEMP/gecko-home
+          mkdir -p "$home" out
+          printf '{"theme":"tokyo-night"}\n' > "$home/settings.json"
+          GECKO_HOME=$home SHELL=/bin/zsh nohup bin/gecko daemon --listen 127.0.0.1:7900 > out/daemon.log 2>&1 < /dev/null &
+          touch "$HOME/.zshrc"
+          for i in $(seq 60); do [ -s "$home/token" ] && curl -fsS -o /dev/null http://127.0.0.1:7900/ && break; sleep 0.5; done
+          echo "GECKO_HOME_DIR=$home" >> "$GITHUB_ENV"
+          echo "GECKO_URL=http://127.0.0.1:7900/?token=$(cat "$home/token")" >> "$GITHUB_ENV"
+      - name: Safari, then the Home Screen web app
+        run: |
+          out=$PWD/out
+          mkdir -p "$out/shots" "$out/results"
+          xcrun simctl io "$SIM_ID" recordVideo --codec=h264 --force "$out/safari.mp4" > "$out/results/record.log" 2>&1 &
+          rec=$!
+          sleep 2
+          s=0
+          for t in SafariPWATests/testSafari SafariPWATests/testHomeScreenApp; do
+            n=$(basename "$t")
+            TEST_RUNNER_GECKO_URL="$GECKO_URL" TEST_RUNNER_GECKO_SHOTS="$out/shots" TEST_RUNNER_GECKO_HOME_DIR="$GECKO_HOME_DIR" \
+            xcodebuild test-without-building -xctestrun "$(ls "$RUNNER_TEMP"/dd/Build/Products/*.xctestrun | head -1)" \
+              -destination "id=$SIM_ID" -only-testing:"SafariTests/$t" -resultBundlePath "$out/results/$n.xcresult" \
+              > "$out/results/$n.log" 2>&1 || s=1
+            grep -E "error|failed|passed|Executed" "$out/results/$n.log" | tail -30
+          done
+          kill -INT $rec 2> /dev/null; wait $rec 2> /dev/null || true
+          cat "$out"/shots/results-*.json || true
+          exit $s
+      - name: Collect
+        if: always()
+        run: |
+          cp "$GECKO_HOME_DIR/settings.json" out/ 2> /dev/null || true
+          echo "${{ matrix.device }}" > out/device.txt
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: ios-safari-${{ matrix.slug }}
+          path: out/

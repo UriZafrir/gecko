@@ -3831,3 +3831,34 @@ Promise.race([
 if ('serviceWorker' in navigator && window.isSecureContext) {
   navigator.serviceWorker.register('/sw.js').catch(() => {});
 }
+
+// ?probe: the page's state as text, for UI tests that can only read the
+// accessibility tree (iOS Safari in the Simulator: web/e2e/ios).
+try {
+  if (/[?&]probe\b/.test(location.search)) sessionStorage.setItem('gecko.probe', '1');
+  if (sessionStorage.getItem('gecko.probe')) {
+    const el = document.createElement('div');
+    el.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;pointer-events:none';
+    document.body.appendChild(el);
+    const rect = (e) => {
+      if (!e) return null;
+      const r = e.getBoundingClientRect();
+      return [r.left, r.top, r.width, r.height].map(Math.round);
+    };
+    setInterval(() => {
+      const g = window.gecko, vv = window.visualViewport;
+      const cs = getComputedStyle(document.documentElement);
+      el.textContent = 'gecko.probe ' + JSON.stringify({
+        online: g?.conn?.status, sync: !!g?.firstSync, font: g?.fontSize?.(), theme: g?.settings?.theme,
+        active: g?.activeId?.() || null,
+        tabs: [...document.querySelectorAll('#tabs .tab')].map((t) => ({ id: t.dataset.tab, r: rect(t) })),
+        inner: [innerWidth, innerHeight], vv: vv ? [vv.width, vv.height, vv.offsetTop, vv.scale].map((x) => Math.round(x * 100) / 100) : null,
+        tabbar: rect(document.getElementById('tabbar')), keybar: rect(document.getElementById('keybar')),
+        newTab: rect(document.getElementById('new-tab')), app: rect(document.getElementById('app')),
+        standalone: matchMedia('(display-mode: standalone)').matches || navigator.standalone === true,
+        safe: cs.getPropertyValue('--safe-top') + ' ' + cs.getPropertyValue('--safe-bottom'),
+        focus: document.activeElement?.className || '', scrollY: window.scrollY,
+      });
+    }, 250);
+  }
+} catch {}

@@ -1,0 +1,49 @@
+# Gecko's web UI in the iOS Simulator's own Safari, as people use it from a
+# phone: a page in Safari, then the web app added to the Home Screen.
+# XcodeGen project (cd web/e2e/ios && xcodegen generate); the UI tests drive
+# Safari, the host app is only there because a UI test bundle needs one.
+# See .github/workflows/pwa.yml.
+name: GeckoSafari
+options:
+  bundleIdPrefix: io.github.geckoterm
+  deploymentTarget:
+    iOS: "16.4"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "-"
+    DEVELOPMENT_TEAM: ""
+targets:
+  Host:
+    type: application
+    platform: iOS
+    sources: [Host]
+    info:
+      path: Host/Info.plist
+      properties:
+        UILaunchScreen: {}
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.geckoterm.safarihost
+  SafariTests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [SafariTests]
+    dependencies:
+      - target: Host
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.geckoterm.safaritests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: Host
+schemes:
+  SafariTests:
+    build:
+      targets:
+        Host: all
+        SafariTests: [test]
+    test:
+      config: Debug
+      targets: [SafariTests]
