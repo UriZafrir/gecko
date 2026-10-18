@@ -11,7 +11,7 @@ export GOTOOLCHAIN ?= local
 
 PREFIX ?= $(HOME)/.local
 DESKTOP_DIR := $(PREFIX)/share/gecko/desktop
-.PHONY: all web build test dist packages package-mac package-appimage package-windows install install-desktop desktop desktop-sandbox clean dev android android-gecko android-test ios-web ios ios-test
+.PHONY: all web build test test-pwa dist packages package-mac package-appimage package-windows install install-desktop desktop desktop-sandbox clean dev android android-gecko android-test ios-web ios ios-test
 
 all: web build
 
@@ -24,7 +24,14 @@ build:
 test:
 	$(GO) vet ./...
 	$(GO) test ./...
-	node --test web/src/gestures.test.mjs web/src/build.test.mjs web/src/ime.test.mjs web/src/themes.test.mjs web/src/transparency.test.mjs web/src/anchor.test.mjs
+	node --test web/src/gestures.test.mjs web/src/build.test.mjs web/src/ime.test.mjs web/src/themes.test.mjs web/src/transparency.test.mjs web/src/anchor.test.mjs web/src/viewport.test.mjs
+
+# The web app (PWA) on phones and tablets: Playwright with WebKit (iPhone)
+# and Chromium (Android) profiles against a throwaway daemon (web/e2e).
+# The browsers, once: cd web/e2e && npx playwright install --with-deps chromium webkit
+# One test or project: make test-pwa PWA_ARGS="--project=iphone-15 -g pinch"
+test-pwa: web build
+	cd web/e2e && npm ci --no-audit --no-fund && npx playwright test $(PWA_ARGS)
 
 # Cross-compiled binaries; `gecko host install` picks the right one, and
 # the Termux installer downloads the Linux ones.

@@ -42,6 +42,7 @@ import { THEMES, AUTO, resolveTheme, paintTheme, swatch, termContrast } from './
 import { Keys, prettyCombo, comboOf, ACTIONS, DEFAULTS, DEFAULT_TAB_MODIFIER, TAB_MODIFIERS } from './keys.js';
 import { startupChime } from './sound.js';
 import { attachPane, attachPage } from './touch.js';
+import { attachViewport } from './viewport.js';
 import { imeMirror } from './ime.js';
 import { BUILD, buildId } from './build.js';
 import { siClaude, siGooglegemini, siCursor, siGithubcopilot, siQwen, siOpencode } from 'simple-icons';
@@ -327,6 +328,7 @@ class App {
       startupSound: store('startupSound', true),
       quickReplies: store('quickReplies', null), // null: QUICK_REPLIES
       order: store('order', {}), // dragged order of workspaces, tabs and machines: { ws, tabs, hosts }
+      keybar: store('keybar', true), // phones: the key bar (this device only)
     };
     // `gecko open` asks for a window that fits a terminal of this size,
     // centered; done once, then dropped from the URL.
@@ -375,6 +377,11 @@ class App {
         // A different start id means the service restarted; finish a
         // "Restart Gecko" by reloading this window into the new version.
         if (this.restarting && m.text && m.text !== this.startId) location.reload();
+        // Gecko there restarted (an upgrade, say) while this page stayed
+        // open, as an installed web app does for days, or the page came
+        // from the offline copy (sw.js): reload into the UI it serves now
+        // if that is another build. The tabs keep running.
+        if (m.text !== this.startId && !this.bundled) this.reloadIfNewBuild();
         this.startId = m.text;
         this.daemonVersion = m.version || 1;
         this.outdated = this.daemonVersion < PROTOCOL;
@@ -607,7 +614,13 @@ class App {
         this.fitRequest = null;
         this.fitWindow(cols, rows);
       }
-      if (!this.paletteOpen && !this.textViewOpen && !(this.touch && document.activeElement?.closest('#compose'))) p.focus();
+      // With a finger, switching tabs keeps the keyboard as it was: up if
+      // a terminal had it, else down (no keyboard jumping up on a tap).
+      // The web app also opens with it down: an installed one on iOS would
+      // raise it at launch (the native apps keep their own behaviour).
+      const keepDown = this.touch && !document.activeElement?.closest?.('.xterm') && ((this.firstSync && this.shownBefore) || !native);
+      this.shownBefore = true;
+      if (!this.paletteOpen && !this.textViewOpen && !keepDown && !(this.touch && document.activeElement?.closest('#compose'))) p.focus();
     });
     const s = this.sessions.get(id);
     if (s?.attention) this.conn.send({ t: 'patch', id, patch: { seen: true } });
@@ -984,6 +997,7 @@ class App {
       this.activePane()?.layout(true);
     }
     if (k === 'keys') this.keys?.rebuild(v);
+    if (k === 'keybar') document.body.classList.toggle('no-keybar', !v);
   }
 
   pushSettings() {
@@ -1180,6 +1194,76 @@ class App {
       onSelect: (item) => item && this.applyTheme(this.settings.theme, item.value),
       onCancel: () => this.applyTheme(),
     });
+  }
+
+  // Settings on a phone or tablet: what the Android and iOS apps put in
+  // their own menus, for the browser and the installed web app. Every
+  // change applies at once (and syncs like the palette's settings).
+  openSettings() {
+    const m = $('#modal');
+    const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+    const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const themes = [{ id: AUTO, name: 'Gecko (follows system)', s: resolveTheme(AUTO) }].concat(THEMES.map((t) => ({ id: t.id, name: t.name, s: t })));
+    const install = standalone ? ''
+      : this.installPrompt ? '<button data-install class="primary">Install Gecko as an app</button>'
+      : ios ? '<p class="note">To install Gecko as an app: tap Share, then Add to Home Screen.</p>'
+      : '<p class="note">To install Gecko as an app: open the browser menu, then Install app (or Add to Home screen).</p>';
+    m.innerHTML = `<div class="card settings" role="dialog" aria-modal="true" aria-labelledby="set-title">
+      <h2 id="set-title">Settings</h2>
+      <section><h3>Text size</h3><div class="stepper">
+        <button data-font="-1" aria-label="Smaller text">A−</button><output aria-live="polite"></output><button data-font="1" aria-label="Bigger text">A+</button>
+        <button data-font="0">Reset</button></div>
+        <p class="note">Or pinch a terminal with two fingers.</p></section>
+      <section><h3>Keys</h3><div class="opts">
+        <button data-keybar aria-pressed="${!!this.settings.keybar}" class="${this.settings.keybar ? 'on' : ''}">Key bar</button>
+        <button data-compose aria-pressed="${!$('#compose').hidden}" class="${$('#compose').hidden ? '' : 'on'}">Compose box</button></div></section>
+      <section><h3>Theme</h3><div class="themes">${themes.map((t) => `<button data-theme="${esc(t.id)}" aria-label="${esc(t.name)}" class="${t.id === this.settings.theme ? 'on' : ''}">${swatch(t.s)}<span class="n">${esc(t.name)}</span></button>`).join('')}</div></section>
+      <section><h3>More</h3><div class="acts">
+        <button data-act2="palette">Search and commands</button>
+        ${this.activeId() ? '<button data-act2="select">Select text</button><button data-act2="rename">Rename tab</button>' : ''}
+        <button data-act2="notify">Notifications</button>
+        <button data-act2="shortcuts">Keyboard shortcuts</button></div></section>
+      ${install ? `<section>${install}</section>` : ''}
+      <p class="note">Gecko web ${esc(this.buildId())}${standalone ? ', installed' : ''}</p>
+      <div class="row"><button class="primary" data-done>Done</button></div></div>`;
+    m.hidden = false;
+    const out = m.querySelector('output');
+    const showFont = () => { out.textContent = `${this.fontSize()} px`; };
+    showFont();
+    const done = () => { m.hidden = true; m.innerHTML = ''; m.onkeydown = null; m.onclick = null; };
+    m.onkeydown = (ev) => { if (ev.key === 'Escape') done(); };
+    m.onclick = (ev) => {
+      if (ev.target === m) return done(); // outside the card
+      const b = ev.target.closest('button');
+      if (!b) return;
+      const d = b.dataset;
+      if (d.theme) {
+        this.setSetting('theme', d.theme);
+        for (const x of m.querySelectorAll('[data-theme]')) x.classList.toggle('on', x === b);
+      } else if (d.font !== undefined) {
+        this.setFont(+d.font ? this.fontSize() + +d.font : 12);
+        showFont();
+      } else if ('keybar' in d) {
+        this.setSetting('keybar', !this.settings.keybar);
+        b.classList.toggle('on', this.settings.keybar);
+        b.setAttribute('aria-pressed', String(this.settings.keybar));
+      } else if ('compose' in d) {
+        done();
+        this.toggleCompose();
+      } else if ('install' in d) {
+        const p = this.installPrompt;
+        this.installPrompt = null;
+        done();
+        p?.prompt();
+      } else if (d.act2) {
+        done();
+        ({ palette: () => this.openPalette(), select: () => this.openTextView(), rename: () => this.renameTab(),
+          notify: () => this.enableNotifications(), shortcuts: () => this.openShortcuts() })[d.act2]?.();
+      } else if ('done' in d) {
+        done();
+      }
+    };
+    m.querySelector('[data-done]').focus({ preventScroll: true });
   }
 
   // Pick a theme; the app previews each one as you move through
@@ -1831,7 +1915,15 @@ class App {
     document.body.classList.toggle('side-hidden', !!this.settings.sidebarHidden);
     $('#scrim').onclick = () => this.closeDrawer();
     if (this.touch) attachPage(this);
+    // The page as an app window on phones (no zoom, sized to the keyboard);
+    // the Android and iOS apps size their web view themselves.
+    if (this.touch && !native) attachViewport();
     $('#palette-btn').onclick = () => this.openPalette();
+    $('#settings-btn').onclick = () => this.openSettings();
+    document.body.classList.toggle('no-keybar', !this.settings.keybar);
+    // Chrome offers to install the web app: kept for Settings' Install button.
+    window.addEventListener('beforeinstallprompt', (ev) => { ev.preventDefault(); this.installPrompt = ev; });
+    window.addEventListener('appinstalled', () => { this.installPrompt = null; });
     $('#conn').onclick = () => { if (this.outdated) this.restartService(); };
     $('#palette-btn kbd').textContent = prettyCombo(this.keys.first('palette'));
     $('#tabs').addEventListener('click', (ev) => {
@@ -1839,9 +1931,12 @@ class App {
       if (close) return this.closeTab(close.dataset.close);
       const t = ev.target.closest('[data-tab]');
       if (!t) return;
-      if (this.isDouble('tab:' + t.dataset.tab)) return this.renameTab(t.dataset.tab);
+      // A double click renames; with a finger, two quick taps on a tab
+      // are two taps (rename is in its long-press menu and in Settings).
+      if (!this.touch && this.isDouble('tab:' + t.dataset.tab)) return this.renameTab(t.dataset.tab);
       this.focusSession(t.dataset.tab);
     });
+    if (this.touch) this.bindTabTaps();
     onWheelStep($('#tabbar'), '#tabs', (d) => this.cycleTab(d));
     onWheelStep($('#tabbar'), '#ws-title', (d) => this.cycleWorkspace(d));
     // Only when the sidebar fits; otherwise the wheel scrolls it as usual.
@@ -2223,6 +2318,39 @@ class App {
     this.closeMenu = close;
   }
 
+  // Phones and tablets: a tap on a tab switches on the finger's lift,
+  // not on the click the browser may or may not send after it (none when
+  // the strip was still coasting, the element was re-rendered, or a
+  // keyboard closing moved things). A drag that scrolled the strip, a
+  // swipe and a long-press are not taps.
+  bindTabTaps() {
+    const strip = $('#tabs');
+    let t0 = null;
+    strip.addEventListener('touchstart', (ev) => {
+      t0 = null;
+      if (ev.touches.length !== 1) return;
+      const tab = ev.target.closest('[data-tab]');
+      if (!tab) return;
+      const p = ev.touches[0];
+      t0 = { id: tab.dataset.tab, close: ev.target.closest('[data-close]')?.dataset.close, x: p.clientX, y: p.clientY, at: ev.timeStamp, scroll: strip.scrollLeft };
+    }, { passive: true });
+    strip.addEventListener('touchmove', (ev) => {
+      const p = ev.touches[0];
+      if (t0 && p && Math.hypot(p.clientX - t0.x, p.clientY - t0.y) > 12) t0 = null;
+    }, { passive: true });
+    strip.addEventListener('touchcancel', () => { t0 = null; }, { passive: true });
+    strip.addEventListener('touchend', (ev) => {
+      const t = t0;
+      t0 = null;
+      const p = ev.changedTouches[0];
+      if (!t || !p || ev.touches.length) return;
+      if (Math.hypot(p.clientX - t.x, p.clientY - t.y) > 12 || Math.abs(strip.scrollLeft - t.scroll) > 4 || ev.timeStamp - t.at > 600) return;
+      if (ev.cancelable) ev.preventDefault(); // handled here: no click after it
+      if (t.close) return this.closeTab(t.close);
+      this.focusSession(t.id);
+    }, { passive: false });
+  }
+
   // Drag workspaces, tabs (in the sidebar or the tab bar) and machines to
   // reorder them; drop a tab on another workspace to move it there. Done
   // with pointer events: the sidebar keeps focus in the terminal by
@@ -2261,6 +2389,7 @@ class App {
         window.addEventListener('click', swallow, { capture: true, once: true });
         setTimeout(() => window.removeEventListener('click', swallow, true), 0);
         if (e && d.at) this.dropAt(d, d.at);
+        this.tabsHTML = this.sideHTML = null; // the drag moved rows by hand
         this.render();
         d.ghost.land(d.kind, d.key);
       };
@@ -3001,6 +3130,7 @@ class App {
     if (!isMac) add(`Ctrl+C copies selected text: ${this.settings.smartCopy ? 'on' : 'off'}`, 'Without a selection it still interrupts', () => this.setSetting('smartCopy', !this.settings.smartCopy), 'Setting');
     if (isMac) add(`Option key as Meta: ${this.settings.optionIsMeta ? 'on' : 'off'}`, 'Toggle', () => this.setSetting('optionIsMeta', !this.settings.optionIsMeta), 'Setting');
     const cur0 = this.settings.theme === AUTO ? 'Gecko (follows system)' : resolveTheme(this.settings.theme).name;
+    add('Settings…', 'Theme, text size, key bar', () => this.openSettings(), 'Setting', undefined, 'settings preferences options font size key bar theme');
     add('Change Theme', `Now: ${cur0}`, () => this.openThemePicker(), 'Setting', undefined, 'switch change theme themes colors colours color scheme palette appearance dark light mode background wallpaper skin');
     if (this.desktop?.transparent) {
       add('Background opacity…', `Now: ${this.settings.opacity >= 1 ? 'solid' : Math.round(this.settings.opacity * 100) + '%'} over the desktop`, () => this.openOpacityPicker(), 'Setting', undefined, 'transparency transparent see-through blur glass alpha window opacity');
@@ -3483,6 +3613,13 @@ class App {
 
   // ---------------------------------------------------------------- render
 
+  async reloadIfNewBuild() {
+    try {
+      const info = await (await fetch('/api/info', { cache: 'no-store' })).json();
+      if (info.commit && BUILD.commit !== 'dev' && info.commit !== BUILD.commit) location.reload();
+    } catch {}
+  }
+
   // This web UI's build id, e.g. "a1b2c3d · Oct 17 02:15" (see build.js).
   buildId() {
     return buildId(BUILD.commit, BUILD.time);
@@ -3649,7 +3786,13 @@ class App {
       }
     }
     parts.push('</ul></div>');
-    $('#side-body').innerHTML = parts.join('');
+    // Unchanged rows stay the same elements: replacing them under a finger
+    // loses the tap (iOS fires no click on a removed element).
+    const side = parts.join('');
+    if (side !== this.sideHTML) {
+      this.sideHTML = side;
+      $('#side-body').innerHTML = side;
+    }
     const st = this.conn.status;
     const conn = $('#conn');
     conn.className = 'conn ' + (st === 'online' && this.outdated ? 'outdated' : st);
@@ -3667,7 +3810,7 @@ class App {
     const nt = $('#new-tab');
     nt.innerHTML = '+' + (this.hosts.length > 1 && next ? `<span class="where">${esc(next)}</span>` : '');
     nt.title = `New tab on ${next || 'this machine'} (${prettyCombo(this.keys.first('newTab'))})`;
-    $('#tabs').innerHTML = tabs.map((t) => {
+    const html = tabs.map((t) => {
       const n = nums.get(t.id);
       return `
       <div class="tab ${t.id === act ? 'cur' : ''} ${t.exited ? 'gone' : ''} ${t.attention ? 'bell' : ''}" data-tab="${esc(t.id)}" data-drag="tab" data-key="${esc(t.id)}" role="tab" aria-selected="${t.id === act}" title="${esc(`${tabLabel(t)} - ${t.host}${t.cwd ? ' · ' + t.cwd : ''}${n <= 9 ? ` (${prettyCombo((isMac ? 'cmd+' : 'alt+') + n)})` : ''}`)}">
@@ -3675,7 +3818,24 @@ class App {
         <button class="x" data-close="${esc(t.id)}" aria-label="Close tab">×</button>
       </div>`;
     }).join('');
-    $('#tabs .cur')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    // Re-rendered every few seconds and on any output: the tabs are only
+    // replaced when they changed (a finger may be on one), and the strip
+    // only scrolls to the current tab when that changes, never back from
+    // where a finger scrolled it.
+    const strip = $('#tabs');
+    if (html !== this.tabsHTML) {
+      this.tabsHTML = html;
+      strip.innerHTML = html;
+    }
+    const cur = strip.querySelector('.cur');
+    if (cur && (act !== this.tabsScrolledTo || tabs.length !== this.tabsCount)) {
+      this.tabsScrolledTo = act;
+      this.tabsCount = tabs.length;
+      // By hand: scrollIntoView can also scroll the page (iOS Safari).
+      const s = strip.getBoundingClientRect(), r = cur.getBoundingClientRect();
+      if (r.left < s.left) strip.scrollLeft -= s.left - r.left;
+      else if (r.right > s.right) strip.scrollLeft += r.right - s.right;
+    }
   }
 
   renderEmpty() {
@@ -3849,3 +4009,34 @@ Promise.race([
 if ('serviceWorker' in navigator && window.isSecureContext) {
   navigator.serviceWorker.register('/sw.js').catch(() => {});
 }
+
+// ?probe: the page's state as text, for UI tests that can only read the
+// accessibility tree (iOS Safari in the Simulator: web/e2e/ios).
+try {
+  if (/[?&]probe\b/.test(location.search)) sessionStorage.setItem('gecko.probe', '1');
+  if (sessionStorage.getItem('gecko.probe')) {
+    const el = document.createElement('div');
+    el.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;pointer-events:none';
+    document.body.appendChild(el);
+    const rect = (e) => {
+      if (!e) return null;
+      const r = e.getBoundingClientRect();
+      return [r.left, r.top, r.width, r.height].map(Math.round);
+    };
+    setInterval(() => {
+      const g = window.gecko, vv = window.visualViewport;
+      const cs = getComputedStyle(document.documentElement);
+      el.textContent = 'gecko.probe ' + JSON.stringify({
+        online: g?.conn?.status, sync: !!g?.firstSync, font: g?.fontSize?.(), theme: g?.settings?.theme,
+        active: g?.activeId?.() || null,
+        tabs: [...document.querySelectorAll('#tabs .tab')].map((t) => ({ id: t.dataset.tab, r: rect(t) })),
+        inner: [innerWidth, innerHeight], vv: vv ? [vv.width, vv.height, vv.offsetTop, vv.scale].map((x) => Math.round(x * 100) / 100) : null,
+        tabbar: rect(document.getElementById('tabbar')), keybar: rect(document.getElementById('keybar')),
+        newTab: rect(document.getElementById('new-tab')), app: rect(document.getElementById('app')),
+        standalone: matchMedia('(display-mode: standalone)').matches || navigator.standalone === true,
+        safe: cs.getPropertyValue('--safe-top') + ' ' + cs.getPropertyValue('--safe-bottom'),
+        focus: document.activeElement?.className || '', scrollY: window.scrollY,
+      });
+    }, 250);
+  }
+} catch {}
