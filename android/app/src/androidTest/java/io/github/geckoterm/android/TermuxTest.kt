@@ -130,7 +130,7 @@ class TermuxTest {
         // The connect screen: Termux is a line under This phone, not a Gecko of its own.
         ActivityScenario.launch<ConnectActivity>(Intent(ctx, ConnectActivity::class.java)).use {
             assertNotNull("no Termux line", device.wait(Until.findObject(By.text(ctx.getString(R.string.termux_sub_offer))), 10_000))
-            assertEquals(null, device.findObject(By.text(ctx.getString(R.string.termux))))
+            assertEquals("Termux is a row of its own", null, device.findObject(By.res(ctx.packageName, "name").text(ctx.getString(R.string.termux))))
             shot("list-offer")
         }
 
