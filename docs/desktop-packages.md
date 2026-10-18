@@ -121,5 +121,7 @@ sudo apparmor_parser -r /etc/apparmor.d/gecko-appimage
 The Windows daemon uses ConPTY (Windows 10 1809 or newer) and starts
 PowerShell 7 if installed, else Windows PowerShell. What is not there yet on
 Windows: `gecko upgrade` (restart in place keeping sessions); use `gecko stop`
-and reopen Gecko instead, which ends local sessions. The window uses Windows
-11 acrylic for its see-through background.
+and reopen Gecko instead, which ends local sessions. The window has no native
+title bar, so that it can be see-through: Windows draws the minimize,
+maximize and close buttons over the right end of the tab bar, and the
+empty part of the tab bar moves the window.
