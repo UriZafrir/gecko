@@ -24,6 +24,18 @@ Apps and packages, each built and smoke-tested in CI:
 - **Termux:** Gecko runs in [Termux](android.md#termux) on Android, and the
   Android app opens it like any other machine.
 
+New in 0.3.0:
+
+- **Transparency:** background opacity shows the desktop on macOS and
+  Windows too, not a gray material, checked in CI on all three systems.
+- **The anchor (protocol 10):** the Gecko you connect to manages every other
+  machine (see [The anchor](anchor.md)). The server now enforces scope: relay
+  peers only get that machine's own tabs, whatever they ask for. v9 machines
+  still work with a v10 anchor.
+- **Web app on phones:** installable, with Settings on the tab bar, pinch for
+  text size, and tabs that switch on every tap. `make test-pwa` runs it in
+  WebKit and Chromium, and CI also runs Safari in the iOS Simulator.
+
 Agent status is a heuristic. It looks for screen text such as "esc to
 interrupt" and approval prompts, plus output activity, bells and OSC 9/777
 notifications. It works well for Claude Code and Codex-style TUIs. Other agents
