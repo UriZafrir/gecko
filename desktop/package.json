@@ -2,7 +2,7 @@
   "name": "gecko",
   "private": true,
   "version": "0.2.2",
-  "description": "Native window for Gecko: transparency, blur, no browser chrome",
+  "description": "Native window for Gecko: a see-through background, no browser chrome",
   "main": "main.js",
   "scripts": {
     "start": "electron ."
