@@ -21,8 +21,9 @@ import java.util.concurrent.atomic.AtomicInteger
  * a place to run Gecko: the app starts `gecko daemon` there with Termux's
  * RUN_COMMAND intent (the user grants the permission and sets
  * allow-external-apps in Termux), asks it for its link (`gecko url`, whose
- * output comes back in a result PendingIntent) and then connects to it on
- * 127.0.0.1 like to any machine.
+ * output comes back in a result PendingIntent) and hands that link to This
+ * phone's Gecko, which connects to it on 127.0.0.1 as one of its machines
+ * (see PhoneTermux).
  */
 object Termux {
     const val PACKAGE = "com.termux"
@@ -61,8 +62,8 @@ object Termux {
         return true
     }
 
-    /** The saved machine for Gecko in Termux, once it has run. */
-    fun machine(ctx: Context): Machine? = Gecko.machines(ctx).get(ID)
+    /** Gecko in Termux's link, once it has run (kept apart from the machine list: it is a machine of This phone). */
+    fun machine(ctx: Context): Machine? = Gecko.termux(ctx).get(ID)
 
     /** Whether something listens at the saved machine's address. Blocking. */
     fun listening(m: Machine?): Boolean {
@@ -77,9 +78,9 @@ object Termux {
         false
     }
 
-    /** Saves Gecko in Termux as a machine (so notifications and the rest work as for any machine). */
+    /** Saves Gecko in Termux's link, to hand to This phone's Gecko (see PhoneTermux). */
     fun save(ctx: Context, link: GeckoLink): Machine {
-        val store = Gecko.machines(ctx)
+        val store = Gecko.termux(ctx)
         val m = (store.get(ID) ?: Machine(id = ID, name = ctx.getString(R.string.termux), url = link.baseUrl, token = ""))
             .copy(url = link.baseUrl, token = link.token ?: "")
         store.save(m)

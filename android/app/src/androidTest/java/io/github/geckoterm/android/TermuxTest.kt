@@ -99,48 +99,124 @@ class TermuxTest {
         assertTrue("allow-external-apps couldn't be turned on again", restored)
     }
 
-    @Test fun e_startConnectAndWork() {
+    /**
+     * Gecko in Termux is one of This phone's machines: This phone runs with
+     * a tab of its own, Termux is set up, and then it's in This phone's
+     * sidebar; a tab opened on it from This phone's UI runs Termux's shell
+     * and packages, its agent notifies through This phone, and This phone's
+     * own tab is still there. Then: an older app's Termux machine moves over
+     * without setup, This phone starts Gecko in Termux again when it ends,
+     * and leaves it stopped when stopped from the menu.
+     */
+    @Test fun e_termuxIsAMachineOfThisPhone() {
+        // From scratch: not set up, not running.
         TermuxActivity.stop(ctx)
         waitUntil(10) { !Termux.portOpen("127.0.0.1", TermuxFlow.PORT) }
-        // The machine list shows Termux next to This phone.
-        val list = ActivityScenario.launch<ConnectActivity>(Intent(ctx, ConnectActivity::class.java))
-        assertNotNull("no Termux row", device.wait(Until.findObject(By.text(ctx.getString(R.string.termux))), 10_000))
-        shot("list")
-        list.close()
-        // Tap-equivalent: the setup screen checks, starts gecko daemon in Termux and opens it.
+        PhoneService.start(ctx)
+        waitUntil(30) { LocalGecko.running(ctx) }
+        PhoneTermux.forget(ctx, fromPhone = true)
+        val me = phoneName()
+
+        // This phone, with a tab of its own from before.
+        val phone = Intent(ctx, TerminalActivity::class.java).putExtra(TerminalActivity.EXTRA_MACHINE, LocalGecko.ID).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        ActivityScenario.launch<TerminalActivity>(phone).use { sc ->
+            waitFor(sc, "window.gecko&&gecko.conn.status==='online'&&gecko.firstSync===true", 60)
+            if (js(sc, "[...gecko.sessions.values()].some(s=>s.name==='phone-old')") != "true") {
+                js(sc, "gecko.conn.request({t:'create',create:{name:'phone-old',cols:80,rows:24}})")
+            }
+            waitFor(sc, "[...gecko.sessions.values()].some(s=>s.name==='phone-old')")
+        }
+
+        // The connect screen: Termux is a line under This phone, not a Gecko of its own.
+        ActivityScenario.launch<ConnectActivity>(Intent(ctx, ConnectActivity::class.java)).use {
+            assertNotNull("no Termux line", device.wait(Until.findObject(By.text(ctx.getString(R.string.termux_sub_offer))), 10_000))
+            assertEquals(null, device.findObject(By.text(ctx.getString(R.string.termux))))
+            shot("list-offer")
+        }
+
+        // Set up: the setup screen starts Gecko in Termux and adds it to This phone.
         TermuxActivity.open(ctx, start = true)
-        waitUntil(60) { Termux.machine(ctx) != null && Termux.listening(Termux.machine(ctx)) }
+        waitUntil(90) { LocalGecko.hosts(ctx)?.contains(TermuxMachine.HOST) == true }
         val m = Termux.machine(ctx)!!
         assertEquals("http://127.0.0.1:${TermuxFlow.PORT}/", m.url)
-        assertTrue(m.token.length >= 16)
+        assertEquals("not in the machine list", null, Gecko.machines(ctx).get(Termux.ID))
+        device.wait(Until.findObject(By.pkg(ctx.packageName)), 5_000)
 
-        val intent = Intent(ctx, TerminalActivity::class.java).putExtra(TerminalActivity.EXTRA_MACHINE, Termux.ID).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        ActivityScenario.launch<TerminalActivity>(intent).use { sc ->
+        // An agent stand-in for Claude Code in Termux: it works, then asks.
+        termux("echo ${android.util.Base64.encodeToString(FAKE_CLAUDE.toByteArray(), android.util.Base64.NO_WRAP)} | base64 -d > \$PREFIX/bin/claude-standin && chmod 755 \$PREFIX/bin/claude-standin")
+        Gecko.prefs(ctx).edit().putBoolean(Gecko.BACKGROUND, true).apply()
+        WatchService.start(ctx)
+
+        ActivityScenario.launch<TerminalActivity>(phone).use { sc ->
             waitFor(sc, "window.gecko&&gecko.conn.status==='online'&&gecko.firstSync===true", 60)
-            js(sc, "gecko.newTab()")
-            waitFor(sc, "gecko.activePane()&&gecko.activeSession()&&!gecko.activeSession().exited")
+            waitFor(sc, "gecko.hosts.some(h=>h.name==='termux'&&h.kind==='link'&&h.status==='connected')", 60)
+            shot("sidebar")
+            // A tab on Termux from This phone's UI, next to This phone's own.
+            js(sc, "gecko.newTab({host:'termux',cwd:''})")
+            waitFor(sc, "gecko.activeSession()&&gecko.activeSession().host==='termux'&&!gecko.activeSession().exited")
             val tools = args.getString("termuxTools") == "true"
-            val cmd = "echo \$SHELL; echo shell=\$0; echo \$PREFIX; " + (if (tools) "git --version; tmux -V; node -v; tmux new -d -s gk 'sleep 600'; tmux ls; " else "") + "echo marker-\$((6*7))"
+            val cmd = "echo \$SHELL; echo shell=\$0; echo \$PREFIX; " + (if (tools) "git --version; node -v; " else "") + "echo marker-\$((6*7))"
             js(sc, "gecko.sendInput(gecko.activeId(), ${org.json.JSONObject.quote("$cmd\r")})")
             waitFor(sc, "screen().includes('marker-42')", 30)
             val text = js(sc, "screen()")
-            assertTrue(text, text.contains("/data/data/com.termux/files/usr"))
             assertTrue("not Termux's shell: $text", text.contains("/data/data/com.termux/files/usr/bin/bash"))
-            assertTrue("not bash: $text", Regex("shell=\\S*bash").containsMatchIn(text))
             if (tools) {
                 assertTrue(text, text.contains("git version"))
-                assertTrue(text, Regex("tmux \\d").containsMatchIn(text))
                 assertTrue(text, Regex("v\\d+\\.").containsMatchIn(text))
-                assertTrue(text, text.contains("gk: 1 windows"))
-                termux("tmux kill-session -t gk")
             }
-            shot("tab")
+            // This phone's own tab is still there, on This phone.
+            assertEquals("true", js(sc, "[...gecko.sessions.values()].some(s=>s.name==='phone-old'&&s.host===${org.json.JSONObject.quote(me)})"))
+            shot("termux-tab")
+            js(sc, "gecko.sendInput(gecko.activeId(), 'clear; claude-standin\\r')")
+            waitFor(sc, "screen().includes('stand-in')", 15)
+            try {
+                waitFor(sc, "gecko.activeSession().agent&&gecko.activeSession().agent.name==='claude'", 30)
+            } catch (e: AssertionError) {
+                throw AssertionError("no agent: ${js(sc, "JSON.stringify(gecko.activeSession())")}\n${js(sc, "screen()")}")
+            }
         }
-        // Stopping ends it and forgets the link.
+        // In the background, the agent's question arrives as a notification of This phone's.
+        device.pressHome()
+        val nm = ctx.getSystemService(android.app.NotificationManager::class.java)
+        val asked = { nm.activeNotifications.any { (it.notification.extras.getCharSequence("android.title") ?: "").contains("needs you") } }
+        waitUntil(60) { asked() }
+        device.openNotification()
+        device.wait(Until.findObject(By.textContains("needs you")), 5_000)
+        shot("notification")
+        device.pressBack()
+        termux("pkill -f claude-standin; rm -f \$PREFIX/bin/claude-standin")
+
+        // An older app saved Termux as a machine of its own: it moves over, no setup.
+        LocalGecko.removeHost(ctx, TermuxMachine.HOST)
+        PhoneTermux.forget(ctx, fromPhone = false)
+        Gecko.machines(ctx).save(m.copy(lastUsed = 5))
+        assertTrue(TermuxMachine.migrate(Gecko.machines(ctx), Gecko.termux(ctx)))
+        assertEquals(null, PhoneTermux.sync(ctx))
+        assertTrue(LocalGecko.hosts(ctx)!!.contains(TermuxMachine.HOST))
+        assertEquals(null, Gecko.machines(ctx).get(Termux.ID))
+
+        // Termux ended Gecko (or Termux was closed): This phone starts it again.
+        assertEquals(0, termux("PATH=\$PATH:\$HOME/.local/bin; gecko stop").exitCode)
+        waitUntil(15) { !Termux.portOpen("127.0.0.1", TermuxFlow.PORT) }
+        waitUntil(60) { Termux.portOpen("127.0.0.1", TermuxFlow.PORT) }
+
+        // Stopped from the menu: it stays stopped, and says so.
         TermuxActivity.stop(ctx)
-        waitUntil(10) { !Termux.portOpen("127.0.0.1", TermuxFlow.PORT) }
-        assertEquals(null, Termux.machine(ctx))
+        waitUntil(15) { !Termux.portOpen("127.0.0.1", TermuxFlow.PORT) }
+        Thread.sleep(20_000)
+        assertFalse(Termux.portOpen("127.0.0.1", TermuxFlow.PORT))
+        assertEquals(TermuxMachine.Status.Paused, PhoneTermux.status(ctx))
+        // Started again from the connect screen's line.
+        TermuxActivity.open(ctx, start = true)
+        waitUntil(60) { Termux.portOpen("127.0.0.1", TermuxFlow.PORT) && !PhoneTermux.paused(ctx) }
+        ActivityScenario.launch<ConnectActivity>(Intent(ctx, ConnectActivity::class.java)).use {
+            assertNotNull(device.wait(Until.findObject(By.text(ctx.getString(R.string.termux_sub_running))), 15_000))
+            shot("list-running")
+        }
     }
+
+    /** This phone's machine name, as its Gecko says. */
+    private fun phoneName(): String = LocalGecko.hosts(ctx)!!.first()
 
     /** Opens the setup screen and waits for a step's title. */
     private fun screen(start: Boolean, wait: Int, shot: String) {
@@ -184,5 +260,19 @@ class TermuxTest {
             Thread.sleep(300)
         }
         throw AssertionError("timed out waiting for $cond")
+    }
+
+    companion object {
+        /** Works for a few seconds (Claude Code's title), then asks a question with choices. */
+        private val FAKE_CLAUDE = """#!/data/data/com.termux/files/usr/bin/sh
+printf '\033]0;\342\234\263 Claude Code\007'
+echo 'Claude Code (a stand-in)'
+for i in 1 2 3 4 5 6 7 8; do printf '\033]0;\342\227\220 Fixing the flaky test\007'; printf '\r* Fixing the flaky test... (%ss)' "${'$'}i"; sleep 1; done
+printf '\033]0;\342\234\263 Fix the flaky test\007'
+printf '\r\033[K\nEdit file test/flaky.test.js\nDo you want to make this edit to flaky.test.js?\n\342\235\257 1. Yes\n  2. No\n'
+read answer
+echo "answered ${'$'}answer"
+sleep 60
+"""
     }
 }

@@ -12,6 +12,10 @@ data class TermuxResult(
     val err: Int = -1,
     val errmsg: String = "",
 ) {
+    /** Without tokens (`gecko url` prints one), so a log line can't show them. */
+    override fun toString() =
+        "TermuxResult(stdout=${hideTokens(stdout)}, stderr=${hideTokens(stderr)}, exitCode=$exitCode, err=$err, errmsg=${hideTokens(errmsg)})"
+
     /** Termux ran the command (whatever its exit code). */
     val ran: Boolean get() = err == -1
 
@@ -21,6 +25,9 @@ data class TermuxResult(
             .joinToString("\n").trim()
 
     companion object {
+        private val TOKEN = Regex("""token=[^\s&#]+""")
+        fun hideTokens(s: String) = s.replace(TOKEN, "token=(hidden)")
+
         /** From the bundle's values (see Termux.resultOf). */
         fun fromMap(m: Map<String, Any?>) = TermuxResult(
             stdout = m["stdout"] as? String ?: "",

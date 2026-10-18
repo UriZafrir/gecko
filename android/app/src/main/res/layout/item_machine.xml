@@ -36,6 +36,20 @@
             android:layout_height="wrap_content"
             android:textAppearance="?attr/textAppearanceBodyMedium"
             android:textColor="?android:textColorSecondary" />
+
+        <!-- This phone only: Gecko in Termux, one of its machines. -->
+        <TextView
+            android:id="@+id/sub"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="?attr/selectableItemBackground"
+            android:drawablePadding="8dp"
+            android:gravity="center_vertical"
+            android:minHeight="32dp"
+            android:paddingEnd="8dp"
+            android:textAppearance="?attr/textAppearanceBodyMedium"
+            android:visibility="gone" />
     </LinearLayout>
 
     <ImageButton

@@ -23,8 +23,9 @@ import com.google.android.material.appbar.MaterialToolbar
 /**
  * Gecko in Termux: checks each thing it needs (Termux, the permission,
  * allow-external-apps, gecko installed there), shows how to fix the first
- * one missing, then starts the daemon there and opens it like a machine.
- * The steps themselves are [TermuxFlow]; this runs the commands.
+ * one missing, then starts the daemon there and adds it to This phone's
+ * machines, and opens This phone. The steps themselves are [TermuxFlow];
+ * this runs the commands.
  */
 class TermuxActivity : AppCompatActivity() {
     private var state: TermuxState = TermuxState.Checking
@@ -110,10 +111,22 @@ class TermuxActivity : AppCompatActivity() {
         move(TermuxEvent.Url(Termux.run(this, TermuxFlow.URL, "gecko url", 15_000)))
         val s = state
         if (s is TermuxState.Running) {
-            val m = Termux.save(this, s.link)
+            // A machine of This phone: start This phone (its service keeps
+            // Gecko in Termux running from now on), hand it the link, open it.
+            Termux.save(this, s.link)
+            PhoneTermux.setPaused(this, false)
+            PhoneService.start(this)
+            val until = System.currentTimeMillis() + 20_000
+            while (!LocalGecko.running(this) && System.currentTimeMillis() < until) Thread.sleep(200)
+            val err = if (LocalGecko.running(this)) PhoneTermux.sync(this) else getString(R.string.phone_failed)
+            if (err != null) {
+                state = TermuxState.Failed(getString(R.string.termux_handoff_failed, err))
+                runOnUiThread { render() }
+                return
+            }
             runOnUiThread {
-                WatchService.refresh(this)
-                TerminalActivity.open(this, m)
+                Toast.makeText(this, R.string.termux_added, Toast.LENGTH_LONG).show()
+                startActivity(Intent(this, TerminalActivity::class.java).putExtra(TerminalActivity.EXTRA_MACHINE, LocalGecko.ID))
                 finish()
             }
         }
@@ -264,10 +277,16 @@ class TermuxActivity : AppCompatActivity() {
                     .apply { if (ctx !is android.app.Activity) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) },
             )
 
-        /** Stops Gecko in Termux and forgets its link. Blocking. */
+        /** Stops Gecko in Termux; it stays stopped (This phone doesn't start it again) until started. Blocking. */
         fun stop(ctx: Context) {
+            PhoneTermux.setPaused(ctx, true)
             try { Termux.run(ctx, TermuxFlow.STOP, "gecko stop", 10_000) } catch (e: Exception) { Log.w(TAG, "stop: ${e.message}") }
-            Gecko.machines(ctx).remove(Termux.ID)
+        }
+
+        /** Stops Gecko in Termux and removes it from This phone's machines. Blocking. */
+        fun remove(ctx: Context) {
+            stop(ctx)
+            PhoneTermux.forget(ctx, fromPhone = true)
         }
     }
 }
