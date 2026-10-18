@@ -224,6 +224,18 @@ body.reordering, body.reordering * { cursor: grabbing !important; }
 .st-connecting .hdot { background: var(--need); }
 .st-error .hdot { background: var(--red); }
 .host .err { padding: 0 14px 4px 29px; font-size: 12px; color: var(--red); overflow-wrap: anywhere; }
+/* Opened from another device: the Gecko this page talks to is the anchor.
+   It heads the machine list with a badge, and the machines it reaches sit
+   under it on a guide line (see anchor.js). */
+.anc { width: 13px; height: 13px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.host.anchor .host-row { background: color-mix(in srgb, var(--accent) 9%, transparent); }
+.host.anchor .nm { font-weight: 600; }
+.badge.anchor-badge { display: inline-flex; align-items: center; gap: 4px; color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent); flex: none; }
+.hostlist .under-anchor { margin-left: 19px; border-left: 1px solid var(--line); }
+.hostlist .hgroup.under-anchor { padding-left: 12px; text-transform: none; letter-spacing: 0; font-weight: 500; }
+.hostlist .host.under-anchor .host-main { padding-left: 10px; }
+.hostlist .host.under-anchor .err { padding-left: 27px; }
+#statusline .sl-anchor { display: inline-flex; align-items: center; gap: 5px; flex: none; color: var(--accent); font-weight: 600; overflow: visible; }
 /* Signed in to an account: machines grouped by how they are reached. */
 .group h3 .h3-actions { display: inline-flex; gap: 2px; }
 .mini.devices { display: inline-flex; align-items: center; justify-content: center; }
@@ -710,6 +722,10 @@ input, textarea, [contenteditable] { cursor: text; user-select: text; -webkit-us
   #statusline:has(.sl-action) { display: flex; justify-content: center; height: 34px; }
   #statusline:has(.sl-action) .l > :not(.sl-action), #statusline:has(.sl-action) .r > :not(.sl-action) { display: none; }
   #statusline .sl-action { padding: 4px 12px; }
+  /* ...and "via devbox" when this page goes through an anchor: a slim bar
+     with just that and the connection. */
+  #statusline:has(.sl-anchor) { display: flex; height: 26px; padding: 0 10px; font-size: 12px; }
+  #statusline:has(.sl-anchor) .l > :not(.sl-anchor):not(.sl-action), #statusline:has(.sl-anchor) .r > :not(.net):not(.sl-action) { display: none; }
   /* The agents: one slim row of chips, scrolling sideways; a chip opens to
      its last line and answers; the row folds to a count. */
   #dock { gap: 6px; padding: 5px 6px; align-items: flex-start; scrollbar-width: none; }

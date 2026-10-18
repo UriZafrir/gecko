@@ -39,6 +39,10 @@ type client struct {
 	scope string
 	local bool   // on the daemon's own socket (the CLI, the Android app), not the web
 	kind  string // what it said it is in hello: web, cli, hub (another Gecko, through a bridge)
+	// peer: another machine of the account, through the relay. Trust comes
+	// from how it connected, not from what it says: a peer always gets the
+	// local scope, whatever its hello asks for (see restricted).
+	peer bool
 
 	out   chan outMsg
 	done  chan struct{}
@@ -48,16 +52,28 @@ type client struct {
 	unsub func()
 }
 
-// Serve runs the protocol on conn until it closes.
-func Serve(h *hub.Hub, conn proto.Conn) { serve(h, conn, false) }
+// Serve runs the protocol on conn until it closes. It is for clients
+// holding this machine's web token (main or share): the owner's browser,
+// desktop app, phone, or a Gecko that added this one by its link.
+func Serve(h *hub.Hub, conn proto.Conn) { serve(h, conn, false, false) }
 
 // ServeLocal is Serve for a client on the daemon's own socket, which only
 // this user can open; a few requests are accepted only there.
-func ServeLocal(h *hub.Hub, conn proto.Conn) { serve(h, conn, true) }
+func ServeLocal(h *hub.Hub, conn proto.Conn) { serve(h, conn, true, false) }
 
-func serve(h *hub.Hub, conn proto.Conn, local bool) {
-	c := &client{hub: h, conn: conn, scope: hub.ScopeAll, out: make(chan outMsg, 8192),
-		done: make(chan struct{}), subs: map[string]func(){}, local: local}
+// ServePeer is Serve for another machine of the account, through the
+// relay: it gets this machine's own sessions and nothing else, whatever
+// scope it asks for. It can't reach this hub's other machines, change the
+// machine list, settings or the account, or restart the service.
+func ServePeer(h *hub.Hub, conn proto.Conn) { serve(h, conn, false, true) }
+
+func serve(h *hub.Hub, conn proto.Conn, local, peer bool) {
+	scope := hub.ScopeAll
+	if peer {
+		scope = hub.ScopeLocal
+	}
+	c := &client{hub: h, conn: conn, scope: scope, out: make(chan outMsg, 8192),
+		done: make(chan struct{}), subs: map[string]func(){}, local: local, peer: peer}
 	go c.writer()
 	defer c.close()
 	for {
@@ -68,7 +84,7 @@ func serve(h *hub.Hub, conn proto.Conn, local bool) {
 		if bin {
 			kind, id, _, data, err := proto.DecodeData(b)
 			if err == nil && kind == proto.KindInput {
-				if be, lid, err := h.Resolve(id); err == nil {
+				if be, lid, err := h.ResolveScope(c.scope, id); err == nil {
 					_ = be.Input(lid, data)
 				}
 			}
@@ -174,15 +190,32 @@ func (s sink) Exit() {
 	s.c.send(&proto.Msg{T: proto.TExit, Sub: s.sub})
 }
 
+// restricted reports whether the client only gets this machine: a relay
+// peer always, any other client when it asked for that in hello (link
+// hubs and bridges do). It can't reach other machines' sessions or change
+// what this hub federates.
+func (c *client) restricted() bool { return c.scope == hub.ScopeLocal }
+
+// errRestricted is the answer to a restricted client asking for something
+// only the Gecko you use directly may do.
+var errRestricted = errors.New("only the Gecko you are using directly can do that, not another Gecko connected to it")
+
+// resolve finds a session within the client's scope.
+func (c *client) resolve(id string) (hub.Backend, string, error) {
+	return c.hub.ResolveScope(c.scope, id)
+}
+
 func (c *client) handle(m *proto.Msg) {
 	h := c.hub
 	switch m.T {
 	case proto.THello:
 		c.kind = m.Client
+		// A client may ask for less (local), never for more than its
+		// connection grants.
 		if m.Scope == hub.ScopeLocal {
 			c.scope = hub.ScopeLocal
 		}
-		c.send(&proto.Msg{T: proto.THello, Rid: m.Rid, Host: h.Name(), Version: proto.Version, OS: runtime.GOOS, Text: startID, Machine: h.MachineID()})
+		c.send(&proto.Msg{T: proto.THello, Rid: m.Rid, Host: h.Name(), Version: proto.Version, OS: runtime.GOOS, Text: startID, Machine: h.MachineID(), Scope: c.scope, Node: h.Node()})
 		if c.unsub == nil {
 			c.unsub = h.Subscribe(c.scope, c.send)
 		}
@@ -219,7 +252,7 @@ func (c *client) handle(m *proto.Msg) {
 		if sub == "" {
 			sub = m.ID
 		}
-		be, lid, err := h.Resolve(m.ID)
+		be, lid, err := c.resolve(m.ID)
 		if err != nil {
 			c.send(&proto.Msg{T: proto.TExit, Sub: sub, Error: err.Error()})
 			return
@@ -246,7 +279,7 @@ func (c *client) handle(m *proto.Msg) {
 			d()
 		}
 	case proto.TResize, proto.TKill, proto.TPatch, proto.TCapture, proto.TInput:
-		be, lid, err := h.Resolve(m.ID)
+		be, lid, err := c.resolve(m.ID)
 		if err != nil {
 			c.reply(m, nil, err)
 			return
@@ -294,7 +327,7 @@ func (c *client) handle(m *proto.Msg) {
 		var be hub.Backend
 		dir := m.Dir
 		if m.ID != "" {
-			b, lid, err := h.Resolve(m.ID)
+			b, lid, err := c.resolve(m.ID)
 			if err != nil {
 				c.reply(m, nil, err)
 				return
@@ -343,6 +376,10 @@ func (c *client) handle(m *proto.Msg) {
 		}
 		c.reply(m, nil, h.SetSettings(m.Text))
 	case proto.TWindow:
+		if c.restricted() {
+			c.reply(m, nil, errRestricted)
+			return
+		}
 		// Remember where a fitted app window ended up; `gecko open` starts
 		// the next one there, already centered and sized.
 		var b struct{ W, H, SX, SY, SW, SH int }
@@ -350,6 +387,12 @@ func (c *client) handle(m *proto.Msg) {
 			_ = os.WriteFile(filepath.Join(config.StateDir(), "window.json"), []byte(m.Text), 0o600)
 		}
 	case proto.TUpgrade:
+		// A bridge asks for the local scope but is this user over ssh, and
+		// "Update Gecko" restarts the daemon through it; a relay peer can't.
+		if c.peer {
+			c.reply(m, nil, errRestricted)
+			return
+		}
 		if h.Upgrade == nil {
 			c.reply(m, nil, errors.New("this Gecko service can't restart itself in place"))
 			return
@@ -378,16 +421,21 @@ func (c *client) handle(m *proto.Msg) {
 		b, _ := json.Marshal(st)
 		c.reply(m, &proto.Msg{Text: string(b)}, nil)
 	case proto.TOpenWS:
+		// Templates may open tabs on other machines.
+		if c.restricted() {
+			c.reply(m, nil, errRestricted)
+			return
+		}
 		ss, err := h.OpenWorkspace(m.Name, m.Cols, m.Rows)
 		c.reply(m, &proto.Msg{Sessions: ss}, err)
 	case proto.TAddHost:
+		if c.restricted() {
+			c.reply(m, nil, errors.New("machines can only be set up from the Gecko you are using directly, not through another one"))
+			return
+		}
 		if m.Kind == hub.KindLink {
 			// A machine at its Gecko link; the link (with its token) comes
 			// in Secret, so nothing that logs targets sees it.
-			if c.scope == hub.ScopeLocal {
-				c.reply(m, nil, errors.New("machines can only be set up from the Gecko you are using directly, not through another one"))
-				return
-			}
 			c.reply(m, nil, h.AddLinkHost(m.Name, m.Secret, m.Data != "nocheck"))
 			return
 		}
@@ -439,6 +487,10 @@ func (c *client) handle(m *proto.Msg) {
 		}
 		c.reply(m, &proto.Msg{Secret: secret}, nil)
 	case proto.TRmHost:
+		if c.restricted() {
+			c.reply(m, nil, errors.New("machines can only be removed from the Gecko you are using directly, not through another one"))
+			return
+		}
 		c.reply(m, nil, h.RemoveHost(m.Name))
 	case proto.TCloud:
 		if c.scope == hub.ScopeLocal {

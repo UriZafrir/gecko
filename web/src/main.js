@@ -34,6 +34,7 @@ import qrcode from 'qrcode-generator';
 const splash = window.__splash || { set() {}, done() {} };
 splash.set(0.4); // the app's code is here
 import { Conn } from './conn.js';
+import { isRemotePage, splitByAnchor, viaLabel, anchorTitle, ANCHOR_ICON } from './anchor.js';
 import { Terminal } from '@xterm/xterm';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { Pane, FONT, SYMBOLS_SAMPLE } from './pane.js';
@@ -119,7 +120,7 @@ function newOrder(shown, old) {
 const SYNCED = ['theme', 'opacity', 'fontSize', 'mobileFontSize', 'copyOnSelect', 'smartCopy', 'optionIsMeta', 'renderer', 'sidebarHidden', 'keys', 'startupSound', 'order', 'quickReplies'];
 
 // Protocol version this client speaks; see internal/proto.
-const PROTOCOL = 9;
+const PROTOCOL = 10;
 
 // Round trips that feel slow at the keyboard (ms): echo starts to lag
 // noticeably past ~100 ms and gets hard to type against past ~300 ms.
@@ -301,6 +302,9 @@ class App {
     this.tmux = [];
     this.templates = [];
     this.hostName = '';
+    // Opened from another device: the Gecko this page talks to is the
+    // anchor that manages the other machines (see anchor.js).
+    this.remote = isRemotePage(location.hostname);
     this.panes = new Map();
     this.exited = new Map(); // id -> info of sessions that failed while shown
     this.closing = new Set(); // ids the user closed
@@ -1397,14 +1401,17 @@ class App {
       return /^[\d.]+$/.test(host) ? host : host.split('.')[0]; // an IP address whole
     };
     const m = $('#modal');
+    // From another device it's the anchor that connects, with its own keys
+    // and from its own network; say so.
+    const anchor = this.remote && this.hostName ? esc(this.hostName) : '';
     m.innerHTML = `<div class="card setup" role="dialog" aria-modal="true" aria-labelledby="setup-title">
-      <h2 id="setup-title">${prefill.name ? `Fix ${esc(prefill.name)}` : 'Add a machine'}</h2>
+      <h2 id="setup-title">${prefill.name ? `Fix ${esc(prefill.name)}` : anchor ? `Add a machine to ${anchor}` : 'Add a machine'}</h2>
       <div class="setup-mode" role="tablist" aria-label="How to reach it">
         <button role="tab" data-mode="ssh">Over SSH</button>
         <button role="tab" data-mode="link">Paste a Gecko link</button>
       </div>
-      <p class="sub" data-for="ssh">Gecko connects with your SSH keys and runs its own background service there, so sessions keep running when you disconnect.</p>
-      <p class="sub" data-for="link">For a machine already running Gecko: on it, run <code>gecko url</code> (in Termux too) or open Open on another device, and paste the link with its token. Plain http works only on this device, your LAN or a tailnet; anywhere else needs https.</p>
+      <p class="sub" data-for="ssh">${anchor ? `${anchor} connects with its own SSH keys (not this device's) and runs Gecko's background service there, so sessions keep running when you disconnect.` : 'Gecko connects with your SSH keys and runs its own background service there, so sessions keep running when you disconnect.'}</p>
+      <p class="sub" data-for="link">For a machine already running Gecko: on it, run <code>gecko url</code> (in Termux too) or open Open on another device, and paste the link with its token. ${anchor ? `${anchor} connects to it, so the link must work from ${anchor}: plain http only to ${anchor} itself, its LAN or tailnet; anywhere else needs https.` : 'Plain http works only on this device, your LAN or a tailnet; anywhere else needs https.'}</p>
       <label data-for="ssh">SSH destination<input name="target" placeholder="me@devbox or me@devbox:2222" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
       <label data-for="link">Gecko link<input name="link" placeholder="http://192.168.1.20:7681/?token=..." autocomplete="off" autocapitalize="off" spellcheck="false"></label>
       <label>Name in Gecko<input name="name" placeholder="devbox" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
@@ -1625,7 +1632,7 @@ class App {
   // What the sidebar says about a machine when signed in: how it is
   // reached and, for one that is away, when the relay last saw it.
   hostWhere(h) {
-    if (h.local) return 'this machine';
+    if (h.local) return this.remote ? 'connected here' : 'this machine';
     const os = prettyOS(h.os);
     if (h.status === 'connected') return h.via === 'relay' ? `${os} · ${h.kind === 'cloud' ? 'relay' : 'via relay'}` : os;
     if (h.status === 'offline') return h.lastSeen ? `seen ${ago(h.lastSeen)} ago` : 'offline';
@@ -3590,7 +3597,7 @@ class App {
       const broken = !h.local && !cloud && h.status === 'error';
       // A machine reached at its link updates on its own side (gecko upgrade there).
       const outdated = !h.local && h.kind !== 'link' && h.status === 'connected' && (h.version || 0) < PROTOCOL;
-      const where = signedIn ? this.hostWhere(h) : h.local ? 'this machine' : h.status === 'connected' ? h.os || '' : h.status;
+      const where = signedIn ? this.hostWhere(h) : h.local ? (this.remote ? 'connected here' : 'this machine') : h.status === 'connected' ? h.os || '' : h.status;
       let counts = '';
       if (signedIn) {
         const agents = [...this.sessions.values()].filter((t) => t.host === h.name && t.agent);
@@ -3599,10 +3606,11 @@ class App {
         if (need) counts += `<span class="agents need" title="Agents waiting for you on ${esc(h.name)}">${AGENTS_ICON}${need}</span>`;
         if (working) counts += `<span class="agents work" title="Agents working on ${esc(h.name)}">${AGENTS_ICON}${working}</span>`;
       }
-      return `<li class="host st-${esc(h.status)}${h.name === next ? ' next' : ''}" data-host="${esc(h.name)}">
+      const anchor = this.remote && h.local;
+      return `<li class="host st-${esc(h.status)}${h.name === next ? ' next' : ''}${anchor ? ' anchor' : this.remote ? ' under-anchor' : ''}" data-host="${esc(h.name)}"${anchor ? ` title="${esc(anchorTitle(h.name))}"` : ''}>
         <div class="host-row" data-drag="host" data-key="${esc(h.name)}">
           <button class="host-main" data-act="${broken ? 'host-fix' : outdated ? 'host-update' : 'host-new'}" data-host="${esc(h.name)}" title="${esc(broken ? 'Fix the connection to ' + h.name : outdated ? h.name + ' runs an older Gecko; click to update it (its tabs keep running)' : 'New tab on ' + h.name + (h.name === next ? `. New tabs (${prettyCombo(this.keys.first('newTab'))}) open here, on the current tab's machine` : ''))}">
-            <i class="hdot"></i><span class="nm">${esc(h.name)}</span>${counts}<span class="where">${esc(where)}</span>${!h.local && h.status === 'connected' && h.rtt ? `<span class="rtt ${latencyClass(h.rtt)}" title="${esc(`Round trip from this Gecko to ${h.name}: ${h.rtt} ms`)}">${h.rtt} ms</span>` : ''}<span class="plus${outdated ? ' upd' : ''}">${broken ? 'fix' : outdated ? 'update' : '+'}</span>
+            <i class="hdot"></i><span class="nm">${esc(h.name)}</span>${anchor ? `<span class="badge anchor-badge">${ANCHOR_ICON}anchor</span>` : ''}${counts}<span class="where">${esc(where)}</span>${!h.local && h.status === 'connected' && h.rtt ? `<span class="rtt ${latencyClass(h.rtt)}" title="${esc(`Round trip from this Gecko to ${h.name}: ${h.rtt} ms`)}">${h.rtt} ms</span>` : ''}<span class="plus${outdated ? ' upd' : ''}">${broken ? 'fix' : outdated ? 'update' : '+'}</span>
           </button>
           ${h.local ? '' : cloud
             ? `<button class="x" data-act="host-revoke" data-host="${esc(h.name)}" aria-label="Revoke ${esc(h.name)}" title="Revoke ${esc(h.name)}: remove it from your account">×</button>`
@@ -3620,15 +3628,22 @@ class App {
         }).join('')}
       </li>`;
     };
+    // Opened from another device: the anchor first, the machines it
+    // reaches under it.
+    const { anchor, reached } = this.remote ? splitByAnchor(this.sortedHosts()) : { anchor: null, reached: null };
+    if (anchor) {
+      parts.push(hostRow(anchor));
+      parts.push(`<li class="hgroup under-anchor" aria-hidden="true">${reached.length ? `Reached by ${esc(anchor.name)}` : `No other machines yet. Add one with +, and ${esc(anchor.name)} connects to it.`}</li>`);
+    }
     if (!signedIn) {
-      for (const h of this.sortedHosts()) parts.push(hostRow(h));
+      for (const h of reached || this.sortedHosts()) parts.push(hostRow(h));
     } else {
       // Signed in: grouped by how Gecko reaches each machine.
-      const groups = [['Local', (h) => h.local], ['SSH', (h) => !h.local && h.kind !== 'cloud' && h.kind !== 'link'], ['Gecko links', (h) => h.kind === 'link'], ['Cloud', (h) => h.kind === 'cloud']];
+      const groups = [['Local', (h) => h.local && !anchor], ['SSH', (h) => !h.local && h.kind !== 'cloud' && h.kind !== 'link'], ['Gecko links', (h) => h.kind === 'link'], ['Cloud', (h) => h.kind === 'cloud']];
       for (const [title, test] of groups) {
         const hs = this.sortedHosts().filter(test);
         if (!hs.length && title !== 'Cloud') continue;
-        parts.push(`<li class="hgroup" aria-hidden="true">${title}</li>`);
+        parts.push(`<li class="hgroup${anchor ? ' under-anchor' : ''}" aria-hidden="true">${title}</li>`);
         if (!hs.length) parts.push(`<li class="hnone">No other machines yet. On one, run <code>gecko login</code>.</li>`);
         for (const h of hs) parts.push(hostRow(h));
       }
@@ -3730,11 +3745,14 @@ class App {
   renderStatus() {
     const s = this.activeSession();
     const el = $('#statusline');
+    // Through an anchor: say which Gecko this page goes through, always
+    // (phones too, where the rest of the status line is hidden).
+    const via = this.remote && this.hostName ? `<span class="sl-anchor" title="${esc(anchorTitle(this.hostName))}">${ANCHOR_ICON}${esc(viaLabel(this.hostName))}</span>` : '';
     if (!s) {
-      el.innerHTML = '';
+      el.innerHTML = via ? `<div class="l">${via}</div><div class="r"><span id="sl-net" class="net">${this.netHTML()}</span></div>` : '';
       return;
     }
-    const bits = [`<span class="host">${esc(s.host)}</span>`];
+    const bits = [via, `<span class="host">${esc(s.host)}</span>`].filter(Boolean);
     if (s.kind === 'ssh' || s.kind === 'mosh') {
       bits.push(`<span class="tmux-on" title="${s.kind} to ${esc(s.remote || '?')}">${tag(s.kind.toUpperCase())}${esc(s.remote || '?')}</span>`);
       if (s.remoteTmux) bits.push(`<span class="tmux-on" title="tmux session ${esc(s.remoteTmux)} on ${esc(s.remote || 'the remote machine')}">${TMUX_ICON}${esc(s.remoteTmux)}</span>`);

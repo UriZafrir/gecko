@@ -43,6 +43,23 @@ for example a container:
 ```
 
 
+## Managing everything from one machine (the anchor)
+
+Machines belong to the Gecko that added them. If you keep one machine on
+(a dev box) and open its Gecko from your phone, a tablet or another
+computer, that machine is your **anchor**: add every other machine to *it*,
+from any of those devices, and they all see the same list. The anchor does
+the connecting, with its own SSH keys and from its own network; the phone
+never needs to reach the other machines.
+
+Opened from another device, Gecko says so: `via devbox` in the bottom bar,
+an **anchor** badge on devbox in the sidebar with its machines listed under
+it, and "Add a machine to devbox" in the dialog. Machines added on the
+laptop's own Gecko stay the laptop's (add the laptop itself to the anchor
+to see its tabs). Adding the same Gecko twice, or a link back to the anchor
+itself, is refused. Details, the security model and the trade-offs:
+[The anchor](anchor.md).
+
 ## Another Gecko by its link
 
 A machine already running Gecko can be added by its link instead of over
@@ -78,7 +95,9 @@ How it's kept safe:
   else (so a name that changes later can't send the token out). Anything
   else needs `https`.
 - Only the Gecko you use directly can add one: a Gecko connected through
-  another (a bridge or a link) can't make it dial addresses on its behalf.
+  another (a bridge, a link or the relay) can't make it dial addresses on
+  its behalf, remove its machines, or reach their tabs. The server enforces
+  this since protocol 10.
 - The other Gecko sees an ordinary client with its token. Its machines
   aren't passed on (as with SSH machines, each Gecko shows only its own
   tabs to another), and updating it is done there (`gecko upgrade`).
