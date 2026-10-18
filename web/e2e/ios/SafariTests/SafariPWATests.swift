@@ -84,7 +84,19 @@ final class SafariPWATests: XCTestCase {
         XCUIDevice.shared.system.open(u)
         XCTAssertTrue(safari.wait(for: .runningForeground, timeout: 20), "Safari opened")
         for b in ["Continue", "Not Now", "Close"] where safari.buttons[b].waitForExistence(timeout: 1) { safari.buttons[b].tap() }
-        let p = waitProbe(safari, 40) { ($0["online"] as? String) == "online" && ($0["sync"] as? Bool) == true }
+        let ready: ([String: Any]) -> Bool = { ($0["online"] as? String) == "online" && ($0["sync"] as? Bool) == true }
+        var p = waitProbe(safari, 15, ready)
+        if p.isEmpty {
+            // A cold Safari can open on its start page without loading the
+            // link (seen on the iPhone SE): type it in the address bar.
+            let field = safari.textFields.firstMatch
+            if field.waitForExistence(timeout: 5) {
+                field.tap()
+                beat(0.5)
+                safari.typeText(u.absoluteString + "\n")
+            }
+            p = waitProbe(safari, 40, ready)
+        }
         results["probe"] = !p.isEmpty
         return p
     }
@@ -278,6 +290,13 @@ final class SafariPWATests: XCTestCase {
         shot("home-03-springboard")
         let icon = springboard.icons["Gecko"].firstMatch
         XCTAssertTrue(icon.waitForExistence(timeout: 10), "the Gecko icon on the Home Screen")
+        // A new icon can land on another Home Screen page.
+        for _ in 0..<4 where !icon.isHittable {
+            springboard.swipeLeft()
+            beat(1)
+        }
+        results["iconHittable"] = icon.isHittable
+        shot("home-03b-icon")
         icon.tap()
         beat(4)
         shot("home-04-standalone")
