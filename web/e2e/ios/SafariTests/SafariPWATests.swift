@@ -274,12 +274,22 @@ final class SafariPWATests: XCTestCase {
         }
         XCTAssertNotNil(found, "Safari's Share button")
         guard let share = found else { shot("home-00-no-share"); print(safari.debugDescription); return }
+        func findAdd() -> XCUIElement {
+            var add = safari.buttons["Add to Home Screen"].firstMatch
+            if !add.exists { add = safari.cells["Add to Home Screen"].firstMatch }
+            if !add.exists { add = safari.staticTexts["Add to Home Screen"].firstMatch }
+            return add
+        }
         share.tap()
         beat(1.5)
+        var add = findAdd()
+        if !add.exists, let again = shareButton() {
+            // The tap can land while the toolbar is still moving: once more.
+            again.tap()
+            beat(1.5)
+            add = findAdd()
+        }
         shot("home-01-share-sheet")
-        var add = safari.buttons["Add to Home Screen"].firstMatch
-        if !add.exists { add = safari.cells["Add to Home Screen"].firstMatch }
-        if !add.exists { add = safari.staticTexts["Add to Home Screen"].firstMatch }
         var tries = 0
         while !add.isHittable && tries < 4 {
             safari.swipeUp()
