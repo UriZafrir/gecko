@@ -43,6 +43,9 @@ type client struct {
 	// from how it connected, not from what it says: a peer always gets the
 	// local scope, whatever its hello asks for (see restricted).
 	peer bool
+	// anchorErr: why this client's request for another anchor failed, for
+	// its hello reply (it is served here instead).
+	anchorErr string
 
 	out   chan outMsg
 	done  chan struct{}
@@ -93,6 +96,12 @@ func serve(h *hub.Hub, conn proto.Conn, local, peer bool) {
 		m := new(proto.Msg)
 		if err := json.Unmarshal(b, m); err != nil {
 			continue
+		}
+		if m.T == proto.THello && c.unsub == nil {
+			c.elevate(m)
+			if len(m.Anchor) > 0 && c.forward(m) {
+				return
+			}
 		}
 		switch m.T {
 		case proto.TCreate, proto.TCapture, proto.TOpenWS, proto.TAddHost, proto.TRmHost, proto.TList, proto.TSearch, proto.TProbeHost, proto.TInstall, proto.TListDir, proto.TUpdateHost, proto.TTmux, proto.TTrustHost, proto.TCloud:
@@ -215,7 +224,13 @@ func (c *client) handle(m *proto.Msg) {
 		if m.Scope == hub.ScopeLocal {
 			c.scope = hub.ScopeLocal
 		}
-		c.send(&proto.Msg{T: proto.THello, Rid: m.Rid, Host: h.Name(), Version: proto.Version, OS: runtime.GOOS, Text: startID, Machine: h.MachineID(), Scope: c.scope, Node: h.Node()})
+		reply := &proto.Msg{T: proto.THello, Rid: m.Rid, Host: h.Name(), Version: proto.Version, OS: runtime.GOOS, Text: startID, Machine: h.MachineID(), Scope: c.scope, Node: h.Node()}
+		if c.anchorErr != "" {
+			// It asked for another anchor and couldn't get there: say why,
+			// and serve it here.
+			reply.Kind, reply.Error, c.anchorErr = hub.KindAnchor, c.anchorErr, ""
+		}
+		c.send(reply)
 		if c.unsub == nil {
 			c.unsub = h.Subscribe(c.scope, c.send)
 		}
@@ -492,6 +507,28 @@ func (c *client) handle(m *proto.Msg) {
 			return
 		}
 		c.reply(m, nil, h.RemoveHost(m.Name))
+	case proto.TAnchor:
+		if c.restricted() || c.peer {
+			c.reply(m, nil, errRestricted)
+			return
+		}
+		if m.Name != "account" {
+			c.reply(m, nil, errors.New("anchor: unknown setting "+m.Name))
+			return
+		}
+		var err error
+		switch m.Data {
+		case "on", "off":
+			err = h.SetAnchorFromAccount(m.Data == "on")
+		case "":
+		default:
+			err = errors.New("anchor account: on or off")
+		}
+		state := "off"
+		if h.AnchorFromAccount() {
+			state = "on"
+		}
+		c.reply(m, &proto.Msg{Text: state}, err)
 	case proto.TCloud:
 		if c.scope == hub.ScopeLocal {
 			c.reply(m, nil, errors.New("the account belongs to the Gecko you are using directly"))

@@ -147,6 +147,10 @@ enum BridgeScript {
           r.screen = out.join('\\n');
         }
         r.drawer = document.body.classList.contains('drawer');
+        r.host = g.hostName || ''; r.proxied = !!g.proxied; r.door = g.door || '';
+        var via = document.querySelector('#statusline .sl-anchor'); r.via = via ? via.textContent : '';
+        var anc = document.querySelector('#side .host.anchor'); r.anchorRow = anc ? anc.getAttribute('data-host') : '';
+        r.prev = [].slice.call(document.querySelectorAll('#side .prev-anchor')).map(function (e) { return e.getAttribute('data-prev'); });
         r.width = innerWidth; r.height = innerHeight;
         r.sideFixed = getComputedStyle(document.getElementById('side')).position === 'fixed';
         r.ios = document.documentElement.classList.contains('ios');

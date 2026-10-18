@@ -61,9 +61,10 @@ class WatchService : Service() {
         for (id in watchers.keys - want.keys) watchers.remove(id)?.stop()
         for ((id, m) in want) {
             val w = watchers[id]
-            if (w == null || w.machine != m.copy(lastUsed = w.machine.lastUsed)) {
+            val anchor = Wire.anchorOf(this, id)
+            if (w == null || w.machine != m.copy(lastUsed = w.machine.lastUsed) || w.anchor != anchor) {
                 w?.stop()
-                watchers[id] = Watcher(m).also { it.start() }
+                watchers[id] = Watcher(m, anchor).also { it.start() }
             }
         }
         show()
@@ -86,7 +87,8 @@ class WatchService : Service() {
         super.onDestroy()
     }
 
-    private inner class Watcher(val machine: Machine) {
+    /** anchor: the anchor the page chose for this machine (see [Wire.hello]). */
+    private inner class Watcher(val machine: Machine, val anchor: String) {
         private var ws: WebSocket? = null
         private var stopped = false
         private var backoff = 1000L
@@ -96,7 +98,7 @@ class WatchService : Service() {
         /** The machines this connection reaches now (none while it is down). */
         fun names(): List<String> {
             if (!open) return emptyList()
-            val me = if (machine.id == LocalGecko.ID) getString(R.string.this_phone_lower) else machine.name
+            val me = if (anchor.isNotEmpty()) watch.self else if (machine.id == LocalGecko.ID) getString(R.string.this_phone_lower) else machine.name
             val hosts = watch.connected.ifEmpty { listOf(watch.self) }
             return hosts.map { if (it == watch.self || it.isEmpty()) me else it }
         }
@@ -139,7 +141,7 @@ class WatchService : Service() {
                 backoff = 1000
                 open = true
                 main.post { if (!stopped) show() }
-                webSocket.send("""{"t":"hello","client":"android"}""")
+                webSocket.send(Wire.hello(anchor))
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {

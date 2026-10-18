@@ -82,6 +82,9 @@ type Link struct {
 	Wait    func() // reaps the helper once Conn is closed (nil if none)
 }
 
+// Close closes the link and reaps its helper process.
+func (l *Link) Close() { l.close() }
+
 func (l *Link) close() {
 	l.Conn.Close()
 	if l.Wait != nil {
@@ -237,25 +240,34 @@ func (r *Remote) open(dial DialFunc) (*Link, *proto.Msg, error) {
 	}
 	r.pid = link.PID
 	r.mu.Unlock()
-	conn := link.Conn
-	if err := proto.WriteJSON(conn, &proto.Msg{T: proto.THello, Scope: ScopeLocal, Client: "hub", Version: proto.Version}); err != nil {
-		link.close()
-		return nil, nil, link.explain(err)
+	hello, err := handshake(link, &proto.Msg{T: proto.THello, Scope: ScopeLocal, Client: "hub", Version: proto.Version})
+	if err != nil {
+		return nil, nil, err
 	}
-	// Handshake: the first message must be the hello reply.
+	return link, hello, nil
+}
+
+// handshake sends hello on a fresh link and reads the reply, which must
+// come first. On failure the link is closed.
+func handshake(link *Link, hello *proto.Msg) (*proto.Msg, error) {
+	conn := link.Conn
+	if err := proto.WriteJSON(conn, hello); err != nil {
+		link.close()
+		return nil, link.explain(err)
+	}
 	timer := time.AfterFunc(30*time.Second, func() { conn.Close() })
 	_, b, err := conn.Read()
 	timer.Stop()
 	if err != nil {
 		link.close()
-		return nil, nil, link.explain(err)
+		return nil, link.explain(err)
 	}
-	var hello proto.Msg
-	if json.Unmarshal(b, &hello) != nil || hello.T != proto.THello {
+	var reply proto.Msg
+	if json.Unmarshal(b, &reply) != nil || reply.T != proto.THello {
 		link.close()
-		return nil, nil, link.explain(errors.New("unexpected handshake from remote (is gecko installed there?)"))
+		return nil, link.explain(errors.New("unexpected handshake from remote (is gecko installed there?)"))
 	}
-	return link, &hello, nil
+	return &reply, nil
 }
 
 func (r *Remote) serve() error {

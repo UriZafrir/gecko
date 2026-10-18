@@ -76,6 +76,7 @@ type Hub struct {
 	settingsMod time.Time
 	notified    map[string]bool
 	nodes       map[string]*Remote // node id -> the Remote connected to it
+	helpers     map[int]bool       // helper processes of anchor connections (OpenAnchor)
 
 	cloud         Cloud
 	cloudMachines []CloudMachine
@@ -661,6 +662,9 @@ func (h *Hub) Children() []int {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	var pids []int
+	for pid := range h.helpers {
+		pids = append(pids, pid)
+	}
 	for _, b := range h.backends {
 		if r, ok := b.(*Remote); ok {
 			r.mu.Lock()

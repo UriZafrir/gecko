@@ -82,6 +82,20 @@ class Bridge(private val activity: TerminalActivity) {
     @JavascriptInterface
     fun bundled(): Boolean = trusted() && activity.bundled.available
 
+    /**
+     * The anchor this machine's page chose ("Make anchor" in the sidebar,
+     * see web/src/anchor.js), kept per saved machine so the app reopens on
+     * it: a JSON list of machine names, "" when the machine is the anchor.
+     */
+    @JavascriptInterface
+    fun anchorPath(): String = if (!trusted()) "" else activity.anchorPath()
+
+    @JavascriptInterface
+    fun setAnchorPath(json: String) {
+        if (!trusted()) return
+        main.post { activity.setAnchorPath(json) }
+    }
+
     @JavascriptInterface
     fun theme(json: String) {
         if (!trusted()) return

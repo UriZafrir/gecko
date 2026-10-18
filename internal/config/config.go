@@ -35,6 +35,14 @@ type Host struct {
 	Machine string `json:"machine,omitempty"`
 }
 
+// AnchorConfig is how this Gecko may become another client's anchor.
+type AnchorConfig struct {
+	// FromAccount lets the account's other machines make this one the
+	// anchor through the relay, with full owner rights here. Off by
+	// default: relay peers only get this machine's own tabs.
+	FromAccount bool `json:"fromAccount,omitempty"`
+}
+
 // Config is ~/.config/gecko/config.json.
 type Config struct {
 	Name            string            `json:"name,omitempty"`   // this machine's name
@@ -50,6 +58,9 @@ type Config struct {
 	// Cloud: signing in (gecko login) turns the account features on;
 	// "enabled": false keeps them off even then (no relay connection).
 	Cloud *CloudConfig `json:"cloud,omitempty"`
+	// Anchor: how this Gecko may become the anchor of a client connected
+	// to another one (see docs/anchor.md).
+	Anchor *AnchorConfig `json:"anchor,omitempty"`
 
 	mu sync.Mutex
 }

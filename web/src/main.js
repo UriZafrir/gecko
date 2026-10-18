@@ -34,7 +34,7 @@ import qrcode from 'qrcode-generator';
 const splash = window.__splash || { set() {}, done() {} };
 splash.set(0.4); // the app's code is here
 import { Conn } from './conn.js';
-import { isRemotePage, splitByAnchor, viaLabel, anchorTitle, ANCHOR_ICON } from './anchor.js';
+import { isRemotePage, splitByAnchor, viaLabel, anchorTitle, ANCHOR_ICON, ANCHOR_PROTOCOL, loadPath, savePath, pathTo, previousAnchors, anchorIsHere, hostMarks, anchorWhere, makeAnchorHint } from './anchor.js';
 import { Terminal } from '@xterm/xterm';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { Pane, FONT, SYMBOLS_SAMPLE } from './pane.js';
@@ -287,6 +287,13 @@ function numGlyph(s, n, plain = false) {
   return `<i class="num ${st ? 's-' + st : ''}"${label ? ` title="${esc(label)}"` : ''}>${n}</i>`;
 }
 
+const localStorageOrNull = () => { try { return window.localStorage; } catch { return null; } };
+// Where the app keeps the chosen anchor, if it does (Android, the desktop
+// app); otherwise the page's own storage (see anchor.js).
+const anchorApp = () => (native?.anchorPath ? native : window.geckoDesktop?.anchorPath ? window.geckoDesktop : null);
+const sessionGet = (k) => { try { return sessionStorage.getItem(k); } catch { return null; } };
+const sessionSet = (k, v) => { try { v == null ? sessionStorage.removeItem(k) : sessionStorage.setItem(k, v); } catch { /* blocked */ } };
+
 function glyph(s) {
   if (s.agent) return `<i class="dot s-${s.agent.status}" title="${esc(STATUS_TEXT[s.agent.status] || s.agent.status)}"></i>`;
   if (s.attention) return '<i class="dot s-bell" title="Bell"></i>';
@@ -303,9 +310,14 @@ class App {
     this.tmux = [];
     this.templates = [];
     this.hostName = '';
-    // Opened from another device: the Gecko this page talks to is the
-    // anchor that manages the other machines (see anchor.js).
+    // Opened from another device than the Gecko it connects to (see anchor.js).
     this.remote = isRemotePage(location.hostname);
+    // The anchor: the Gecko whose tabs and machines this page shows. The
+    // path to it from the Gecko the page connects to (the door), as chosen
+    // with Make anchor; [] when the door is the anchor.
+    this.anchorPath = loadPath(localStorageOrNull(), anchorApp());
+    this.door = ''; // the Gecko the page connects to, from its hello
+    this.proxied = false; // the anchor is another Gecko than the door
     this.panes = new Map();
     this.exited = new Map(); // id -> info of sessions that failed while shown
     this.closing = new Set(); // ids the user closed
@@ -351,6 +363,7 @@ class App {
     this.applyTheme();
 
     this.conn = new Conn({
+      hello: () => (this.anchorPath.length ? { anchor: this.anchorPath } : {}),
       onOpen: () => {
         splash.set(0.85);
         for (const p of this.panes.values()) if (p.attached) p.attach();
@@ -373,6 +386,7 @@ class App {
   onMessage(m) {
     switch (m.t) {
       case 'hello':
+        this.onAnchorHello(m);
         this.hostName = m.host;
         // A different start id means the service restarted; finish a
         // "Restart Gecko" by reloading this window into the new version.
@@ -1487,7 +1501,7 @@ class App {
     const m = $('#modal');
     // From another device it's the anchor that connects, with its own keys
     // and from its own network; say so.
-    const anchor = this.remote && this.hostName ? esc(this.hostName) : '';
+    const anchor = this.viaShown && this.hostName ? esc(this.hostName) : '';
     m.innerHTML = `<div class="card setup" role="dialog" aria-modal="true" aria-labelledby="setup-title">
       <h2 id="setup-title">${prefill.name ? `Fix ${esc(prefill.name)}` : anchor ? `Add a machine to ${anchor}` : 'Add a machine'}</h2>
       <div class="setup-mode" role="tablist" aria-label="How to reach it">
@@ -1523,7 +1537,7 @@ class App {
     // the phone's on This phone, the computer's when it's connected to one.
     const android = window.GeckoAndroid;
     $m('[data-key-label]').textContent = !android ? 'Use my SSH key from now on (adds it to ~/.ssh/authorized_keys there)'
-      : android.onThisPhone?.() ? "Use this phone's SSH key from now on"
+      : android.onThisPhone?.() && !this.proxied ? "Use this phone's SSH key from now on"
       : `Use ${this.hostName || 'this computer'}'s SSH key from now on (adds it to ~/.ssh/authorized_keys there)`;
     // The password lives only in this dialog and the request it goes with.
     let secret = '';
@@ -1716,7 +1730,7 @@ class App {
   // What the sidebar says about a machine when signed in: how it is
   // reached and, for one that is away, when the relay last saw it.
   hostWhere(h) {
-    if (h.local) return this.remote ? 'connected here' : 'this machine';
+    if (h.local) return anchorWhere({ here: this.anchorHere, door: this.door, name: h.name });
     const os = prettyOS(h.os);
     if (h.status === 'connected') return h.via === 'relay' ? `${os} · ${h.kind === 'cloud' ? 'relay' : 'via relay'}` : os;
     if (h.status === 'offline') return h.lastSeen ? `seen ${ago(h.lastSeen)} ago` : 'offline';
@@ -1847,6 +1861,7 @@ class App {
         ${pend ? `<ul class="devlist">${pend}</ul>` : ''}
         <ul class="devlist">${rows}</ul>
         <p class="sub">Revoking a machine takes it out of the account; its connections close within seconds. To add one, run <code>gecko login --relay ${esc(c.relay)} --account ${esc(c.account)}</code> on it.</p>
+        <label class="anchor-acct"><input type="checkbox" data-anchor-acct ${this.anchorAcct ? 'checked' : ''}> <span><b>${esc(this.hostName)} can be the anchor through my account</b><span class="dev-sub">Lets your other machines make ${esc(this.hostName)} the anchor through the relay, with full rights here. Off: through the relay they only open ${esc(this.hostName)}'s own tabs (SSH and Gecko links work either way).</span></span></label>
         <div class="row"><button class="primary" data-no>Done</button></div></div>`;
       const card = m.firstElementChild;
       card.addEventListener('click', (ev) => {
@@ -1858,12 +1873,99 @@ class App {
         if (b.dataset.approve && find(b.dataset.approve)) return this.approveMachine(find(b.dataset.approve));
         if (b.dataset.deny && find(b.dataset.deny)) return this.denyMachine(find(b.dataset.deny));
       });
+      card.querySelector('[data-anchor-acct]').onchange = async (ev) => {
+        try {
+          this.anchorAcct = await this.anchorAccount(ev.target.checked);
+        } catch (e) {
+          this.toast(e.message);
+        }
+        if (this.devicesView === draw) draw();
+      };
       card.querySelector('[data-no]').focus();
     };
     this.devicesView = draw;
+    this.anchorAccount().then((on) => { this.anchorAcct = on; if (this.devicesView === draw) draw(); }, () => {});
     m.hidden = false;
     m.onkeydown = (ev) => { if (ev.key === 'Escape') done(); };
     draw();
+  }
+
+  // ---------------------------------------------------------------- anchor
+
+  // The hello reply says where this page landed: on the anchor it asked
+  // for (door is then the Gecko it connected to), or on the door itself.
+  onAnchorHello(m) {
+    const asked = this.anchorPath;
+    const switching = sessionGet('gecko.switching');
+    sessionSet('gecko.switching', null);
+    this.door = m.door || m.host;
+    this.proxied = !!m.door;
+    this.anchorProblem = null;
+    if (!asked.length || m.door) return;
+    const target = asked[asked.length - 1];
+    if (m.kind === 'anchor' && m.error) {
+      if (switching) {
+        // Make anchor didn't work: stay here, and forget it.
+        this.anchorPath = [];
+        savePath([], localStorageOrNull(), anchorApp());
+        this.toast(`Couldn't make ${target} the anchor: ${m.error}`);
+      } else {
+        // The anchor chosen earlier can't be reached right now: show the
+        // door meanwhile, and keep the choice for next time.
+        this.anchorPath = [];
+        this.anchorProblem = { path: asked, name: target, error: m.error };
+      }
+      return;
+    }
+    // A Gecko before protocol 11 ignores the request and serves itself.
+    this.anchorPath = [];
+    savePath([], localStorageOrNull(), anchorApp());
+    this.toast(`Update Gecko on ${m.host} to choose another anchor from here.`);
+  }
+
+  // The anchor is the device you're holding.
+  get anchorHere() { return anchorIsHere(this.remote, this.proxied ? [this.hostName] : []); }
+
+  // Whether the bottom bar says "via <anchor>".
+  get viaShown() { return !this.anchorHere; }
+
+  // Why the machine called name can't be made the anchor ('' if it can).
+  anchorBlock(name) {
+    if (this.proxied) return ''; // the door forwarded this page: it knows how
+    if ((this.daemonVersion || 0) < ANCHOR_PROTOCOL) return `Update Gecko on ${this.hostName || 'this machine'} to choose another anchor from here`;
+    const h = this.hosts.find((x) => x.name === name);
+    if (h && h.status === 'connected' && h.version && h.version < ANCHOR_PROTOCOL) return `Update Gecko on ${name} to make it the anchor`;
+    return '';
+  }
+
+  // Make anchor: this page then shows that machine's tabs and machines,
+  // through the Gecko it connects to. Nothing is copied between them, and
+  // the Gecko it came from stays in the sidebar as the way back.
+  async makeAnchor(name) {
+    const path = pathTo(this.anchorPath, this.door, name);
+    if (!path) return this.toast(`${name} is already the anchor`);
+    const back = path.length < this.anchorPath.length;
+    if (!back) {
+      const block = this.anchorBlock(name);
+      if (block) return this.toast(block);
+      const from = this.hostName || 'this machine';
+      if (!(await this.confirm(`Make \`${name}\` the anchor? This window then shows ${name}'s tabs and machines, and new machines are added to ${name}, with its own keys. Nothing is copied: ${from} keeps its own list, and you can switch back from the sidebar any time.`, 'Make anchor'))) return;
+    }
+    this.switchAnchor(path, name);
+  }
+
+  switchAnchor(path, name) {
+    this.anchorPath = path;
+    savePath(path, localStorageOrNull(), anchorApp());
+    sessionSet('gecko.switching', name || '1');
+    location.reload();
+  }
+
+  // The account setting: whether the account's other machines may make
+  // this one the anchor through the relay.
+  async anchorAccount(on) {
+    const r = await this.conn.request({ t: 'anchor', name: 'account', data: on === undefined ? '' : on ? 'on' : 'off' });
+    return r.text === 'on';
   }
 
   // Take a device out of the account (this machine: sign out).
@@ -1969,6 +2071,12 @@ class App {
           return this.closeWorkspace(d.ws);
         case 'template': return this.openTemplate(d.name);
         case 'host-new': return this.newTab({ host: d.host, cwd: '' });
+        case 'anchor-back': return this.makeAnchor(d.host);
+        case 'anchor-retry': return this.switchAnchor(this.anchorProblem?.path || [], this.anchorProblem?.name);
+        case 'anchor-stay':
+          this.anchorProblem = null;
+          savePath([], localStorageOrNull(), anchorApp());
+          return this.renderSoon();
         case 'adopt-ssh': return this.addHost({ target: d.target, check: true });
         case 'host-rm': return this.removeHost(d.host);
         case 'host-update': return this.updateHost(d.host);
@@ -2242,8 +2350,12 @@ class App {
       const h = this.hosts.find((x) => x.name === hostName);
       if (!h) return null;
       const outdated = !h.local && h.kind !== 'link' && h.status === 'connected' && (h.version || 0) < PROTOCOL;
+      const block = h.local ? '' : this.anchorBlock(h.name);
       return [
+        h.local && { note: `${h.name} is the anchor` },
         { label: `New tab on ${h.name}`, disabled: h.status !== 'connected', run: () => this.newTab({ host: h.name, cwd: '' }) },
+        !h.local && { label: 'Make anchor', hint: block ? 'Needs an update' : '', disabled: !!block, run: () => this.makeAnchor(h.name) },
+        !h.local && block && { note: block },
         !h.local && h.kind !== 'cloud' && h.status === 'error' && { label: 'Fix connection…', run: () => this.addHost({ name: h.name, target: h.kind === 'link' ? '' : h.target, mode: h.kind === 'link' ? 'link' : 'ssh', error: h.error }) },
         !h.local && h.kind !== 'cloud' && h.kind !== 'link' && h.status === 'connected' && { label: outdated ? 'Update Gecko' : 'Reinstall Gecko', hint: 'Its tabs keep running', run: () => this.updateHost(h.name) },
         this.cloud && { label: 'Devices…', hint: 'Your account', run: () => this.openDevices() },
@@ -2253,6 +2365,8 @@ class App {
           : !h.local && { label: 'Remove machine', hint: 'Its sessions keep running', danger: true, run: () => this.removeHost(h.name) },
       ];
     }
+    const prev = target.closest('.prev-anchor')?.dataset.prev;
+    if (prev) return [{ label: `Make ${prev} the anchor again`, run: () => this.makeAnchor(prev) }];
     const tpl = target.closest('.ws.template [data-name]');
     if (tpl) return [{ label: `Open ${tpl.dataset.name}`, run: () => this.openTemplate(tpl.dataset.name) }];
     return null;
@@ -3054,6 +3168,12 @@ class App {
     for (const h of this.hosts) {
       add(`New tab on ${h.name}`, h.local ? 'This machine' : `${h.target || ''} · ${h.status}`, () => this.newTab({ host: h.name, cwd: '' }), 'Host');
     }
+    for (const h of this.hosts) {
+      if (!h.local) add(`Make ${h.name} the anchor`, this.anchorBlock(h.name) || makeAnchorHint(h.name), () => this.makeAnchor(h.name), 'Anchor', undefined, 'anchor switch hub connect through');
+    }
+    if (this.proxied) {
+      for (const x of previousAnchors(this.anchorPath, this.door)) add(`Back to ${x.name}`, `Make ${x.name} the anchor again`, () => this.makeAnchor(x.name), 'Anchor', undefined, 'anchor switch back previous');
+    }
     for (const t of this.tmux) {
       const tab = this.tmuxTab(t.host, t.name);
       const where = tab ? `in tab ${nums.get(tab.id)}` : 'opens a new tab';
@@ -3412,7 +3532,7 @@ class App {
 
   async openShare() {
     // The Android app running Gecko on the phone shows its own link and QR code.
-    try { if (native?.shareDevice?.()) return; } catch {}
+    try { if (!this.proxied && native?.shareDevice?.()) return; } catch {} // the app shows This phone's own links
     const m = $('#modal');
     let urls = [];
     try {
@@ -3734,7 +3854,10 @@ class App {
       const broken = !h.local && !cloud && h.status === 'error';
       // A machine reached at its link updates on its own side (gecko upgrade there).
       const outdated = !h.local && h.kind !== 'link' && h.status === 'connected' && (h.version || 0) < PROTOCOL;
-      const where = signedIn ? this.hostWhere(h) : h.local ? (this.remote ? 'connected here' : 'this machine') : h.status === 'connected' ? h.os || '' : h.status;
+      // The anchor always carries the anchor icon and a highlight, here
+      // too (its own window, This phone), so you can always tell.
+      const marks = hostMarks(h, { here: this.anchorHere, door: this.door });
+      const where = signedIn ? this.hostWhere(h) : h.local ? marks.where : h.status === 'connected' ? h.os || '' : h.status;
       let counts = '';
       if (signedIn) {
         const agents = [...this.sessions.values()].filter((t) => t.host === h.name && t.agent);
@@ -3743,11 +3866,12 @@ class App {
         if (need) counts += `<span class="agents need" title="Agents waiting for you on ${esc(h.name)}">${AGENTS_ICON}${need}</span>`;
         if (working) counts += `<span class="agents work" title="Agents working on ${esc(h.name)}">${AGENTS_ICON}${working}</span>`;
       }
-      const anchor = this.remote && h.local;
-      return `<li class="host st-${esc(h.status)}${h.name === next ? ' next' : ''}${anchor ? ' anchor' : this.remote ? ' under-anchor' : ''}" data-host="${esc(h.name)}"${anchor ? ` title="${esc(anchorTitle(h.name))}"` : ''}>
+      const anchor = h.local;
+      const grouped = this.viaShown;
+      return `<li class="host st-${esc(h.status)}${h.name === next ? ' next' : ''}${marks.cls}${!anchor && grouped ? ' under-anchor' : ''}" data-host="${esc(h.name)}"${anchor ? ` title="${esc(anchorTitle(h.name))}"` : ''}>
         <div class="host-row" data-drag="host" data-key="${esc(h.name)}">
           <button class="host-main" data-act="${broken ? 'host-fix' : outdated ? 'host-update' : 'host-new'}" data-host="${esc(h.name)}" title="${esc(broken ? 'Fix the connection to ' + h.name : outdated ? h.name + ' runs an older Gecko; click to update it (its tabs keep running)' : 'New tab on ' + h.name + (h.name === next ? `. New tabs (${prettyCombo(this.keys.first('newTab'))}) open here, on the current tab's machine` : ''))}">
-            <i class="hdot"></i><span class="nm">${esc(h.name)}</span>${anchor ? `<span class="badge anchor-badge">${ANCHOR_ICON}anchor</span>` : ''}${counts}<span class="where">${esc(where)}</span>${!h.local && h.status === 'connected' && h.rtt ? `<span class="rtt ${latencyClass(h.rtt)}" title="${esc(`Round trip from this Gecko to ${h.name}: ${h.rtt} ms`)}">${h.rtt} ms</span>` : ''}<span class="plus${outdated ? ' upd' : ''}">${broken ? 'fix' : outdated ? 'update' : '+'}</span>
+            <i class="hdot"></i><span class="nm">${esc(h.name)}</span>${marks.badge}${counts}<span class="where">${esc(where)}</span>${!h.local && h.status === 'connected' && h.rtt ? `<span class="rtt ${latencyClass(h.rtt)}" title="${esc(`Round trip from this Gecko to ${h.name}: ${h.rtt} ms`)}">${h.rtt} ms</span>` : ''}<span class="plus${outdated ? ' upd' : ''}">${broken ? 'fix' : outdated ? 'update' : '+'}</span>
           </button>
           ${h.local ? '' : cloud
             ? `<button class="x" data-act="host-revoke" data-host="${esc(h.name)}" aria-label="Revoke ${esc(h.name)}" title="Revoke ${esc(h.name)}: remove it from your account">×</button>`
@@ -3767,7 +3891,7 @@ class App {
     };
     // Opened from another device: the anchor first, the machines it
     // reaches under it.
-    const { anchor, reached } = this.remote ? splitByAnchor(this.sortedHosts()) : { anchor: null, reached: null };
+    const { anchor, reached } = this.viaShown ? splitByAnchor(this.sortedHosts()) : { anchor: null, reached: null };
     if (anchor) {
       parts.push(hostRow(anchor));
       parts.push(`<li class="hgroup under-anchor" aria-hidden="true">${reached.length ? `Reached by ${esc(anchor.name)}` : `No other machines yet. Add one with +, and ${esc(anchor.name)} connects to it.`}</li>`);
@@ -3785,6 +3909,7 @@ class App {
         for (const h of hs) parts.push(hostRow(h));
       }
     }
+    parts.push(this.anchorRows());
     parts.push('</ul></div>');
     // Unchanged rows stay the same elements: replacing them under a finger
     // loses the tap (iOS fires no click on a removed element).
@@ -3798,6 +3923,28 @@ class App {
     conn.className = 'conn ' + (st === 'online' && this.outdated ? 'outdated' : st);
     conn.textContent = st === 'online' ? (this.outdated ? 'Restart needed' : '') : st === 'unauthorized' ? 'Not signed in' : st === 'offline' ? 'Reconnecting…' : 'Connecting…';
     conn.title = st === 'online' && this.outdated ? OUTDATED : '';
+  }
+
+  // Below the machines: the way back to the Geckos this page came through
+  // (so a new anchor that doesn't list them never strands you), and the
+  // anchor chosen earlier when it can't be reached.
+  anchorRows() {
+    const out = [];
+    const p = this.anchorProblem;
+    if (p) {
+      out.push(`<li class="hgroup" aria-hidden="true">Anchor</li><li class="anchor-problem"><span>${ANCHOR_ICON}Can't reach ${esc(p.name)}, your anchor: ${esc(p.error)}. Showing ${esc(this.hostName)} meanwhile.</span>
+        <span class="acts"><button data-act="anchor-retry">Try again</button><button data-act="anchor-stay">Stay on ${esc(this.hostName)}</button></span></li>`);
+    }
+    const prev = this.proxied ? previousAnchors(this.anchorPath, this.door).filter((x) => !this.hosts.some((h) => h.name === x.name)) : [];
+    if (prev.length) {
+      out.push('<li class="hgroup" aria-hidden="true">Back to</li>');
+      for (const x of prev) {
+        out.push(`<li class="host prev-anchor" data-prev="${esc(x.name)}"><div class="host-row">
+          <button class="host-main" data-act="anchor-back" data-host="${esc(x.name)}" title="${esc(`Make ${x.name} the anchor again: its tabs and machines come back`)}"><i class="hdot"></i><span class="nm">${esc(x.name)}</span><span class="where">${x.path.length ? 'earlier anchor' : this.remote ? 'where you connect' : 'this machine'}</span><span class="plus back">${ANCHOR_ICON}</span></button>
+        </div></li>`);
+      }
+    }
+    return out.join('');
   }
 
   renderTabs() {
@@ -3907,7 +4054,7 @@ class App {
     const el = $('#statusline');
     // Through an anchor: say which Gecko this page goes through, always
     // (phones too, where the rest of the status line is hidden).
-    const via = this.remote && this.hostName ? `<span class="sl-anchor" title="${esc(anchorTitle(this.hostName))}">${ANCHOR_ICON}${esc(viaLabel(this.hostName))}</span>` : '';
+    const via = this.viaShown && this.hostName ? `<span class="sl-anchor" title="${esc(anchorTitle(this.hostName))}">${ANCHOR_ICON}${esc(viaLabel(this.hostName))}</span>` : '';
     if (!s) {
       el.innerHTML = via ? `<div class="l">${via}</div><div class="r"><span id="sl-net" class="net">${this.netHTML()}</span></div>` : '';
       return;

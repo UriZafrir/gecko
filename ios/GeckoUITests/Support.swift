@@ -22,10 +22,10 @@ class GeckoUITestCase: XCTestCase {
     }
 
     /// Starts the app with no saved machines; with open, that machine is added and opened at once.
-    func launch(open: String? = nil, name: String? = nil) {
+    func launch(open: String? = nil, name: String? = nil, reset: Bool = true) {
         app = XCUIApplication()
         app.launchEnvironment["GECKO_UITEST"] = "1"
-        app.launchEnvironment["GECKO_UITEST_RESET"] = "1"
+        if reset { app.launchEnvironment["GECKO_UITEST_RESET"] = "1" }
         if let open { app.launchEnvironment["GECKO_UITEST_OPEN"] = open }
         if let name { app.launchEnvironment["GECKO_UITEST_NAME"] = name }
         if let dir = env["GECKO_CUES"], !dir.isEmpty {

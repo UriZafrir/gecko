@@ -28,7 +28,14 @@ import (
 //	9: cloud (account, devices, approvals); host kind, machine id and path
 //	10: hello reply says the scope granted and the node id; the scope is
 //	    enforced by the server (relay peers always get local)
-const Version = 10
+//	11: any machine can become the anchor: hello "anchor" (the machines to
+//	    go through) and "door"; the anchor request; hello reply "kind"
+//	    anchor with an error when the switch failed
+const Version = 11
+
+// AnchorVersion is the first protocol whose Gecko can become the anchor
+// of a client that connected to another Gecko (see docs/anchor.md).
+const AnchorVersion = 11
 
 // Data frame kinds.
 const (
@@ -75,6 +82,16 @@ type Msg struct {
 	// hello reply: a random id of this running Gecko (new each start), so
 	// a hub can tell a link back to itself, or two links to one Gecko.
 	Node string `json:"node,omitempty"`
+	// hello: make another machine the anchor. Anchor names the machines to
+	// go through, each as the previous Gecko calls it: the Gecko this
+	// client connected to (the door) opens an owner connection to
+	// Anchor[0] over its own link and forwards the client there, with the
+	// rest of the list. Only owner clients may ask (see docs/anchor.md).
+	Anchor []string `json:"anchor,omitempty"`
+	// hello: the Gecko forwarding this client for its owner (set by the
+	// door, never by a page). hello reply: the Gecko the client actually
+	// connected to, when it was forwarded to another anchor.
+	Door string `json:"door,omitempty"`
 
 	// session addressing
 	ID     string `json:"id,omitempty"`
@@ -160,6 +177,11 @@ const (
 	// before protocol 8 answer it with an error reply, which works as a
 	// pong just the same.
 	TPing = "ping" // -> reply
+	// TAnchor reads or changes how this Gecko may become the anchor: name
+	// "account", data "on", "off" or "" (status) -> reply{text: "on"|"off"}.
+	// On lets the account's other machines make it the anchor through the
+	// relay (off by default; see docs/anchor.md). Owner clients only.
+	TAnchor = "anchor"
 )
 
 // ShareState is the listener for other devices that the Android app turns

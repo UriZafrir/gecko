@@ -45,6 +45,14 @@ Trust comes from how a client connected, never from what it says in
 - Any client that asks for the local scope (link hubs and bridges do) gets
   exactly those limits too.
 
+- **Make anchor** (protocol 11) forwards an owner's page to another
+  machine over the link this Gecko already has to it. Only owner clients
+  may ask, at most 4 hops, and nothing is copied. Over SSH and Gecko links
+  the target already treats this Gecko as its owner. Through the relay it
+  doesn't: a peer is never raised to owner unless that machine's owner
+  turned on "Can be the anchor through my account" (`gecko anchor account
+  on`, off by default). See [Make anchor](anchor.md#who-may-switch).
+
 The share link is deliberately an owner credential (it is how most phones
 reach their anchor); it is new each time, answers only private and
 tailnet addresses, and `gecko share off` ends it and its clients. See

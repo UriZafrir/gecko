@@ -315,6 +315,26 @@ ipcMain.handle('gecko:set-bounds', (ev, b) => {
   w.setBounds({ x, y, width, height });
 });
 
+// The anchor the window chose (Make anchor in the sidebar, see
+// web/src/anchor.js): kept in the app's settings, per daemon (GECKO_HOME
+// has its own profile), so the next launch opens on it.
+const anchorFile = () => path.join(app.getPath('userData'), 'anchor.json');
+ipcMain.on('gecko:anchor-get', (ev) => {
+  try {
+    ev.returnValue = JSON.parse(fs.readFileSync(anchorFile(), 'utf8')).path || '';
+  } catch {
+    ev.returnValue = '';
+  }
+});
+ipcMain.on('gecko:anchor-set', (ev, s) => {
+  try {
+    const p = JSON.parse(String(s));
+    const ok = Array.isArray(p) && p.length > 0 && p.length <= 4 && p.every((x) => typeof x === 'string' && /^[^\s/]{1,128}$/.test(x));
+    if (ok) fs.writeFileSync(anchorFile(), JSON.stringify({ path: JSON.stringify(p) }));
+    else fs.rmSync(anchorFile(), { force: true });
+  } catch { /* not a path */ }
+});
+
 // Windows: the caption buttons follow the theme (preload's setTitleBar).
 ipcMain.on('gecko:title-bar', (ev, c) => {
   const w = BrowserWindow.fromWebContents(ev.sender);

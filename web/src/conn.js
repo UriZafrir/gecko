@@ -253,7 +253,8 @@ export class Conn {
     this.everOnline = true;
     this.lastRx = performance.now();
     this.ping = null;
-    this.send({ t: 'hello', client: 'web' });
+    // The page's chosen anchor goes in every hello (see anchor.js).
+    this.send({ t: 'hello', client: 'web', ...(this.h.hello?.() || {}) });
     this.sendPing();
     this.setStatus('online');
     this.h.onOpen?.(); // panes re-attach from the last byte they have

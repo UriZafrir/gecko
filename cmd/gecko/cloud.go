@@ -225,3 +225,30 @@ func cmdRelay(args []string) error {
 	s.TrustProxy = *trustProxy
 	return relay.ListenAndServe(s, *listen, *cert, *key)
 }
+
+// cmdAnchor: gecko anchor account [on|off], whether the account's other
+// machines may make this one the anchor through the relay.
+func cmdAnchor(args []string) error {
+	if len(args) < 1 || args[0] != "account" || len(args) > 2 || len(args) == 2 && args[1] != "on" && args[1] != "off" {
+		return errors.New("usage: gecko anchor account [on|off]")
+	}
+	set := ""
+	if len(args) == 2 {
+		set = args[1]
+	}
+	c, err := client.Connect(false)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	r, err := c.Call(&proto.Msg{T: proto.TAnchor, Name: "account", Data: set})
+	if err != nil {
+		return err
+	}
+	if r.Text == "on" {
+		fmt.Println("On: your account's other machines can make this one the anchor through the relay, with full rights here.")
+	} else {
+		fmt.Println("Off: through the relay, your account's other machines only open this machine's own tabs. They can still make it the anchor over SSH or its Gecko link.")
+	}
+	return nil
+}
