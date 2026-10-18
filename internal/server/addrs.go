@@ -78,7 +78,8 @@ func shareHosts(addrs []ifaceAddr) []string {
 func interfaceAddrs() []ifaceAddr {
 	ifs, err := net.Interfaces()
 	if err != nil {
-		return nil
+		// Android apps may not list links (RTM_GETLINK), only addresses.
+		return labeledAddrs()
 	}
 	var out []ifaceAddr
 	for _, ifi := range ifs {

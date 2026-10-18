@@ -3,6 +3,8 @@ package server
 import (
 	"net"
 	"reflect"
+	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -41,5 +43,28 @@ func TestShareURLsListenAddress(t *testing.T) {
 	}
 	if u := ShareURLs("192.168.1.4:7682", "tok"); !reflect.DeepEqual(u, []string{"http://192.168.1.4:7682/?token=tok"}) {
 		t.Fatal(u)
+	}
+}
+
+// The kernel's address table agrees with the interface table where both
+// can be read.
+func TestLabeledAddrs(t *testing.T) {
+	want := map[string]string{}
+	for _, a := range interfaceAddrs() {
+		if a.IP.To4() != nil {
+			want[a.IP.String()] = a.Name
+		}
+	}
+	got := labeledAddrs()
+	if runtime.GOOS != "linux" {
+		return
+	}
+	for _, a := range got {
+		if n, ok := want[a.IP.String()]; ok && n != a.Name && !strings.HasPrefix(a.Name, n+":") {
+			t.Errorf("%s: label %q, interface %q", a.IP, a.Name, n)
+		}
+	}
+	if len(want) > 0 && len(got) == 0 {
+		t.Errorf("no addresses from RTM_GETADDR, want %v", want)
 	}
 }
