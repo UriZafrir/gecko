@@ -14,6 +14,9 @@
 #   --app      also let the Gecko Android app start Gecko here: sets
 #              allow-external-apps=true in ~/.termux/termux.properties
 #   --source   build from source instead of downloading
+#   --claude   also install Claude Code (arm64 phones): the official
+#              linux-arm64 build, run through Termux's glibc loader
+#              (glibc-runner), as `claude`; `claude-update` updates it
 #
 # Environment: GECKO_URL (a gecko binary to download instead),
 # GECKO_REPO (default eternaleclipse/gecko), GECKO_REF (git ref for --source).
@@ -22,11 +25,13 @@ set -eu
 REPO=${GECKO_REPO:-eternaleclipse/gecko}
 APP=0
 SOURCE=0
+CLAUDE=0
 for a in "$@"; do
 	case $a in
 	--app) APP=1 ;;
 	--source) SOURCE=1 ;;
-	-h | --help) sed -n '2,19p' "$0" 2>/dev/null || true; exit 0 ;;
+	--claude) CLAUDE=1 ;;
+	-h | --help) sed -n '2,22p' "$0" 2>/dev/null || true; exit 0 ;;
 	*) echo "gecko install: unknown option $a" >&2; exit 2 ;;
 	esac
 done
@@ -122,6 +127,63 @@ if [ $APP = 1 ]; then
 		say "the Gecko app may now start Gecko in Termux (allow-external-apps=true in $props)"
 	fi
 	command -v termux-reload-settings >/dev/null 2>&1 && termux-reload-settings || true
+fi
+
+# Claude Code: its native build is for glibc Linux, and Android has no
+# /lib/ld-linux-aarch64.so.1, so its own installer can't start it. Termux's
+# glibc-runner can (grun). On x86_64 the build stops on Android's seccomp
+# filter (it calls access(2) itself), so there it's proot-distro instead.
+claude_install() {
+	if [ "$ARCH" != arm64 ]; then
+		say "Claude Code skipped: its x86_64 Linux build makes a system call Android doesn't allow (access). Use proot-distro: see Claude Code in Termux in docs/android.md"
+		return 0
+	fi
+	say "installing glibc-runner, jq and ripgrep for Claude Code"
+	pkg install -y glibc-repo </dev/null >/dev/null || return 1
+	pkg install -y glibc-runner jq ripgrep </dev/null >/dev/null || return 1
+	cat >"$BIN/claude-update" <<'UPDATE'
+#!/data/data/com.termux/files/usr/bin/bash
+# claude-update: fetches the official linux-arm64 Claude Code build, checks
+# its checksum, and keeps it in ~/.local/share/claude-glibc, where `claude`
+# runs it through Termux's glibc loader (glibc-runner). Installed by Gecko's
+# Termux installer (install.sh --claude).
+set -euo pipefail
+B=https://downloads.claude.ai/claude-code-releases
+D=$HOME/.local/share/claude-glibc
+case $(uname -m) in
+aarch64 | arm64) P=linux-arm64 ;;
+*) echo "claude-update: only for arm64 phones; this is $(uname -m)" >&2; exit 1 ;;
+esac
+mkdir -p "$D"
+v=$(curl -fsSL "$B/latest")
+[[ $v =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]] || { echo "claude-update: unexpected version: $v" >&2; exit 1; }
+sum=$(curl -fsSL "$B/$v/manifest.json" | jq -r --arg p "$P" '.platforms[$p].checksum')
+[[ $sum =~ ^[0-9a-f]{64}$ ]] || { echo "claude-update: no checksum for $P in $v" >&2; exit 1; }
+if [ -x "$D/claude" ] && [ "$(sha256sum "$D/claude" | cut -d' ' -f1)" = "$sum" ]; then
+	echo "Claude Code $v is current"
+	exit 0
+fi
+curl -fL --retry 2 -o "$D/claude.new" "$B/$v/$P/claude"
+[ "$(sha256sum "$D/claude.new" | cut -d' ' -f1)" = "$sum" ] || { rm -f "$D/claude.new"; echo "claude-update: checksum mismatch" >&2; exit 1; }
+chmod 755 "$D/claude.new" && mv -f "$D/claude.new" "$D/claude"
+echo "Installed Claude Code $v"
+UPDATE
+	cat >"$BIN/claude" <<'WRAPPER'
+#!/data/data/com.termux/files/usr/bin/sh
+# Claude Code's linux-arm64 build through Termux's glibc loader. Update it
+# with claude-update (its own updater can't run here). Its searches use
+# Termux's ripgrep. Installed by Gecko's Termux installer (install.sh --claude).
+export DISABLE_AUTOUPDATER=1 USE_BUILTIN_RIPGREP=0
+exec grun "$HOME/.local/share/claude-glibc/claude" "$@"
+WRAPPER
+	chmod 755 "$BIN/claude-update" "$BIN/claude"
+	"$BIN/claude-update" </dev/null || return 1
+	v=$("$BIN/claude" --version </dev/null 2>&1) || { echo "$v" >&2; return 1; }
+	say "installed $v: run claude (claude-update updates it)"
+}
+
+if [ $CLAUDE = 1 ]; then
+	claude_install || die "Claude Code didn't install (Gecko did); run this again with --claude to retry"
 fi
 
 cat <<'MSG'

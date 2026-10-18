@@ -86,6 +86,8 @@
     <string name="share_off">Other devices can no longer connect. The old link stopped working.</string>
     <string name="share_links_title">Link for other devices</string>
     <string name="share_scan">Open this on your computer, or scan it, on the same network or tailnet. Treat it like a password.</string>
+    <string name="share_via_tunnel">Over Tailscale (or your VPN), from anywhere</string>
+    <string name="share_via_lan">On this Wi-Fi or network</string>
     <string name="share_no_network">This phone isn\'t on Wi-Fi or Tailscale right now, so other devices can\'t reach it.</string>
     <string name="share_not_on">Other devices aren\'t allowed. Turn on Allow other devices first.</string>
     <string name="share_footer">Turn it off when you\'re done; that makes this link useless.</string>
@@ -169,6 +171,8 @@
     <string name="termux_gecko_missing_title">Install Gecko in Termux</string>
     <string name="termux_gecko_missing_text">Termux works. Gecko isn\'t installed in it yet: this line installs it (no root needed). Run it in a Termux session, or let the app send it there.</string>
     <string name="termux_install">Install in Termux</string>
+    <string name="termux_also_claude">Also install Claude Code (its Linux build, through Termux\'s glibc-runner; a few hundred MB)</string>
+    <string name="termux_install_claude">Install Claude Code in Termux</string>
     <string name="termux_copy">Copy</string>
     <string name="termux_installing_title">Installing Gecko in Termux</string>
     <string name="termux_installing_text">The installer runs in a Termux session. When it says installed, come back here.</string>

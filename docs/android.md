@@ -212,9 +212,13 @@ yourself first.
 Off by default. Turn it on (**⋮** next to **This phone**, or in the extra
 keys while on it, or **Open on another device** in the palette) and the
 phone's Gecko also listens on its Wi-Fi, Ethernet and Tailscale addresses,
-port 7682. The app shows the link and QR code for each address, the same
-kind Gecko shows on a computer: open it in a browser, or add it as a machine
-in another Gecko app.
+port 7682. The app shows the link and QR code for each address, Tailscale
+(or another VPN) first, then Wi-Fi and Ethernet, the same kind Gecko shows
+on a computer: open it in a browser, or add it as a machine in another
+Gecko app. It never offers the mobile data address: carriers hand out
+addresses from 100.64/10 (carrier-grade NAT), the same range as Tailscale,
+and no other device of yours can reach them. `gecko share` on a computer
+picks its addresses the same way.
 
 What that means:
 
@@ -241,8 +245,8 @@ On a computer, the same listener is `gecko share on [addr]` and
 
 [Termux](https://termux.dev) is a Linux environment for Android with its
 own package manager: `pkg install git tmux nodejs python golang openssh`,
-and the coding agents that run on those (Claude Code runs in a Debian
-inside Termux, see [Claude Code in Termux](#claude-code-in-termux)). Gecko
+and the coding agents that run on those (Claude Code too, see
+[Claude Code in Termux](#claude-code-in-termux)). Gecko
 runs inside it, and Termux becomes **one of This phone's machines**: it is
 in This phone's sidebar under **Machines**, next to the phone itself (as an
 SSH machine or a relay machine would be), with its tabs and agents next to
@@ -392,22 +396,57 @@ permission. Both can reach each other only over `127.0.0.1`, with the token.
 
 ### Claude Code in Termux
 
-Claude Code's npm package and its installer download a native build, for
-glibc or musl Linux; there is none for Android, so `npm install -g
-@anthropic-ai/claude-code` in Termux ends with "claude native binary not
-installed". Started directly with a Linux loader, the Linux build dies with
-"Bad system call": Android's seccomp filter for apps blocks system calls
-that Android's own C library doesn't use. On an x86_64 emulator (Android
-14), the first one is `access` (Linux build 2.1.302, glibc, under `strace`:
-`SIGSYS ... si_syscall=__NR_access`). arm64 Linux has no `access` call at
-all, so the list there differs; we haven't traced it on an arm64 phone.
+Claude Code's npm package and its installer (`curl -fsSL
+https://claude.ai/install.sh | bash`) fetch a native build for glibc or
+musl Linux; there is none for Android. In Termux, `npm install -g
+@anthropic-ai/claude-code` ends with "claude native binary not installed",
+and the installer's download can't start ("cannot execute: required file
+not found": Android has no `/lib/ld-linux-aarch64.so.1`).
 
-What works is the normal Linux install inside a Debian that Termux's
-`proot-distro` runs: its `proot` catches the blocked calls and makes them
-in a form Android allows. Tested on x86_64 (Android 14 emulator, Claude
-Code 2.1.302, Debian 13 rootfs); proot-distro and Debian exist for arm64
-too, and this is the usual route on arm64 phones, but we haven't run it on
-one:
+**On an arm64 phone** (nearly all of them), Termux's glibc loader runs the
+official linux-arm64 build as it is. Let the Gecko installer set it up:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/eternaleclipse/gecko/main/packaging/termux/install.sh | sh -s -- --app --claude
+```
+
+or tick **Also install Claude Code** on the app's install step, or pick
+**Install Claude Code in Termux** in **⋮** next to This phone once Termux
+is set up. It installs Termux's `glibc-runner`, `jq` and `ripgrep`, and two
+small scripts:
+
+- `claude-update` downloads the latest release from Anthropic's release
+  bucket (`downloads.claude.ai/claude-code-releases`), checks its SHA-256
+  against that release's `manifest.json`, and keeps it in
+  `~/.local/share/claude-glibc` (about 270 MB). Run it to update: Claude Code's own
+  updater can't install here, so the wrapper turns it off.
+- `claude` runs that build with `grun` (glibc-runner), with
+  `DISABLE_AUTOUPDATER=1`, and `USE_BUILTIN_RIPGREP=0` so its searches use
+  Termux's `rg`.
+
+Then `claude` in a Gecko tab on **termux** starts it: the first-run screens,
+then sign in, and Gecko lists it as a `claude` agent on termux, with the
+agent dock and the notifications. This was tested on a Pixel 8 (arm64,
+Android 16) with Claude Code 2.1.302: `--version`, the interactive theme
+and login screens, and Gecko's agent detection. Our x86_64 emulators can't
+run arm64 Termux, so there we tested the installer's x86_64 path and
+`claude-update`'s download and checksum check (with a fake `uname`), not
+the arm64 build running.
+
+**On x86_64** (emulators, a few Chromebooks and tablets) this doesn't work:
+the linux-x64 build makes system calls that Android's seccomp filter for
+apps blocks, and dies with "Bad system call", through glibc-runner too. The
+first one is `access` (Claude Code 2.1.302 under `strace`: `SIGSYS ...
+si_syscall=__NR_access`), which the binary makes itself, so Termux's
+patched glibc can't help. arm64 Linux has no `access` call at all, which
+is why the arm64 build gets past it. `install.sh --claude` says so and
+skips it on x86_64.
+
+**The fallback, any CPU:** the normal Linux install inside a Debian that
+Termux's `proot-distro` runs. Its `proot` catches the blocked calls and
+makes them in a form Android allows. It is slower and bigger (Debian takes
+about 200 MB, Claude Code about 270 MB more); tested on x86_64 (Android 14
+emulator, Claude Code 2.1.302, Debian 13):
 
 ```sh
 pkg install proot-distro
@@ -421,12 +460,9 @@ Then, in a Gecko tab on **termux**:
 proot-distro login debian --shared-tmp -- /root/.local/bin/claude
 ```
 
-It starts interactively (the first-run screens, then sign in), and Gecko
-recognises it as Claude Code from its window title, through proot, so the
-agent dock and the notifications work. Your projects can stay in Termux's
-home: `proot-distro login debian --bind $HOME:/root/termux` puts it at
-`~/termux` inside (or `--shared-home` binds Termux's home into it).
-The Debian takes about 200 MB, and Claude Code about 270 MB more.
+Gecko recognises it through proot too. Your projects can stay in Termux's
+home: `--bind $HOME:/root/termux` puts it at `~/termux` inside (or
+`--shared-home` binds Termux's home into it).
 
 ## Notifications
 

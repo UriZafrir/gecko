@@ -108,6 +108,15 @@ object TermuxFlow {
     /** The one line that installs Gecko in Termux and lets this app start it. */
     const val INSTALL = "curl -fsSL https://raw.githubusercontent.com/eternaleclipse/gecko/main/packaging/termux/install.sh | sh -s -- --app"
 
+    /**
+     * The install line, with Claude Code too when asked (`--claude`: its
+     * linux-arm64 build through Termux's glibc loader; arm64 phones only).
+     */
+    fun install(base: String, claude: Boolean) = if (claude) "$base --claude" else base
+
+    /** Whether Claude Code can be installed in Termux on this phone: arm64 only (see install.sh). */
+    fun claudeSupported(abis: Array<String>) = abis.firstOrNull() == "arm64-v8a"
+
     /** The line for ~/.termux/termux.properties, and how to make Termux read it. */
     const val PROPERTY = "allow-external-apps=true"
     const val PROPERTY_COMMAND = "mkdir -p ~/.termux && echo $PROPERTY >> ~/.termux/termux.properties && termux-reload-settings"

@@ -327,6 +327,9 @@ class ConnectActivity : AppCompatActivity() {
                         else -> {}
                     }
                     if (Termux.installed(a)) menu.add(0, 6, 4, R.string.termux_open)
+                    if (ts != TermuxMachine.Status.Hidden && ts != TermuxMachine.Status.Offer && TermuxFlow.claudeSupported(android.os.Build.SUPPORTED_ABIS)) {
+                        menu.add(0, 9, 4, R.string.termux_install_claude)
+                    }
                     if (ts != TermuxMachine.Status.Hidden) menu.add(0, 7, 5, R.string.termux_setup)
                     if (ts != TermuxMachine.Status.Hidden && ts != TermuxMachine.Status.Offer) menu.add(0, 8, 6, R.string.termux_remove)
                     setOnMenuItemClickListener {
@@ -348,6 +351,11 @@ class ConnectActivity : AppCompatActivity() {
                             5 -> TermuxActivity.open(a)
                             6 -> Termux.open(a)
                             7 -> TermuxActivity.open(a, start = false)
+                            9 -> try {
+                                Termux.runInSession(a, TermuxFlow.install(TermuxFlow.INSTALL, claude = true), "Install Claude Code")
+                            } catch (e: SecurityException) {
+                                TermuxActivity.open(a, start = false)
+                            }
                             8 -> AlertDialog.Builder(a)
                                 .setTitle(R.string.termux_remove_title)
                                 .setMessage(R.string.termux_remove_text)

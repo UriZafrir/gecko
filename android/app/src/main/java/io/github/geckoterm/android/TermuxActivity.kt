@@ -147,8 +147,13 @@ class TermuxActivity : AppCompatActivity() {
     }
 
     /** The command to install Gecko in Termux; debug builds can point it elsewhere (tests, demos). */
-    private fun installCommand(): String =
-        (if (BuildConfig.DEBUG) Gecko.prefs(this).getString(INSTALL_OVERRIDE, null) else null) ?: TermuxFlow.INSTALL
+    private fun installCommand(): String = TermuxFlow.install(
+        (if (BuildConfig.DEBUG) Gecko.prefs(this).getString(INSTALL_OVERRIDE, null) else null) ?: TermuxFlow.INSTALL,
+        withClaude,
+    )
+
+    /** "Also install Claude Code", ticked on the install step. */
+    private var withClaude = false
 
     private fun render() {
         val step = findViewById<TextView>(R.id.step)
@@ -161,6 +166,8 @@ class TermuxActivity : AppCompatActivity() {
         val progress = findViewById<ProgressBar>(R.id.progress)
         val primary = findViewById<Button>(R.id.primary)
         val secondary = findViewById<Button>(R.id.secondary)
+        val claude = findViewById<android.widget.CheckBox>(R.id.claude)
+        claude.visibility = View.GONE
         fun show(v: TextView, s: CharSequence?) { v.text = s ?: ""; v.visibility = if (s == null) View.GONE else View.VISIBLE }
         fun button(b: Button, label: Int?, action: (() -> Unit)?) {
             b.visibility = if (label == null) View.INVISIBLE else View.VISIBLE
@@ -231,6 +238,12 @@ class TermuxActivity : AppCompatActivity() {
                 title.setText(R.string.termux_gecko_missing_title)
                 show(text, getString(R.string.termux_gecko_missing_text))
                 show(code, install)
+                if (TermuxFlow.claudeSupported(android.os.Build.SUPPORTED_ABIS)) {
+                    claude.visibility = View.VISIBLE
+                    claude.setOnCheckedChangeListener(null)
+                    claude.isChecked = withClaude
+                    claude.setOnCheckedChangeListener { _, on -> withClaude = on; render() }
+                }
                 button(primary, R.string.termux_install) {
                     try {
                         Termux.runInSession(this, install, "Install Gecko")
