@@ -5,6 +5,8 @@ package hub
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -62,6 +64,7 @@ type Hub struct {
 
 	cfg   *config.Config
 	name  string
+	node  string // random id of this running hub (see Node)
 	local *Local
 
 	mu          sync.Mutex
@@ -72,6 +75,7 @@ type Hub struct {
 	stateDue    *time.Timer
 	settingsMod time.Time
 	notified    map[string]bool
+	nodes       map[string]*Remote // node id -> the Remote connected to it
 
 	cloud         Cloud
 	cloudMachines []CloudMachine
@@ -79,7 +83,8 @@ type Hub struct {
 
 // New creates a hub around the local session manager.
 func New(cfg *config.Config, m *session.Manager) *Hub {
-	h := &Hub{cfg: cfg, name: m.Host(), backends: map[string]Backend{}, subs: map[int]*subscriber{}, notified: map[string]bool{}}
+	h := &Hub{cfg: cfg, name: m.Host(), node: newNode(), backends: map[string]Backend{}, subs: map[int]*subscriber{},
+		notified: map[string]bool{}, nodes: map[string]*Remote{}}
 	h.local = &Local{m: m}
 	h.backends[h.name] = h.local
 	h.order = []string{h.name}
@@ -97,6 +102,48 @@ func New(cfg *config.Config, m *session.Manager) *Hub {
 
 // Name is this machine's name.
 func (h *Hub) Name() string { return h.name }
+
+// Node is a random id of this running hub, new every time it starts. The
+// hello reply carries it, so a hub can tell that a link leads back to
+// itself, or that two of its machines are the same Gecko.
+func (h *Hub) Node() string { return h.node }
+
+func newNode() string {
+	b := make([]byte, 12)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+// claimNode records that r reached the Gecko with node id node. It fails
+// when that is this hub itself (a loop) or a Gecko another machine of this
+// hub already reaches (a duplicate that would list every tab twice). A
+// machine of the account is left to reconcileCloud, which merges by
+// machine id.
+func (h *Hub) claimNode(node string, r *Remote) error {
+	if node == "" {
+		return nil // before protocol 10
+	}
+	if node == h.node {
+		return errors.New("this leads back to " + h.name + " itself")
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if o := h.nodes[node]; o != nil && o != r && h.backends[o.name] == o {
+		if o.kind != KindCloud && r.kind != KindCloud {
+			return errors.New("this is the same Gecko as " + o.name + ", which is already connected; remove one of them")
+		}
+	}
+	h.nodes[node] = r
+	return nil
+}
+
+func (h *Hub) releaseNode(node string, r *Remote) {
+	h.mu.Lock()
+	if h.nodes[node] == r {
+		delete(h.nodes, node)
+	}
+	h.mu.Unlock()
+}
 
 func (h *Hub) addRemote(host config.Host) {
 	if host.Name == "" || host.Name == h.name {
@@ -298,6 +345,31 @@ func (h *Hub) Resolve(id string) (Backend, string, error) {
 	return h.backend(match[0].Host), localID(match[0].ID), nil
 }
 
+// ResolveScope is Resolve for a client with that scope: with the local
+// scope, only sessions of this machine resolve, so a Gecko connected to
+// this one can't reach the machines this hub federates.
+func (h *Hub) ResolveScope(scope, id string) (Backend, string, error) {
+	if scope != ScopeLocal {
+		return h.Resolve(id)
+	}
+	if host, lid, ok := strings.Cut(id, "/"); ok {
+		if host != h.name {
+			return nil, "", errors.New("unknown host: " + host)
+		}
+		return h.local, lid, nil
+	}
+	var match []proto.SessionInfo
+	for _, s := range h.Sessions(ScopeLocal) {
+		if localID(s.ID) == id || s.Name == id || strings.HasPrefix(localID(s.ID), id) {
+			match = append(match, s)
+		}
+	}
+	if len(match) != 1 {
+		return nil, "", errors.New("no unique session matches " + id)
+	}
+	return h.local, localID(match[0].ID), nil
+}
+
 // Search looks for q in the text of every session on every host.
 func (h *Hub) Search(scope, q string) []proto.Match {
 	var (
@@ -460,6 +532,18 @@ func (h *Hub) ProbeLink(link string) (name, goos string, version int, err error)
 		return "", "", 0, err
 	}
 	lk.close()
+	if hello.Node != "" {
+		if hello.Node == h.node {
+			return "", "", 0, errors.New("that link leads to " + h.name + " itself; paste the link of another machine")
+		}
+		h.mu.Lock()
+		o := h.nodes[hello.Node]
+		dup := o != nil && h.backends[o.name] == o && o.kind != KindCloud
+		h.mu.Unlock()
+		if dup {
+			return "", "", 0, errors.New("that is the same Gecko as " + o.name + ", which is already one of the machines here")
+		}
+	}
 	return hello.Host, hello.OS, hello.Version, nil
 }
 

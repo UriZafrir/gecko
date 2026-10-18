@@ -4,7 +4,10 @@
 // settings such as the theme sync to every page.
 import { defineConfig, devices } from '@playwright/test';
 
-const phone = (name, extra = {}) => ({ ...devices[name], ...extra });
+// Chromium also reaches the daemon as devbox.test, a page opened from
+// another device (the anchor test).
+const remote = { launchOptions: { args: ['--host-resolver-rules=MAP devbox.test 127.0.0.1'] } };
+const phone = (name, extra = {}) => ({ ...devices[name], ...(devices[name].defaultBrowserType === 'chromium' ? remote : {}), ...extra });
 
 export default defineConfig({
   testDir: 'tests',

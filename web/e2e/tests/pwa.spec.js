@@ -290,3 +290,22 @@ test.describe('install', () => {
     await page.waitForFunction(() => window.gecko?.conn.status === 'online', null, { timeout: 30_000 });
   });
 });
+
+// A phone always opens Gecko from another address: the page goes through
+// that Gecko (the anchor), which the bottom bar and the drawer say.
+test.describe('from another device', () => {
+  test('the anchor stays in view: the "via" bar above the keys, the badge in the drawer', async ({ page, browserName }) => {
+    test.skip(browserName !== 'chromium', 'another host name for the daemon needs Chromium');
+    await page.goto(URL().replace('127.0.0.1', 'devbox.test'));
+    await page.waitForFunction(() => window.gecko?.firstSync, null, { timeout: 20_000 });
+    await page.evaluate(async () => { if (!window.gecko.sessions.size) await window.gecko.newTab({ name: 'shell' }); });
+    const via = page.locator('#statusline .sl-anchor');
+    await expect(via).toBeVisible();
+    const v = await via.boundingBox(), keys = await rect(page, '#keybar');
+    expect(v.y + v.height).toBeLessThanOrEqual(keys.y + 1);
+    if (await page.evaluate(() => document.body.classList.contains('side-hidden') || matchMedia('(max-width: 719px), (max-height: 500px)').matches)) {
+      await page.locator('#menu-btn').tap();
+    }
+    await expect(page.locator('#side .anchor-badge')).toBeVisible();
+  });
+});

@@ -28,6 +28,28 @@
   connection, so DNS can't move it), https anywhere. Only the Gecko you use
   directly can add one. See [machines by their link](machines.md#another-gecko-by-its-link).
 
+## What another Gecko may do (scope)
+
+Trust comes from how a client connected, never from what it says in
+`hello`; a client may ask for less, never for more (protocol 10).
+
+- The daemon's socket (the CLI, the Android app, `gecko bridge` over SSH),
+  the web token and the share token are owner credentials: full control,
+  including adding machines with this machine's SSH keys. A phone opening
+  your anchor with its token is you.
+- Another machine of your account, through the relay, is a **peer**: the
+  server gives it this machine's own tabs and nothing else, whatever scope
+  it asks for. It can't reach the tabs of machines this one federates,
+  add, remove or update machines, change settings, restart the service,
+  turn sharing on, or approve, deny and revoke devices.
+- Any client that asks for the local scope (link hubs and bridges do) gets
+  exactly those limits too.
+
+The share link is deliberately an owner credential (it is how most phones
+reach their anchor); it is new each time, answers only private and
+tailnet addresses, and `gecko share off` ends it and its clients. See
+[The anchor](anchor.md#security-model).
+
 ## Android app
 
 The [Android app](android.md) keeps each machine's token encrypted with a key
