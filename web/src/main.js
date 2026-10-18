@@ -179,6 +179,10 @@ export function tabLabel(s) {
 // A robot face: agents, counted next to it in a workspace's title.
 const DEVICES_ICON = '<svg class="agi" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="3" width="9.5" height="7" rx="1.3"/><path d="M4 12.75h4.5"/><rect x="11.5" y="5.75" width="3.25" height="7" rx="1"/></svg>';
 const AGENTS_ICON = '<svg class="agi" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="3.75" width="11" height="8.5" rx="2.2"/><circle cx="5.9" cy="8" r="1.05" class="f"/><circle cx="10.1" cy="8" r="1.05" class="f"/></svg>';
+// The agent dock's fold button on phones: drawn, so it sits at the exact
+// centre of its round button (a rotated text glyph lands wherever the font's
+// baseline puts it, a couple of pixels off on Android and iOS).
+const CHEVRON_DOWN = '<svg class="chev" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5"/></svg>';
 const BRANCH_ICON = '<svg class="gi" viewBox="0 0 16 16" aria-hidden="true"><circle cx="4.5" cy="3.5" r="1.7"/><circle cx="4.5" cy="12.5" r="1.7"/><circle cx="11.5" cy="5" r="1.7"/><path d="M4.5 5.2v5.6M11.5 6.7c0 3-6.2 2.2-6.8 4.1"/></svg>';
 
 function gitStateText(g) {
@@ -3689,7 +3693,7 @@ class App {
     dock.classList.toggle('folded', !!this.dockFolded);
     const fold = `<button class="dock-fold ${need ? 's-needs-input' : working ? 's-working' : ''}" data-fold aria-expanded="${!this.dockFolded}"
         title="${this.dockFolded ? 'Show' : 'Hide'} the agents" aria-label="${agents.length} agent${agents.length === 1 ? '' : 's'}${need ? `, ${need} need${need === 1 ? 's' : ''} you` : ''}; ${this.dockFolded ? 'show' : 'hide'} them">
-        ${this.dockFolded ? `<b>${agents.length}</b><span>agent${agents.length === 1 ? '' : 's'}${need ? ` · ${need} need${need === 1 ? 's' : ''} you` : ''}</span>` : '<span>›</span>'}</button>`;
+        ${this.dockFolded ? `<b>${agents.length}</b><span>agent${agents.length === 1 ? '' : 's'}${need ? ` · ${need} need${need === 1 ? 's' : ''} you` : ''}</span>` : CHEVRON_DOWN}</button>`;
     dock.innerHTML = fold + agents.map((a) => {
       const s = a.session;
       const where = tabLabel(s) === a.state.name ? s.workspace : tabLabel(s);
