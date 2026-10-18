@@ -20,6 +20,14 @@
   `~/.gecko-terminal/cloud/` (`0600`). Details and the threat model are in
   [Accounts and the relay](cloud.md).
 
+- A machine added by its Gecko link (`gecko host add <name> --url`, or
+  **Paste a Gecko link**) keeps that Gecko's token in `config.json` (`0600`)
+  and sends it only in the `Authorization` header of its WebSocket; it is
+  never in the interface, `gecko host ls`, errors or logs. Plain http goes
+  only to loopback, private and Tailscale addresses (checked again on every
+  connection, so DNS can't move it), https anywhere. Only the Gecko you use
+  directly can add one. See [machines by their link](machines.md#another-gecko-by-its-link).
+
 ## Android app
 
 The [Android app](android.md) keeps each machine's token encrypted with a key
@@ -40,6 +48,12 @@ unchanged and no other origin is ever allowed. The token goes in as the
 daemon's own HttpOnly, SameSite=Strict cookie (set by the app, not by a
 `?token=` link), after the app checks it against `/api/info`; it is never
 in the page's address.
+
+Gecko in Termux is one of This phone's machines by its link: the app keeps
+that link sealed with its Keystore key and gives it to This phone's Gecko
+on standard input, never in arguments (which other processes could list).
+Both Geckos listen on 127.0.0.1 only. Any app on the phone can open a
+connection to 127.0.0.1, which is why each needs its token.
 
 Gecko on the phone itself listens on 127.0.0.1 only, with its token in the
 app's private storage. **Allow other devices** (and `gecko share` on any
