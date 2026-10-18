@@ -38,9 +38,12 @@ class AnchorSwitchTest {
         assumeTrue("no ubuntuLink argument", !link.isNullOrEmpty())
         val tag = args.getString("shots") ?: "phone"
         val dir = File(ctx.getExternalFilesDir(null), "anchor").apply { mkdirs() }
+        // -e pace <ms>: a pause at each step, for a watchable recording.
+        val pace = args.getString("pace")?.toLongOrNull() ?: 0L
         fun shot(n: String) {
             Thread.sleep(700)
             device.takeScreenshot(File(dir, "$tag-$n.png"))
+            Thread.sleep(pace)
         }
         anchors.set(LocalGecko.ID, "[]")
         var door = ""

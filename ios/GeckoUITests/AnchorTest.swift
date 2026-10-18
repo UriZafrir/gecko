@@ -7,8 +7,8 @@ import XCTest
 /// Back to studio-mac switches back.
 final class AnchorTest: GeckoUITestCase {
     func testMakeAnchorAndBack() throws {
-        let link = try link()
-        launch(open: link, name: "studio-mac")
+        let studio = try link()
+        launch(open: studio, name: "studio-mac")
         allowNotificationsIfAsked()
         var p = waitOnline()
         let door = p["host"] as? String ?? ""
