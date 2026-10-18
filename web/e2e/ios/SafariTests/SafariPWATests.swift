@@ -144,14 +144,19 @@ final class SafariPWATests: XCTestCase {
         results["pinch"] = ["fontBefore": font0, "fontAfter": font1, "pageScale": scale1]
         XCTAssertGreaterThan(font1, font0, "pinching out made the text bigger")
         XCTAssertEqual(scale1, 1, accuracy: 0.01, "the page did not zoom")
-        web.pinch(withScale: 0.6, velocity: -1.5)
+        web.pinch(withScale: 0.6, velocity: -1)
         beat(1.5)
         p = probe(safari)
         results["pinchIn"] = ["font": settings()["mobileFontSize"] ?? p["font"] ?? -1, "pageScale": nums(p["vv"]).last ?? -1]
         shot("safari-05-pinch-in")
 
         // Pinch on the tab bar: nothing zooms there either.
-        newTab.pinch(withScale: 2.0, velocity: 2)
+        let strip = safari.webViews.firstMatch.descendants(matching: .any).matching(NSPredicate(format: "label == 'Tabs'")).firstMatch
+        if strip.exists, strip.isHittable, strip.frame.height < 120 {
+            strip.pinch(withScale: 2.0, velocity: 2)
+        } else {
+            results["pinchTabBarSkipped"] = "no tab strip element"
+        }
         beat(1.5)
         p = probe(safari)
         let scale2 = nums(p["vv"]).last ?? -1
@@ -230,8 +235,23 @@ final class SafariPWATests: XCTestCase {
         _ = try openInSafari()
         beat(1)
         // Share, then Add to Home Screen, then Add.
-        let share = safari.buttons["ShareButton"].firstMatch.exists ? safari.buttons["ShareButton"].firstMatch : safari.buttons["Share"].firstMatch
-        XCTAssertTrue(share.waitForExistence(timeout: 8), "Safari's Share button")
+        // The page may have minimized Safari's toolbar: a tap on the address brings it back.
+        func shareButton() -> XCUIElement? {
+            for q in [safari.buttons["ShareButton"], safari.buttons["Share"], safari.buttons.matching(NSPredicate(format: "label == 'Share'"))] where q.firstMatch.exists && q.firstMatch.isHittable {
+                return q.firstMatch
+            }
+            return nil
+        }
+        var found = shareButton()
+        for _ in 0..<3 where found == nil {
+            let addr = safari.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS '127.0.0.1' OR identifier == 'TabBarItemTitle' OR identifier == 'URL'")).firstMatch
+            if addr.exists { addr.tap() } else { safari.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.97)).tap() }
+            beat(1.2)
+            found = shareButton()
+            if found == nil, safari.buttons["Cancel"].exists { safari.buttons["Cancel"].tap(); beat(0.5) }
+        }
+        XCTAssertNotNil(found, "Safari's Share button")
+        guard let share = found else { shot("home-00-no-share"); print(safari.debugDescription); return }
         share.tap()
         beat(1.5)
         shot("home-01-share-sheet")

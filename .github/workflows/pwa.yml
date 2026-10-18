@@ -25,6 +25,34 @@ env:
   XCODEGEN_VERSION: "2.46.0"
 
 jobs:
+  playwright:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: make test
+        run: make web && make test
+      - name: Browsers
+        run: cd web/e2e && npm ci --no-audit --no-fund && npx playwright install --with-deps chromium webkit
+      - name: make test-pwa (WebKit and Chromium, phones and a tablet)
+        run: make test-pwa
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: playwright
+          path: |
+            web/e2e/playwright-report/
+            web/e2e/test-results/
+          retention-days: 7
+
   ios-safari:
     runs-on: macos-15
     timeout-minutes: 40
