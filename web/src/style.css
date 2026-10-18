@@ -1417,3 +1417,75 @@ body:has(#modal:not([hidden])) #cloud-prompt { display: none; }
 
 /* The Android app draws its own extra keys row above the keyboard. */
 html.android #keybar, html.ios #keybar { display: none !important; }
+
+/* ------------------------------------------------------------ phones as an app window
+
+   viewport.js: the page never zooms (a pinch on a terminal changes its font
+   size), the app is the part of the screen the keyboard leaves (--app-h,
+   --app-top from the visual viewport), and html.kb says the keyboard is up.
+   Installed (standalone), the page runs under the status bar, the notch and
+   the home indicator: the safe areas keep the tab bar, the keys and the
+   drawer clear of them. */
+
+:root { --safe-top: env(safe-area-inset-top, 0px); --safe-bottom: env(safe-area-inset-bottom, 0px); }
+html, body { overscroll-behavior: none; }
+@media (pointer: coarse) {
+  /* No page zoom by pinch or double tap; scrolling still works. */
+  html { touch-action: pan-x pan-y; }
+  button, .tab, .tab-row, .ws-row, .host-row, #tabbar, #dock, #keybar, .card, #palette li { touch-action: manipulation; }
+}
+html.vv, html.vv body { height: 100%; overflow: hidden; }
+html.vv #app {
+  position: fixed; left: 0; right: 0; top: var(--app-top, 0px);
+  height: var(--app-h, 100dvh);
+  padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right);
+}
+html.vv #palette, html.vv #modal, html.vv #textview {
+  top: var(--app-top, 0px); bottom: auto; height: var(--app-h, 100dvh);
+}
+html.vv #palette .box { max-height: calc(var(--app-h, 100dvh) - 24px - env(safe-area-inset-top)); }
+html.vv .card { max-height: calc(var(--app-h, 100dvh) - 32px - env(safe-area-inset-top)); overflow-y: auto; }
+html.vv #toasts { top: calc(var(--app-top, 0px) + var(--app-h, 100dvh) - 110px); bottom: auto; transform: translate(-50%, -100%); }
+/* The keyboard covers the home indicator: no inset under the keys then. */
+html.kb #keybar { padding-bottom: 5px; }
+html.kb #side footer { padding-bottom: 10px; }
+@media (max-width: 719px), (max-height: 500px) {
+  html.vv #side { padding-left: env(safe-area-inset-left); }
+  html.vv #modal { padding-top: calc(12px + env(safe-area-inset-top)); align-items: flex-start; }
+}
+body.no-keybar #keybar { display: none !important; }
+
+/* Settings: a button on the tab bar where the Android and iOS apps have
+   their own menu (phones and tablets in a browser or installed). */
+#settings-btn { display: none; width: 40px; flex: none; color: var(--muted); border-left: 1px solid var(--line); }
+#settings-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; vertical-align: middle; }
+#settings-btn:hover { color: var(--accent); }
+@media (pointer: coarse), (max-width: 719px) { #settings-btn { display: block; } }
+@media (max-width: 719px), (max-height: 500px) { #settings-btn { width: 44px; } }
+html.android #settings-btn, html.ios #settings-btn { display: none; }
+
+.card.settings { width: min(520px, 100%); display: flex; flex-direction: column; gap: 14px; padding: 16px 16px 14px; }
+.card.settings h2 { margin: 0; display: flex; align-items: center; justify-content: space-between; }
+.card.settings h3 { margin: 0 0 8px; font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: 0.02em; }
+.settings .themes { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 6px; }
+.settings .themes button {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 8px 9px 7px; border-radius: 8px;
+  text-align: left; font-size: 12.5px; box-shadow: inset 0 0 0 1px var(--line); background: var(--bg); min-height: 46px;
+}
+.settings .themes button.on { box-shadow: inset 0 0 0 2px var(--accent); }
+.settings .themes .swatch { width: 100%; }
+.settings .themes .swatch i { flex: 1; width: auto; height: 12px; }
+.settings .themes .swatch.pic { height: 12px; background-size: cover; background-position: center; }
+.settings .themes span.n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.settings .stepper { display: flex; align-items: center; gap: 8px; }
+.settings .stepper button, .settings .opts button, .settings .acts button {
+  min-height: 40px; padding: 0 14px; border-radius: 8px; font-size: 14px; background: var(--bg); box-shadow: inset 0 0 0 1px var(--line);
+}
+.settings .stepper output { min-width: 56px; text-align: center; font: 600 15px var(--mono); font-variant-numeric: tabular-nums; }
+.settings .opts, .settings .acts { display: flex; flex-wrap: wrap; gap: 6px; }
+.settings .opts button.on { background: var(--accent); color: var(--on-accent); box-shadow: none; }
+.settings .note { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+.settings .row { position: sticky; bottom: -14px; margin: 0 -16px -14px; padding: 10px 16px 14px; background: var(--panel); border-top: 1px solid var(--line); }
+/* Settings fit the window (above the keyboard too), centered on a tablet. */
+#modal:has(.card.settings) { padding-top: calc(12px + env(safe-area-inset-top)); padding-bottom: 12px; align-items: center; }
+.card.settings { max-height: calc(var(--app-h, 100dvh) - 24px - env(safe-area-inset-top)); overflow-y: auto; }
