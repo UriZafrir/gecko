@@ -136,6 +136,7 @@ class DeviceMatrixTest {
                     android.graphics.BitmapFactory.decodeFile(shot.path, bm)
                     val shotShape = if (bm.outWidth > bm.outHeight) "landscape" else "portrait"
                     if (step in SHAPES && shotShape != step) problems += "the screenshot is $shotShape (${bm.outWidth}x${bm.outHeight})"
+                    foldArrowProblem(shot)?.let { problems += it }
                     r.put("shape", shape.shape)
                     when (step) {
                         "keyboard" -> {
@@ -537,10 +538,65 @@ class DeviceMatrixTest {
                 val d = a.resources.displayMetrics.density
                 if (keys.isShown && keysR.height() > 90 * d) p += "key row ${(keysR.height() / d).toInt()}dp tall"
                 if (keys.isShown && keysR.width() < a.window.decorView.width / 2) p += "key row ${(keysR.width() / d).toInt()}dp wide"
+                // Esc, Tab, Ctrl, Alt, the arrows and the menu: each wholly on
+                // screen and big enough to tap, on any window a phone's width
+                // or wider (narrower ones, split screen, may scroll the row).
+                if (keys.isShown && a.web.width / d >= 359) for (name in KEYS_IN_VIEW) {
+                    val k = keys.findViewWithTag<android.view.View>(name)
+                    val r = Rect()
+                    // A hardware keyboard: only the menu shows (ExtraKeys.setHardwareKeyboard).
+                    if (name != "menu" && (k?.parent?.parent as? android.view.View)?.visibility == android.view.View.INVISIBLE) continue
+                    if (k == null || !k.getGlobalVisibleRect(r) || r.width() < k.width || r.height() < k.height) p += "key $name not wholly in view"
+                    else if (k.width < 39 * d - 1) p += "key $name only ${(k.width / d).toInt()}dp wide"
+                }
             } finally { native.countDown() }
         }
         native.await(5, TimeUnit.SECONDS)
         return p
+    }
+
+    /**
+     * The agent dock's fold arrow, measured in the screenshot: the drawn
+     * chevron's ink against its round button's centre, both ways. A text
+     * glyph there once sat 1.7 css px off (the font's baseline, rotated).
+     * Null when it's centred, or not on screen (folded, wide, under the drawer).
+     */
+    private fun foldArrowProblem(shot: File): String? {
+        val raw = js("""(()=>{const b=document.querySelector('#dock:not([hidden]):not(.folded) .dock-fold');if(!b)return '';
+            const r=b.getBoundingClientRect();if(!r.width)return '';
+            const top=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);if(!top||!top.closest('.dock-fold'))return '';return JSON.stringify({l:r.left,t:r.top,w:r.width,h:r.height,dpr:devicePixelRatio})})()""")
+        val str = org.json.JSONTokener(raw).nextValue() as? String ?: return null
+        if (str.isEmpty()) return null
+        val o = JSONObject(str)
+        val at = IntArray(2)
+        val got = CountDownLatch(1)
+        act().runOnUiThread { try { act().web.getLocationOnScreen(at) } finally { got.countDown() } }
+        got.await(5, TimeUnit.SECONDS)
+        val bmp = android.graphics.BitmapFactory.decodeFile(shot.path) ?: return null
+        try {
+            val dpr = o.getDouble("dpr")
+            val cx = at[0] + (o.getDouble("l") + o.getDouble("w") / 2) * dpr
+            val cy = at[1] + (o.getDouble("t") + o.getDouble("h") / 2) * dpr
+            val r = minOf(o.getDouble("w"), o.getDouble("h")) / 2 * dpr
+            // The button's own fill, halfway out to its ring.
+            val bx = (cx - r * 0.5).toInt(); val by = cy.toInt()
+            if (bx < 0 || by < 0 || cx + r >= bmp.width || cy + r >= bmp.height) return null
+            val bg = bmp.getPixel(bx, by)
+            fun diff(c: Int) = abs(android.graphics.Color.red(c) - android.graphics.Color.red(bg)) +
+                abs(android.graphics.Color.green(c) - android.graphics.Color.green(bg)) + abs(android.graphics.Color.blue(c) - android.graphics.Color.blue(bg))
+            var x0 = Int.MAX_VALUE; var x1 = Int.MIN_VALUE; var y0 = Int.MAX_VALUE; var y1 = Int.MIN_VALUE
+            val lim = r * 0.6
+            for (y in (cy - lim).toInt()..(cy + lim).toInt()) for (x in (cx - lim).toInt()..(cx + lim).toInt()) {
+                if ((x - cx) * (x - cx) + (y - cy) * (y - cy) > lim * lim) continue
+                if (diff(bmp.getPixel(x, y)) > 60) { x0 = minOf(x0, x); x1 = maxOf(x1, x); y0 = minOf(y0, y); y1 = maxOf(y1, y) }
+            }
+            if (x0 > x1) return "no arrow in the dock's fold button"
+            // Pixel centres: a 16 px wide glyph from x0 to x0+15 centres on x0+7.5.
+            val dx = ((x0 + x1) / 2.0 + 0.5 - cx) / dpr
+            val dy = ((y0 + y1) / 2.0 + 0.5 - cy) / dpr
+            android.util.Log.i(TAG, "fold arrow offset dx=%.2f dy=%.2f css px".format(dx, dy))
+            return if (abs(dx) > 0.75 || abs(dy) > 0.75) "dock fold arrow off centre by %.1f, %.1f css px".format(dx, dy) else null
+        } finally { bmp.recycle() }
     }
 
     /** Scrolls the terminal back so this line is in view. */
@@ -610,5 +666,7 @@ class DeviceMatrixTest {
         const val PKG = "io.github.geckoterm.android"
         /** Steps that ask for a shape: the window, page and screenshot must have it. */
         val SHAPES = setOf("portrait", "landscape")
+        /** The extra keys that must always be in view. */
+        val KEYS_IN_VIEW = listOf("esc", "tab", "ctrl", "alt", "left", "up", "down", "right", "menu")
     }
 }

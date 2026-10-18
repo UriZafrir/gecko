@@ -36,7 +36,7 @@ splash.set(0.4); // the app's code is here
 import { Conn } from './conn.js';
 import { Terminal } from '@xterm/xterm';
 import { WebglAddon } from '@xterm/addon-webgl';
-import { Pane, FONT } from './pane.js';
+import { Pane, FONT, SYMBOLS_SAMPLE } from './pane.js';
 import { THEMES, AUTO, resolveTheme, paintTheme, swatch } from './themes.js';
 import { Keys, prettyCombo, comboOf, ACTIONS, DEFAULTS, DEFAULT_TAB_MODIFIER, TAB_MODIFIERS } from './keys.js';
 import { startupChime } from './sound.js';
@@ -179,6 +179,10 @@ export function tabLabel(s) {
 // A robot face: agents, counted next to it in a workspace's title.
 const DEVICES_ICON = '<svg class="agi" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="3" width="9.5" height="7" rx="1.3"/><path d="M4 12.75h4.5"/><rect x="11.5" y="5.75" width="3.25" height="7" rx="1"/></svg>';
 const AGENTS_ICON = '<svg class="agi" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="3.75" width="11" height="8.5" rx="2.2"/><circle cx="5.9" cy="8" r="1.05" class="f"/><circle cx="10.1" cy="8" r="1.05" class="f"/></svg>';
+// The agent dock's fold button on phones: drawn, so it sits at the exact
+// centre of its round button (a rotated text glyph lands wherever the font's
+// baseline puts it, a couple of pixels off on Android and iOS).
+const CHEVRON_DOWN = '<svg class="chev" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5"/></svg>';
 const BRANCH_ICON = '<svg class="gi" viewBox="0 0 16 16" aria-hidden="true"><circle cx="4.5" cy="3.5" r="1.7"/><circle cx="4.5" cy="12.5" r="1.7"/><circle cx="11.5" cy="5" r="1.7"/><path d="M4.5 5.2v5.6M11.5 6.7c0 3-6.2 2.2-6.8 4.1"/></svg>';
 
 function gitStateText(g) {
@@ -1140,7 +1144,9 @@ class App {
     if (this.termFontWanted === f) return;
     this.termFontWanted = f;
     const first = f.split(',')[0].trim();
-    try { await document.fonts.load(`${this.termFontSize()}px ${first}`); } catch {}
+    // The symbols fallback too: the WebGL renderer draws on a canvas, which
+    // doesn't fetch a font for a character it lacks (the DOM renderer does).
+    try { await Promise.all([document.fonts.load(`${this.termFontSize()}px ${first}`), document.fonts.load(`${this.termFontSize()}px "Gecko Symbols"`, SYMBOLS_SAMPLE)]); } catch {}
     if (this.termFontWanted !== f) return; // changed again meanwhile
     this.termFont = f; // new terminals use it from now on
     for (const p of this.panes?.values() || []) p.setFontFamily(f);
@@ -2731,11 +2737,19 @@ class App {
 
   bindKeybar() {
     const bar = $('#keybar');
+    // Holding Tab sends Shift+Tab (Claude Code's mode switch), not a tab.
+    let hold = 0, held = false;
+    const unhold = () => { clearTimeout(hold); hold = 0; };
     bar.addEventListener('pointerdown', (ev) => {
-      if (ev.target.closest('button')) ev.preventDefault(); // keep the keyboard up
+      const b = ev.target.closest('button');
+      if (b) ev.preventDefault(); // keep the keyboard up
+      held = false;
+      if (b?.dataset.k === 'tab') hold = setTimeout(() => { hold = 0; held = true; this.pressKey('shift-tab'); }, 450);
     });
+    for (const t of ['pointerup', 'pointercancel', 'pointerleave']) bar.addEventListener(t, unhold);
     bar.addEventListener('click', (ev) => {
       const b = ev.target.closest('button');
+      if (held) { held = false; return; }
       if (b) this.pressKey(b.dataset.k, b.dataset.text ?? b.textContent);
     });
   }
@@ -2744,7 +2758,7 @@ class App {
   // esc, tab, ctrl, alt, arrows, ctrl-c, pgup... or text to type.
   pressKey(k, text) {
     const seq = {
-      esc: '\x1b', tab: '\t', up: '\x1b[A', down: '\x1b[B', left: '\x1b[D', right: '\x1b[C',
+      esc: '\x1b', tab: '\t', 'shift-tab': '\x1b[Z', up: '\x1b[A', down: '\x1b[B', left: '\x1b[D', right: '\x1b[C',
       pgup: '\x1b[5~', pgdn: '\x1b[6~', home: '\x1b[H', end: '\x1b[F', 'ctrl-c': '\x03', 'ctrl-d': '\x04',
       pipe: '|', slash: '/', dash: '-', tilde: '~',
     };
@@ -3689,7 +3703,7 @@ class App {
     dock.classList.toggle('folded', !!this.dockFolded);
     const fold = `<button class="dock-fold ${need ? 's-needs-input' : working ? 's-working' : ''}" data-fold aria-expanded="${!this.dockFolded}"
         title="${this.dockFolded ? 'Show' : 'Hide'} the agents" aria-label="${agents.length} agent${agents.length === 1 ? '' : 's'}${need ? `, ${need} need${need === 1 ? 's' : ''} you` : ''}; ${this.dockFolded ? 'show' : 'hide'} them">
-        ${this.dockFolded ? `<b>${agents.length}</b><span>agent${agents.length === 1 ? '' : 's'}${need ? ` · ${need} need${need === 1 ? 's' : ''} you` : ''}</span>` : '<span>›</span>'}</button>`;
+        ${this.dockFolded ? `<b>${agents.length}</b><span>agent${agents.length === 1 ? '' : 's'}${need ? ` · ${need} need${need === 1 ? 's' : ''} you` : ''}</span>` : CHEVRON_DOWN}</button>`;
     dock.innerHTML = fold + agents.map((a) => {
       const s = a.session;
       const where = tabLabel(s) === a.state.name ? s.workspace : tabLabel(s);

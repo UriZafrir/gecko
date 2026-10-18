@@ -9,7 +9,12 @@ import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { ClipboardAddon, Base64 } from '@xterm/addon-clipboard';
 import { copyText } from './util.js';
 
-export const FONT = '"JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace';
+// "Gecko Symbols" (style.css) before the generic monospace: symbols none of
+// the fonts before it have (Claude Code's ⏵⏵ and ⏸) come from it, not from
+// whatever the phone has, which on Android is often nothing (a box).
+export const FONT = '"JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", "Gecko Symbols", monospace';
+// One character from each of its files, to load them all (see setTermFont).
+export const SYMBOLS_SAMPLE = '\u23f5\u23bf';
 
 // OSC 52 writes go to the system clipboard (also through tmux and ssh);
 // reads are refused so programs can't snoop on the clipboard.

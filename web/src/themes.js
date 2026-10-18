@@ -86,7 +86,7 @@ export const THEMES = [
     // Neon on night violet: hot magenta, electric cyan, warning yellow.
     id: 'cyberpunk', name: 'Cyberpunk', dark: true, skin: 'cyberpunk', image: '/themes/cyberpunk.jpg', position: 'center', veil: 0.62,
     accent: '#ff2a6d', need: '#f9f002', brand: '#ff2a6d',
-    termFont: '"Share Tech Mono", ui-monospace, monospace',
+    termFont: '"Share Tech Mono", ui-monospace, "Gecko Symbols", monospace',
     ui: { panel: '#120424', raise: '#22093d', line: '#3a0f5e', muted: '#b494d8', faint: '#7a5a9c', idle: '#b494d8' },
     term: ansi('#0b0215', '#f2e9ff',
       ['#1a0833', '#ff2a6d', '#3cff9e', '#f9f002', '#3d7bff', '#d16bff', '#05d9e8', '#e0d4f5'],
@@ -123,7 +123,7 @@ export const THEMES = [
     // Walnut and oak, safety red, slab serif, a workshop mono.
     id: 'wood-shop', name: 'Wood Shop', dark: true, skin: 'woodshop', image: '/themes/wood-shop.jpg', position: 'center 45%', veil: 0.66,
     accent: '#e8a24a', need: '#e4572e', brand: '#e8a24a',
-    termFont: '"IBM Plex Mono", ui-monospace, monospace',
+    termFont: '"IBM Plex Mono", ui-monospace, "Gecko Symbols", monospace',
     ui: { panel: '#21170f', raise: '#33241a', line: '#4a3424', muted: '#c2a68a', faint: '#8a6e55', idle: '#c2a68a' },
     term: ansi('#1a120c', '#f3e7d7',
       ['#33241a', '#e4572e', '#9cc069', '#e8b04a', '#7fa6c9', '#c98bb0', '#7fbfb1', '#e0d2bf'],
@@ -148,7 +148,7 @@ export const THEMES = [
     contrast: 4.5, // darken faint greys on the light LCD
     noDim: true, // dim text would be half transparent: show it at full strength
     accent: '#f2c230', need: '#e0473c', brand: '#f2c230',
-    termFont: '"VT323", ui-monospace, monospace',
+    termFont: '"VT323", ui-monospace, "Gecko Symbols", monospace',
     termSize: 1.45, // VT323 draws small; scale the terminal font up
     ui: { bg: '#141414', text: '#e8e8e8', panel: '#181818', raise: '#2a2a2a', line: '#3a3a3a', muted: '#a8a8a8', faint: '#6c6c6c', idle: '#a8a8a8' },
     term: ansi('#b4bea0', '#121a10',
