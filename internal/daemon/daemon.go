@@ -107,8 +107,9 @@ func Run(cfg *config.Config, listen string) error {
 	defer h.Close()
 	// Account features: nothing happens here unless this machine is signed
 	// in (gecko login). Machines of the account connect through the relay
-	// and get the same protocol a bridge gets.
-	acct := cloud.NewAgent(h, cfg.CloudEnabled(), func(c proto.Conn) { server.Serve(h, c) })
+	// and get the same protocol a bridge gets, limited to this machine (a peer
+	// can't reach the machines this one federates, see server.ServePeer).
+	acct := cloud.NewAgent(h, cfg.CloudEnabled(), func(c proto.Conn) { server.ServePeer(h, c) })
 	h.SetCloud(acct)
 	acct.Start()
 

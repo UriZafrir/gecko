@@ -37,7 +37,7 @@ its own daemon with the local token, and that daemon does the relaying.
 ```
  laptop daemon                     relay                      gpu-box daemon
  ─────────────                     ─────                      ──────────────
- hub ── Remote "gpu-box"                                       server.Serve
+ hub ── Remote "gpu-box"                                   server.ServePeer
           │ dial: relay + Noise                                    ▲
           ▼                                                        │
  cloud.Agent ── control WS ──►  accounts, device lists  ◄── control WS ── cloud.Agent
@@ -171,7 +171,12 @@ team; a hosted relay would need a real store.
    list. If it isn't there, gpu-box closes the socket without answering.
 5. Inside the session runs Gecko's normal protocol, exactly what
    `gecko bridge` carries over SSH: the laptop sends `hello` with scope
-   `local`, then lists, attaches, input and output. Each protocol message is
+   `local`, then lists, attaches, input and output. Since protocol 10 the
+   local scope is gpu-box's decision, not the laptop's: gpu-box serves every
+   relay peer with `server.ServePeer`, which grants the local scope whatever
+   `hello` asks for. A peer gets gpu-box's own tabs and nothing else: not
+   the machines gpu-box reaches over SSH or links, not its machine list,
+   settings or account (approve, revoke). See [the anchor](anchor.md#security-model). Each protocol message is
    one or more Noise messages of `flags | payload` (flag 1: binary frame,
    flag 2: more chunks follow), at most 65,000 bytes of plaintext each.
 
@@ -287,7 +292,7 @@ Mapped to the PRD's threat table.
 | Malicious `gecko login` code phishing | The prompt shows the machine's name, OS and the address it came from, and approving needs the code shown on that machine. Codes expire in 10 minutes. An attacker who gets you to type their code into your machine still gets in, as in the PRD. |
 | Push notification leaks prompt text | No push yet. |
 | Last trusted device lost | The recovery code adds a machine without approval. Without it, make a new account and sign every machine in again. |
-| A trusted machine is compromised | Not in the PRD table. It holds a signing key, so it can approve or revoke anything, including revoking every other machine. It also has shell access to every machine in the account, as with SSH keys today. Revoke it from another machine; whoever publishes first wins, so a fight is possible. |
+| A trusted machine is compromised | Not in the PRD table. It holds a signing key, so it can approve or revoke anything, including revoking every other machine. It also has shell access to every machine in the account (their own tabs), as with SSH keys today; since protocol 10 it no longer reaches the SSH and link machines behind them through the relay, because peers are served with the local scope only. Revoke it from another machine; whoever publishes first wins, so a fight is possible. |
 | A new machine joins a fake account | A compromised relay could show a new machine a different account's chain. The new machine then trusts the attacker's machines. Defence: compare the fingerprint `gecko login` prints with `gecko whoami` on a machine you trust, or pass `--fingerprint`. Your existing machines are not affected. |
 
 Remaining weak spots, to fix before a beta:

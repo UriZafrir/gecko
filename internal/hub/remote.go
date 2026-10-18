@@ -283,6 +283,10 @@ func (r *Remote) serve() error {
 	}
 	conn := link.Conn
 	defer link.close()
+	if err := r.hub.claimNode(hello.Node, r); err != nil {
+		return err
+	}
+	defer r.hub.releaseNode(hello.Node, r)
 	r.mu.Lock()
 	learned := hello.Machine != "" && hello.Machine != r.machine && (r.kind == KindSSH || r.kind == KindLink)
 	if hello.Machine != "" {

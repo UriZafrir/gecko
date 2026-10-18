@@ -383,6 +383,10 @@ func (a *Agent) dialer(id string) hub.DialFunc {
 	}
 }
 
+// Dialer reaches machine id through the relay, as this machine's hub does
+// (for tests and tools; the hub gets it through SetCloudMachines).
+func (a *Agent) Dialer(id string) hub.DialFunc { return a.dialer(id) }
+
 // trackedConn forgets the link when the hub closes it.
 type trackedConn struct {
 	*SecureConn

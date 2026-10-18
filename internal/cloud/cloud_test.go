@@ -2,6 +2,7 @@ package cloud_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"net/http/httptest"
 	"strings"
@@ -58,7 +59,7 @@ func newFleet(t *testing.T) *fleet {
 func (f *fleet) machine(name string) *machine {
 	m := session.NewManager(session.Options{Host: name, Shell: "/bin/sh", ScriptsDir: f.t.TempDir()})
 	h := hub.New(&config.Config{Name: name}, m)
-	a := cloud.NewAgent(h, true, func(c proto.Conn) { server.Serve(h, c) })
+	a := cloud.NewAgent(h, true, func(c proto.Conn) { server.ServePeer(h, c) }) // as the daemon does
 	a.Dir = f.t.TempDir()
 	h.SetCloud(a)
 	a.Start()
@@ -352,5 +353,112 @@ func TestRecoveryCode(t *testing.T) {
 	}
 	if a.List.Find(a.Device) == nil || a.List.Version != 2 {
 		t.Fatalf("list after recovery: %+v", a.List)
+	}
+}
+
+// TestRelayPeerOnlyGetsItsOwnTabs: a machine of the account that reaches
+// another one through the relay gets that machine's own tabs, whatever
+// scope it asks for. It can't reach the machines the other one federates,
+// change its machine list or approve devices through it. (One compromised
+// machine of the account no longer reaches everything behind the others.)
+func TestRelayPeerOnlyGetsItsOwnTabs(t *testing.T) {
+	f := newFleet(t)
+	laptop, devbox := f.machine("laptop"), f.machine("devbox")
+	f.create(devbox)
+	f.join(laptop, devbox)
+	// devbox has a machine of its own, by its link: the anchor's reach.
+	box := hub.New(&config.Config{Name: "box"}, session.NewManager(session.Options{Host: "box", Shell: "/bin/sh", ScriptsDir: t.TempDir()}))
+	t.Cleanup(box.Close)
+	bs, err := box.Create(proto.CreateReq{Name: "secret-tab", Argv: []string{"/bin/sh"}, Cols: 80, Rows: 24})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const tok = "box-token-0123456789abcdef"
+	srv := httptest.NewServer((&server.HTTP{Hub: box, Token: tok}).Handler())
+	t.Cleanup(srv.Close)
+	if err := devbox.hub.AddLinkHost("box", srv.URL+"/?token="+tok, true); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "devbox connected over the relay", func() bool { return connected(laptop, "devbox") })
+
+	// The laptop opens its own link to devbox and asks for everything.
+	link, err := laptop.agent.Dialer(devbox.agent.MachineID())()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer link.Conn.Close()
+	c := link.Conn
+	msgs := make(chan proto.Msg, 100)
+	go func() {
+		for {
+			bin, b, err := c.Read()
+			if err != nil {
+				close(msgs)
+				return
+			}
+			var m proto.Msg
+			if !bin && json.Unmarshal(b, &m) == nil {
+				msgs <- m
+			}
+		}
+	}()
+	next := func(ok func(proto.Msg) bool) proto.Msg {
+		t.Helper()
+		timeout := time.After(10 * time.Second)
+		for {
+			select {
+			case m, open := <-msgs:
+				if !open {
+					t.Fatal("link closed")
+				}
+				if ok(m) {
+					return m
+				}
+			case <-timeout:
+				t.Fatal("timed out")
+			}
+		}
+	}
+	rid := 0
+	call := func(m proto.Msg) proto.Msg {
+		t.Helper()
+		rid++
+		m.Rid = rid
+		_ = proto.WriteJSON(c, &m)
+		return next(func(r proto.Msg) bool { return r.T == proto.TReply && r.Rid == m.Rid })
+	}
+	_ = proto.WriteJSON(c, &proto.Msg{T: proto.THello, Client: "web", Scope: hub.ScopeAll, Version: proto.Version})
+	if h := next(func(m proto.Msg) bool { return m.T == proto.THello }); h.Scope != hub.ScopeLocal || h.Host != "devbox" {
+		t.Fatalf("hello: %+v", h)
+	}
+	if st := next(func(m proto.Msg) bool { return m.T == proto.TState }); len(st.Hosts) != 1 || st.Hosts[0].Name != "devbox" {
+		t.Fatalf("state: %+v", st.Hosts)
+	}
+	for _, s := range call(proto.Msg{T: proto.TList}).Sessions {
+		if s.Host != "devbox" {
+			t.Fatalf("a relay peer listed %s", s.ID)
+		}
+	}
+	boxTab := "box/" + bs.ID[strings.LastIndexByte(bs.ID, '/')+1:]
+	if r := call(proto.Msg{T: proto.TCapture, ID: boxTab}); !strings.Contains(r.Error, "unknown host") {
+		t.Fatalf("a relay peer read a tab on devbox's machine: %+v", r)
+	}
+	for _, m := range []proto.Msg{
+		{T: proto.TRmHost, Name: "box"},
+		{T: proto.TAddHost, Name: "evil", Target: "me@evil"},
+		{T: proto.TCloud, Name: "revoke", Data: "laptop"},
+		{T: proto.TSetSettings, Text: "{}"},
+		{T: proto.TUpgrade},
+	} {
+		if r := call(m); r.Error == "" {
+			t.Fatalf("a relay peer was allowed %s", m.T)
+		}
+	}
+	if devbox.hub.Backend("box") == nil {
+		t.Fatal("box was removed by a relay peer")
+	}
+	// What it may do: its own tabs on devbox.
+	if r := call(proto.Msg{T: proto.TCreate, Create: &proto.CreateReq{Host: "box", Argv: []string{"/bin/sh"}, Cols: 80, Rows: 24}}); r.Error != "" || r.Session.Host != "devbox" {
+		t.Fatalf("create: %+v", r)
 	}
 }

@@ -26,7 +26,9 @@ import (
 //	7: agents in tmux panes and from terminal titles (ssh, mosh)
 //	8: ping (latency), host rtt; WebTransport for browsers
 //	9: cloud (account, devices, approvals); host kind, machine id and path
-const Version = 9
+//	10: hello reply says the scope granted and the node id; the scope is
+//	    enforced by the server (relay peers always get local)
+const Version = 10
 
 // Data frame kinds.
 const (
@@ -64,12 +66,15 @@ type Msg struct {
 	Rid int    `json:"rid,omitempty"` // request id; replies echo it
 
 	// hello
-	Scope   string `json:"scope,omitempty"` // "all" (default) or "local" (no federation)
+	Scope   string `json:"scope,omitempty"` // "all" (default) or "local" (no federation); the reply says what was granted
 	Client  string `json:"client,omitempty"`
 	Host    string `json:"host,omitempty"`
 	Version int    `json:"version,omitempty"`
 	OS      string `json:"os,omitempty"`
 	Machine string `json:"machine,omitempty"` // hello reply: this machine's id in its account, if signed in
+	// hello reply: a random id of this running Gecko (new each start), so
+	// a hub can tell a link back to itself, or two links to one Gecko.
+	Node string `json:"node,omitempty"`
 
 	// session addressing
 	ID     string `json:"id,omitempty"`
