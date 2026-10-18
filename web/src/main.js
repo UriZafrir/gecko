@@ -1228,7 +1228,7 @@ class App {
     const out = m.querySelector('output');
     const showFont = () => { out.textContent = `${this.fontSize()} px`; };
     showFont();
-    const done = () => { m.hidden = true; m.innerHTML = ''; m.onkeydown = null; };
+    const done = () => { m.hidden = true; m.innerHTML = ''; m.onkeydown = null; m.onclick = null; };
     m.onkeydown = (ev) => { if (ev.key === 'Escape') done(); };
     m.onclick = (ev) => {
       if (ev.target === m) return done(); // outside the card
