@@ -507,6 +507,7 @@ class TerminalActivity : AppCompatActivity() {
                         applyKeepScreenOn()
                     }
                     R.id.background -> if (item.isChecked) WatchService.stop(this@TerminalActivity) else startBackground()
+                    R.id.shift_tab -> pressKey("shift-tab")
                     R.id.palette -> web.evaluateJavascript("window.gecko&&gecko.openPalette()", null)
                     R.id.reload -> load()
                     R.id.machines -> leave()

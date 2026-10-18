@@ -538,6 +538,17 @@ class DeviceMatrixTest {
                 val d = a.resources.displayMetrics.density
                 if (keys.isShown && keysR.height() > 90 * d) p += "key row ${(keysR.height() / d).toInt()}dp tall"
                 if (keys.isShown && keysR.width() < a.window.decorView.width / 2) p += "key row ${(keysR.width() / d).toInt()}dp wide"
+                // Esc, Tab, Ctrl, Alt, the arrows and the menu: each wholly on
+                // screen and big enough to tap, on any window a phone's width
+                // or wider (narrower ones, split screen, may scroll the row).
+                if (keys.isShown && a.web.width / d >= 359) for (name in KEYS_IN_VIEW) {
+                    val k = keys.findViewWithTag<android.view.View>(name)
+                    val r = Rect()
+                    // A hardware keyboard: only the menu shows (ExtraKeys.setHardwareKeyboard).
+                    if (name != "menu" && (k?.parent?.parent as? android.view.View)?.visibility == android.view.View.INVISIBLE) continue
+                    if (k == null || !k.getGlobalVisibleRect(r) || r.width() < k.width || r.height() < k.height) p += "key $name not wholly in view"
+                    else if (k.width < 39 * d - 1) p += "key $name only ${(k.width / d).toInt()}dp wide"
+                }
             } finally { native.countDown() }
         }
         native.await(5, TimeUnit.SECONDS)
@@ -655,5 +666,7 @@ class DeviceMatrixTest {
         const val PKG = "io.github.geckoterm.android"
         /** Steps that ask for a shape: the window, page and screenshot must have it. */
         val SHAPES = setOf("portrait", "landscape")
+        /** The extra keys that must always be in view. */
+        val KEYS_IN_VIEW = listOf("esc", "tab", "ctrl", "alt", "left", "up", "down", "right", "menu")
     }
 }

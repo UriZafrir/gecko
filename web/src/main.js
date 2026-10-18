@@ -2737,11 +2737,19 @@ class App {
 
   bindKeybar() {
     const bar = $('#keybar');
+    // Holding Tab sends Shift+Tab (Claude Code's mode switch), not a tab.
+    let hold = 0, held = false;
+    const unhold = () => { clearTimeout(hold); hold = 0; };
     bar.addEventListener('pointerdown', (ev) => {
-      if (ev.target.closest('button')) ev.preventDefault(); // keep the keyboard up
+      const b = ev.target.closest('button');
+      if (b) ev.preventDefault(); // keep the keyboard up
+      held = false;
+      if (b?.dataset.k === 'tab') hold = setTimeout(() => { hold = 0; held = true; this.pressKey('shift-tab'); }, 450);
     });
+    for (const t of ['pointerup', 'pointercancel', 'pointerleave']) bar.addEventListener(t, unhold);
     bar.addEventListener('click', (ev) => {
       const b = ev.target.closest('button');
+      if (held) { held = false; return; }
       if (b) this.pressKey(b.dataset.k, b.dataset.text ?? b.textContent);
     });
   }

@@ -22,8 +22,9 @@ import java.util.concurrent.TimeUnit
 /**
  * The extra keys row and the symbols Claude Code draws, on a live Gecko:
  * - the symbols (-e glyphs: a script that prints them) shown, for a shot;
- * - Shift+Tab sends ESC [ Z from the row's Shift+Tab key, from holding Tab
- *   and from a hardware keyboard, while a tap on Tab still sends a tab;
+ * - Esc, Tab, Ctrl, Alt, the arrows and the menu wholly in view;
+ * - Shift+Tab sends ESC [ Z from the menu, from holding Tab and from a
+ *   hardware keyboard, while a tap on Tab still sends a tab;
  * - in a stand-in for Claude Code's prompt (-e mode: a script that cycles
  *   its mode line on ESC [ Z, as Claude Code does), each of those switches
  *   the mode.
@@ -89,17 +90,23 @@ class KeyBarTest {
                 fun shown(text: String) = try { waitFor("screen().includes(${JSONObject.quote(text)})", 5); true } catch (e: AssertionError) { false }
                 fun hex(s: String) = s.map { "%02x".format(it.code) }.joinToString(" ")
 
-                // The row's Shift+Tab key.
+                // Every key that must be in view is, wholly, at a tappable size.
+                val inView = keysInView()
+                check("02-keys-in-view", inView.isEmpty(), inView.ifEmpty { "esc, tab, ctrl, alt, the arrows and the menu all in view" })
+
+                // The menu's Shift+Tab.
                 js("window.__seen=''")
-                val key = device.findObject(By.desc("Shift+Tab"))
-                if (key == null) check("03-shift-tab-key", false, "no Shift+Tab key in the row")
+                device.findObject(By.desc(ctx.getString(R.string.key_menu))).click()
+                Thread.sleep(800)
+                val item = device.findObject(By.text(java.util.regex.Pattern.compile("(?i).*shift\\+tab.*")))
+                if (item == null) { check("03-shift-tab-menu", false, "no Shift+Tab in the menu"); device.pressBack() }
                 else {
-                    key.click()
-                    Thread.sleep(600)
+                    item.click()
+                    Thread.sleep(800)
                     val got = sent()
-                    check("03-shift-tab-key", got == "\u001b[Z" && shown("plan mode on"), "sent [${hex(got)}], mode line shows plan mode: ${shown("plan mode on")}")
+                    check("03-shift-tab-menu", got == "\u001b[Z" && shown("plan mode on"), "sent [${hex(got)}], mode line shows plan mode: ${shown("plan mode on")}")
                 }
-                shot("03-shift-tab-key")
+                shot("03-shift-tab-menu")
 
                 // Holding Tab.
                 val tabKey = device.findObject(By.desc("Tab (hold for Shift+Tab)")) ?: device.findObject(By.text("tab"))
@@ -138,6 +145,28 @@ class KeyBarTest {
             File(out, "$name.json").writeText(results.toString(1))
         }
         assertEquals("key bar: ${failures.joinToString("; ")}", 0, failures.size)
+    }
+
+    /** The keys that should be wholly in view and aren't (or are too small), as text. */
+    private fun keysInView(): String {
+        val problems = ArrayList<String>()
+        val done = CountDownLatch(1)
+        act().runOnUiThread {
+            try {
+                val d = act().resources.displayMetrics.density
+                for (name in DeviceMatrixTest.KEYS_IN_VIEW) {
+                    val k = act().keys.findViewWithTag<android.view.View>(name)
+                    val r = android.graphics.Rect()
+                    // A hardware keyboard: only the menu shows (ExtraKeys.setHardwareKeyboard).
+                    if (name != "menu" && (k?.parent?.parent as? android.view.View)?.visibility == android.view.View.INVISIBLE) continue
+                    if (k == null || !k.getGlobalVisibleRect(r) || r.width() < k.width || r.height() < k.height) problems += "$name not wholly in view (${k?.let { "${it.width}x${it.height}, visible $r" }})"
+                    else if (k.width < 39 * d - 1) problems += "$name only ${(k.width / d).toInt()}dp wide"
+                }
+                android.util.Log.i(TAG, "key widths: " + DeviceMatrixTest.KEYS_IN_VIEW.joinToString { n -> act().keys.findViewWithTag<android.view.View>(n)?.let { "$n ${"%.1f".format(it.width / d)}dp" } ?: "$n none" })
+            } finally { done.countDown() }
+        }
+        done.await(5, TimeUnit.SECONDS)
+        return problems.joinToString("; ")
     }
 
     /** A key from a hardware keyboard, down and up, with these modifiers. */

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@+id/shift_tab" android:title="@string/menu_shift_tab" />
     <item android:id="@+id/palette" android:title="@string/menu_palette" />
     <item android:id="@+id/keep_screen_on" android:checkable="true" android:title="@string/menu_keep_screen_on" />
     <item android:id="@+id/background" android:checkable="true" android:title="@string/menu_background" />
