@@ -320,7 +320,11 @@ final class SafariPWATests: XCTestCase {
         }
         results["appStates"] = states
         guard let app else {
+            // Its page isn't in the accessibility tree here: the screenshots
+            // show it instead, once it has loaded.
             results["standaloneApp"] = "not found"
+            beat(8)
+            shot("home-05-standalone-loaded")
             return
         }
         let p = waitProbe(app, 30) { ($0["online"] as? String) == "online" }
