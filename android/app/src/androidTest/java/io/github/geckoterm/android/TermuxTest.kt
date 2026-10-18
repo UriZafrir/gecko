@@ -143,6 +143,7 @@ class TermuxTest {
         device.wait(Until.findObject(By.pkg(ctx.packageName)), 5_000)
 
         // An agent stand-in for Claude Code in Termux: it works, then asks.
+        termux("rm -f \$PREFIX/tmp/claude-standin-ask")
         termux("echo ${android.util.Base64.encodeToString(FAKE_CLAUDE.toByteArray(), android.util.Base64.NO_WRAP)} | base64 -d > \$PREFIX/bin/claude-standin && chmod 755 \$PREFIX/bin/claude-standin")
         Gecko.prefs(ctx).edit().putBoolean(Gecko.BACKGROUND, true).apply()
         WatchService.start(ctx)
@@ -177,6 +178,7 @@ class TermuxTest {
         }
         // In the background, the agent's question arrives as a notification of This phone's.
         device.pressHome()
+        termux("touch \$PREFIX/tmp/claude-standin-ask")
         val nm = ctx.getSystemService(android.app.NotificationManager::class.java)
         val asked = { nm.activeNotifications.any { (it.notification.extras.getCharSequence("android.title") ?: "").contains("needs you") } }
         waitUntil(60) { asked() }
@@ -184,7 +186,7 @@ class TermuxTest {
         device.wait(Until.findObject(By.textContains("needs you")), 5_000)
         shot("notification")
         device.pressBack()
-        termux("pkill -f claude-standin; rm -f \$PREFIX/bin/claude-standin")
+        termux("pkill -f claude-standin; rm -f \$PREFIX/bin/claude-standin \$PREFIX/tmp/claude-standin-ask")
 
         // An older app saved Termux as a machine of its own: it moves over, no setup.
         LocalGecko.removeHost(ctx, TermuxMachine.HOST)
@@ -267,7 +269,10 @@ class TermuxTest {
         private val FAKE_CLAUDE = """#!/data/data/com.termux/files/usr/bin/sh
 printf '\033]0;\342\234\263 Claude Code\007'
 echo 'Claude Code (a stand-in)'
-for i in 1 2 3 4 5 6 7 8; do printf '\033]0;\342\227\220 Fixing the flaky test\007'; printf '\r* Fixing the flaky test... (%ss)' "${'$'}i"; sleep 1; done
+# Works until the test says to ask (it goes to the background first: with
+# the app in front on this machine, the web UI shows the question itself).
+i=0
+while [ ! -e "${'$'}PREFIX/tmp/claude-standin-ask" ] && [ ${'$'}i -lt 90 ]; do i=${'$'}((i+1)); printf '\033]0;\342\227\220 Fixing the flaky test\007'; printf '\r* Fixing the flaky test... (%ss)' "${'$'}i"; sleep 1; done
 printf '\033]0;\342\234\263 Fix the flaky test\007'
 printf '\r\033[K\nEdit file test/flaky.test.js\nDo you want to make this edit to flaky.test.js?\n\342\235\257 1. Yes\n  2. No\n'
 read answer
