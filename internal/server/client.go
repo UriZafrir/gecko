@@ -381,10 +381,25 @@ func (c *client) handle(m *proto.Msg) {
 		ss, err := h.OpenWorkspace(m.Name, m.Cols, m.Rows)
 		c.reply(m, &proto.Msg{Sessions: ss}, err)
 	case proto.TAddHost:
+		if m.Kind == hub.KindLink {
+			// A machine at its Gecko link; the link (with its token) comes
+			// in Secret, so nothing that logs targets sees it.
+			if c.scope == hub.ScopeLocal {
+				c.reply(m, nil, errors.New("machines can only be set up from the Gecko you are using directly, not through another one"))
+				return
+			}
+			c.reply(m, nil, h.AddLinkHost(m.Name, m.Secret, m.Data != "nocheck"))
+			return
+		}
 		c.reply(m, nil, h.AddHost(m.Name, m.Target, m.Data))
 	case proto.TProbeHost, proto.TInstall:
 		if c.scope == hub.ScopeLocal {
 			c.reply(m, nil, errors.New("machines can only be set up from the Gecko you are using directly, not through another one"))
+			return
+		}
+		if m.T == proto.TProbeHost && m.Kind == hub.KindLink {
+			name, goos, version, err := h.ProbeLink(m.Secret)
+			c.reply(m, &proto.Msg{Host: name, OS: goos, Version: version}, err)
 			return
 		}
 		log := func(line string) { c.send(&proto.Msg{T: proto.THostLog, Sub: m.Sub, Text: line}) }

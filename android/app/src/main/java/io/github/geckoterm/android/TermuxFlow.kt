@@ -12,6 +12,10 @@ data class TermuxResult(
     val err: Int = -1,
     val errmsg: String = "",
 ) {
+    /** Without tokens (`gecko url` prints one), so a log line can't show them. */
+    override fun toString() =
+        "TermuxResult(stdout=${hideTokens(stdout)}, stderr=${hideTokens(stderr)}, exitCode=$exitCode, err=$err, errmsg=${hideTokens(errmsg)})"
+
     /** Termux ran the command (whatever its exit code). */
     val ran: Boolean get() = err == -1
 
@@ -21,6 +25,9 @@ data class TermuxResult(
             .joinToString("\n").trim()
 
     companion object {
+        private val TOKEN = Regex("""token=[^\s&#]+""")
+        fun hideTokens(s: String) = s.replace(TOKEN, "token=(hidden)")
+
         /** From the bundle's values (see Termux.resultOf). */
         fun fromMap(m: Map<String, Any?>) = TermuxResult(
             stdout = m["stdout"] as? String ?: "",
@@ -100,6 +107,15 @@ object TermuxFlow {
 
     /** The one line that installs Gecko in Termux and lets this app start it. */
     const val INSTALL = "curl -fsSL https://raw.githubusercontent.com/eternaleclipse/gecko/main/packaging/termux/install.sh | sh -s -- --app"
+
+    /**
+     * The install line, with Claude Code too when asked (`--claude`: its
+     * linux-arm64 build through Termux's glibc loader; arm64 phones only).
+     */
+    fun install(base: String, claude: Boolean) = if (claude) "$base --claude" else base
+
+    /** Whether Claude Code can be installed in Termux on this phone: arm64 only (see install.sh). */
+    fun claudeSupported(abis: Array<String>) = abis.firstOrNull() == "arm64-v8a"
 
     /** The line for ~/.termux/termux.properties, and how to make Termux read it. */
     const val PROPERTY = "allow-external-apps=true"

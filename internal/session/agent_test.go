@@ -34,6 +34,13 @@ func TestAgentStatus(t *testing.T) {
 	if st.Status != "idle" || st.Choices != nil || st.Detail != "Done. A (y/n) prompt now shows Yes and No." {
 		t.Fatalf("idle Claude: %+v", st)
 	}
+	// Claude's first-run theme screen: a dashed rule (╌) and a hint at the
+	// bottom; neither is the detail.
+	term.Write([]byte("\x1b[H\x1b[2J Choose the text style that looks best with your terminal\r\n ❯ ✔ Dark mode\r\n ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\r\n  1  function greet() {\r\n ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\r\n  Syntax theme: Monokai Extended (ctrl+t to disable)\r\n ▔▔▔▔▔▔▔▔ ┄┄┄┄┄┄ ════\r\n"))
+	if st := agentStatus(term.ScreenLines(), 5*time.Second, time.Hour, false); strings.ContainsAny(st.Detail, "╌┄═▔") || st.Detail == "" {
+		t.Fatalf("theme screen detail: %+v", st)
+	}
+	term.Write([]byte("\x1b[H\x1b[2J● Done. A (y/n) prompt now shows Yes and No.\r\n\r\n────────\r\n❯\u00a0\r\n────────\r\n  ⏵⏵ bypass permissions on (shift+tab to cycle)\r\n"))
 	// ... and stays idle when it redraws (output a moment ago, no input).
 	if st = agentStatus(term.ScreenLines(), 100*time.Millisecond, time.Hour, false); st.Status != "idle" {
 		t.Fatalf("idle Claude redrawing: %+v", st)

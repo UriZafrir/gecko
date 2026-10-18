@@ -86,6 +86,8 @@
     <string name="share_off">Other devices can no longer connect. The old link stopped working.</string>
     <string name="share_links_title">Link for other devices</string>
     <string name="share_scan">Open this on your computer, or scan it, on the same network or tailnet. Treat it like a password.</string>
+    <string name="share_via_tunnel">Over Tailscale (or your VPN), from anywhere</string>
+    <string name="share_via_lan">On this Wi-Fi or network</string>
     <string name="share_no_network">This phone isn\'t on Wi-Fi or Tailscale right now, so other devices can\'t reach it.</string>
     <string name="share_not_on">Other devices aren\'t allowed. Turn on Allow other devices first.</string>
     <string name="share_footer">Turn it off when you\'re done; that makes this link useless.</string>
@@ -118,8 +120,17 @@
 
     <!-- Gecko in Termux (TermuxActivity) -->
     <string name="termux">Termux</string>
-    <string name="termux_row_idle">Gecko in Termux, with its packages. Tap to start.</string>
-    <string name="termux_row_running">Running in Termux · %1$s</string>
+    <string name="termux_sub_offer">Termux: add it to This phone\'s machines</string>
+    <string name="termux_sub_running">Termux: running, in This phone\'s machines</string>
+    <string name="termux_sub_running_idle">Termux: running. It joins This phone\'s machines when This phone starts.</string>
+    <string name="termux_sub_stopped">Termux: not running. Tap to start it.</string>
+    <string name="termux_sub_paused">Termux: stopped. Tap to start it.</string>
+    <string name="termux_start_long">Start Gecko in Termux</string>
+    <string name="termux_remove">Remove Termux from This phone</string>
+    <string name="termux_remove_title">Remove Termux from This phone?</string>
+    <string name="termux_remove_text">Gecko in Termux stops and leaves This phone\'s machines. Termux and its files stay; set it up again any time.</string>
+    <string name="termux_added">Termux is one of This phone\'s machines now: it\'s in the sidebar under Machines.</string>
+    <string name="termux_handoff_failed">Gecko runs in Termux, but This phone couldn\'t add it to its machines: %1$s</string>
     <string name="termux_menu">Use Termux</string>
     <string name="termux_stop">Stop Gecko in Termux</string>
     <string name="termux_open">Open Termux</string>
@@ -129,12 +140,12 @@
     <string name="termux_step">Step %1$d of 3</string>
     <string name="termux_checking">Checking Termux…</string>
     <string name="termux_starting">Starting Gecko in Termux…</string>
-    <string name="termux_opening">Opening Gecko in Termux…</string>
-    <string name="termux_starting_text">Gecko runs in Termux as a background task (Termux\'s notification counts it). It keeps running while you use other apps; stop it from the ⋮ menu next to Termux.</string>
+    <string name="termux_opening">Adding Termux to This phone…</string>
+    <string name="termux_starting_text">Gecko runs in Termux as a background task (Termux\'s notification counts it). It keeps running while you use other apps, and shows up as a machine in This phone\'s sidebar; stop it from the ⋮ menu next to This phone.</string>
 
     <string name="termux_missing_title">Install Termux</string>
-    <string name="termux_missing_text">Termux is a Linux environment for Android with its own packages: git, tmux, Node, Python, Go, ssh and more. Gecko runs inside it and opens it here like any machine: tabs, agents, notifications and the extra keys all work.\n\nGet Termux from F-Droid or from its GitHub releases, then come back.</string>
-    <string name="termux_play_warning">The Termux on Google Play is a separate build that takes no commands from other apps, so the app can\'t start Gecko there. Gecko does run in it: install it with Gecko\'s Termux installer, run gecko there and paste its link. For Gecko to start it from here, use Termux from F-Droid or GitHub. Termux builds from different places can\'t be mixed: their add-ons have to come from the same place.</string>
+    <string name="termux_missing_text">Termux is a Linux environment for Android with its own packages: git, tmux, Node, Python, Go, ssh and more. Gecko runs inside it, and Termux becomes one of This phone\'s machines: its tabs and agents sit next to the phone\'s own, with notifications and the extra keys.\n\nGet Termux from F-Droid or from its GitHub releases, then come back.</string>
+    <string name="termux_play_warning">The Termux on Google Play is a separate build that takes no commands from other apps, so the app can\'t start Gecko there. Gecko does run in it: install it with Gecko\'s Termux installer, run gecko there, and add its link on This phone (+ next to Machines, Paste a Gecko link). For Gecko to start it from here, use Termux from F-Droid or GitHub. Termux builds from different places can\'t be mixed: their add-ons have to come from the same place.</string>
     <string name="termux_fdroid">F-Droid</string>
     <string name="termux_github">GitHub releases</string>
 
@@ -160,6 +171,8 @@
     <string name="termux_gecko_missing_title">Install Gecko in Termux</string>
     <string name="termux_gecko_missing_text">Termux works. Gecko isn\'t installed in it yet: this line installs it (no root needed). Run it in a Termux session, or let the app send it there.</string>
     <string name="termux_install">Install in Termux</string>
+    <string name="termux_also_claude">Also install Claude Code (its Linux build, through Termux\'s glibc-runner; a few hundred MB)</string>
+    <string name="termux_install_claude">Install Claude Code in Termux</string>
     <string name="termux_copy">Copy</string>
     <string name="termux_installing_title">Installing Gecko in Termux</string>
     <string name="termux_installing_text">The installer runs in a Termux session. When it says installed, come back here.</string>

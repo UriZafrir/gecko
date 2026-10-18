@@ -54,9 +54,19 @@ class KeystoreBox(private val alias: String = "gecko-tokens") : SecretBox {
 /** The app's settings and saved machines. */
 object Gecko {
     @Volatile private var store: MachineStore? = null
+    @Volatile private var termuxStore: MachineStore? = null
 
     fun machines(ctx: Context): MachineStore = store ?: synchronized(this) {
-        store ?: MachineStore(PrefsKeyValue(ctx.applicationContext.getSharedPreferences("machines", Context.MODE_PRIVATE)), KeystoreBox()).also { store = it }
+        store ?: MachineStore(PrefsKeyValue(ctx.applicationContext.getSharedPreferences("machines", Context.MODE_PRIVATE)), KeystoreBox()).also {
+            // Gecko in Termux used to be a machine of its own; it's This phone's now.
+            TermuxMachine.migrate(it, termux(ctx))
+            store = it
+        }
+    }
+
+    /** Gecko in Termux's link (not in the machine list: This phone's Gecko connects to it). */
+    fun termux(ctx: Context): MachineStore = termuxStore ?: synchronized(this) {
+        termuxStore ?: MachineStore(PrefsKeyValue(ctx.applicationContext.getSharedPreferences("termux", Context.MODE_PRIVATE)), KeystoreBox()).also { termuxStore = it }
     }
 
     fun prefs(ctx: Context): SharedPreferences = ctx.applicationContext.getSharedPreferences("settings", Context.MODE_PRIVATE)

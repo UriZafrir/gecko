@@ -918,8 +918,10 @@ func (m *Manager) scanTmux(table *inspect.Table) {
 var (
 	reWorking = regexp.MustCompile(`(?i)(esc to interrupt|esc to cancel|ctrl\+c to (interrupt|cancel)|press esc to stop)`)
 	reAsk     = regexp.MustCompile(`(?i)(do you want to|would you like to|allow (this|once|always)|\(y/n\)|\[y/n\]|approve|permission|❯ 1\. yes|press enter to|waiting for (your )?(input|approval)|continue\?)`)
-	reJunk    = regexp.MustCompile(`^[\s─━│┃╭╮╰╯┌┐└┘├┤┬┴┼═║╔╗╚╝>❯›$#%·•*+\-_=~.:|]*$`)
-	reHint    = regexp.MustCompile(`(?i)(for shortcuts|to toggle|bypass permissions|auto-accept|context left|tokens? used|\? for help|^\W*tip:|esc to interrupt|shift\+tab|(ctrl|alt)\+\w+ to )`)
+	// Lines of only rules, frames and prompt marks (box drawing and block
+	// elements are U+2500 to U+259F: ─ ╌ ┄ ═ ▔ and the rest).
+	reJunk = regexp.MustCompile(`^[\s\x{2500}-\x{259F}>❯›$#%·•*+\-_=~.:|]*$`)
+	reHint = regexp.MustCompile(`(?i)(for shortcuts|to toggle|bypass permissions|auto-accept|context left|tokens? used|\? for help|^\W*tip:|esc to interrupt|shift\+tab|(ctrl|alt)\+\w+ to )`)
 	// An agent's own input box, e.g. Claude's "❯ " between two rules: it's
 	// at its prompt, not asking anything.
 	rePromptLine = regexp.MustCompile(`^[\s│┃|]*[❯›>][\s\x{00a0}]*([^\d\s\x{00a0}].*)?$`)

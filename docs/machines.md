@@ -43,6 +43,49 @@ for example a container:
 ```
 
 
+## Another Gecko by its link
+
+A machine already running Gecko can be added by its link instead of over
+SSH: the line `gecko url` prints there, or the QR code's link under **Open
+on another device**. This Gecko then connects straight to that one's web
+address, over the same WebSocket and token the web UI uses, and shows its
+tabs and agents next to its own. It is how the Android app makes Gecko in
+Termux one of This phone's machines, and it works for any Gecko on this
+device, the LAN or a tailnet.
+
+```sh
+gecko host add laptop --url 'http://100.101.102.103:7681/?token=...'
+gecko url | gecko host add termux --url -     # the link on stdin, kept out of ps
+```
+
+In the sidebar it is **Machines → + → Paste a Gecko link**: the dialog
+connects once, shows the other Gecko's name and system, and adds it. A link
+machine reconnects and resumes its tabs like an SSH one, shows its round
+trip, and its agents notify here. `--no-check` adds it without connecting
+first (the Android app does, for a Termux that hasn't started yet).
+
+How it's kept safe:
+
+- The token is the other Gecko's whole key, so it is treated as a secret:
+  it is stored only in this Gecko's `config.json` (mode `0600`), sent only
+  in the `Authorization` header, and never shown: not in the sidebar, the
+  machine list (`gecko host ls` shows just the address), errors or logs.
+  The dialog and the CLI send it as a secret field, not as a target.
+- Plain `http` is allowed only to this device, private networks (10/8,
+  172.16/12, 192.168/16, IPv6 ULA, link-local) and Tailscale (100.64/10),
+  the same rule as the mobile apps. A name must resolve only to such
+  addresses, and the connection itself is refused if it would go anywhere
+  else (so a name that changes later can't send the token out). Anything
+  else needs `https`.
+- Only the Gecko you use directly can add one: a Gecko connected through
+  another (a bridge or a link) can't make it dial addresses on its behalf.
+- The other Gecko sees an ordinary client with its token. Its machines
+  aren't passed on (as with SSH machines, each Gecko shows only its own
+  tabs to another), and updating it is done there (`gecko upgrade`).
+
+A wrong or changed token shows "refused the token" on the machine; paste
+the current link (**Fix connection…**) to replace it.
+
 ## Through the relay (accounts)
 
 For machines SSH can't reach (behind NAT or a corporate firewall), or when no

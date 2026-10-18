@@ -22,7 +22,7 @@ import (
 // saw, like mosh but for every tab at once.
 type Remote struct {
 	name, target string
-	kind         string // KindSSH or KindCloud
+	kind         string // KindSSH, KindLink or KindCloud
 	hub          *Hub
 
 	mu       sync.Mutex
@@ -261,8 +261,11 @@ func (r *Remote) open(dial DialFunc) (*Link, *proto.Msg, error) {
 func (r *Remote) serve() error {
 	r.mu.Lock()
 	dial, fallback, via := r.dial, r.fallback, ViaSSH
-	if r.kind == KindCloud {
+	switch r.kind {
+	case KindCloud:
 		via = ViaRelay
+	case KindLink:
+		via = ViaLink
 	}
 	r.mu.Unlock()
 	link, hello, err := r.open(dial)
@@ -281,7 +284,7 @@ func (r *Remote) serve() error {
 	conn := link.Conn
 	defer link.close()
 	r.mu.Lock()
-	learned := hello.Machine != "" && hello.Machine != r.machine && r.kind == KindSSH
+	learned := hello.Machine != "" && hello.Machine != r.machine && (r.kind == KindSSH || r.kind == KindLink)
 	if hello.Machine != "" {
 		r.machine = hello.Machine
 	}

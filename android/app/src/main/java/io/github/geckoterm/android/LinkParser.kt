@@ -11,6 +11,9 @@ data class GeckoLink(
     val token: String?,
 ) {
     val https: Boolean get() = baseUrl.startsWith("https:")
+
+    /** Without the token, so a log line can't show it. */
+    override fun toString() = "GeckoLink($baseUrl${if (token != null) ", token hidden" else ""})"
 }
 
 class LinkException(message: String) : Exception(message)

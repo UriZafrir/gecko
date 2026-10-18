@@ -222,6 +222,47 @@ object LocalGecko {
         return Machine(id = ID, name = ctx.getString(R.string.this_phone), url = "http://$a/", token = t)
     }
 
+    /** The names of the machines This phone's Gecko has (`gecko host ls --json`); null if it can't tell. Blocking. */
+    fun hosts(ctx: Context): List<String>? = try {
+        val p = command(ctx, "host", "ls", "--json").start()
+        p.outputStream.close()
+        val out = p.inputStream.bufferedReader().readText()
+        p.waitFor(10, TimeUnit.SECONDS)
+        if (p.exitValue() != 0) null else {
+            val arr = org.json.JSONArray(out.trim())
+            (0 until arr.length()).mapNotNull { arr.optJSONObject(it)?.optString("name") }
+        }
+    } catch (e: Exception) {
+        Log.w(TAG, "host ls: ${e.message}")
+        null
+    }
+
+    /**
+     * Adds (or updates) a machine reached at its Gecko link. The link goes
+     * in on stdin, never in the arguments. Returns an error, or null. Blocking.
+     */
+    fun addLinkHost(ctx: Context, name: String, link: String): String? = try {
+        val p = command(ctx, "host", "add", name, "--url", "-", "--no-check").redirectErrorStream(true).start()
+        p.outputStream.use { it.write((link + "\n").toByteArray()) }
+        val out = p.inputStream.bufferedReader().readText()
+        p.waitFor(15, TimeUnit.SECONDS)
+        if (p.exitValue() == 0) null else out.trim().removePrefix("gecko: ").ifEmpty { "gecko host add failed" }
+    } catch (e: Exception) {
+        e.message ?: e.javaClass.simpleName
+    }
+
+    /** Removes a machine from This phone's Gecko (its sessions keep running there). Blocking. */
+    fun removeHost(ctx: Context, name: String) {
+        try {
+            val p = command(ctx, "host", "rm", name).redirectErrorStream(true).start()
+            p.outputStream.close()
+            p.inputStream.bufferedReader().readText()
+            p.waitFor(10, TimeUnit.SECONDS)
+        } catch (e: Exception) {
+            Log.w(TAG, "host rm: ${e.message}")
+        }
+    }
+
     /** The listener for other devices (`gecko share`). Blocking. */
     fun share(ctx: Context, on: Boolean): Share {
         val args = if (on) arrayOf("share", "--json", "on", "0.0.0.0:$SHARE_PORT") else arrayOf("share", "--json", "off")
@@ -257,21 +298,42 @@ object LocalGecko {
         }
     }
 
-    /** This phone's private IPv4 addresses (Wi-Fi, Ethernet, Tailscale), Tailscale last. */
-    fun lanAddresses(): List<String> {
-        val out = ArrayList<Pair<String, Boolean>>()
+    /**
+     * The addresses other devices can reach this phone at: Tailscale (or
+     * another VPN) first, then Wi-Fi and Ethernet; never mobile data (see
+     * [ShareAddresses]).
+     */
+    fun shareAddresses(ctx: Context): List<ShareAddresses.Address> {
+        val transports = HashMap<String, ShareAddresses.Transport>()
+        try {
+            val cm = ctx.getSystemService(android.net.ConnectivityManager::class.java)
+            @Suppress("DEPRECATION")
+            for (n in cm.allNetworks) {
+                val name = cm.getLinkProperties(n)?.interfaceName ?: continue
+                val c = cm.getNetworkCapabilities(n) ?: continue
+                transports[name] = when {
+                    c.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN) -> ShareAddresses.Transport.Vpn
+                    c.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR) -> ShareAddresses.Transport.Cellular
+                    c.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) -> ShareAddresses.Transport.Wifi
+                    c.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET) -> ShareAddresses.Transport.Ethernet
+                    else -> ShareAddresses.Transport.Other
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "networks: ${e.message}")
+        }
+        val ifaces = ArrayList<ShareAddresses.Iface>()
         try {
             for (ni in NetworkInterface.getNetworkInterfaces()) {
                 if (!ni.isUp || ni.isLoopback) continue
                 for (a in ni.inetAddresses) {
-                    val ip = a.hostAddress ?: continue
-                    if (a !is java.net.Inet4Address || !NetPolicy.privateAddress(a) || ip.startsWith("127.")) continue
-                    out += ip to ip.startsWith("100.")
+                    if (a !is java.net.Inet4Address) continue
+                    ifaces += ShareAddresses.Iface(ni.name, a.hostAddress ?: continue, transports[ni.name])
                 }
             }
         } catch (e: Exception) {
             Log.w(TAG, "interfaces: ${e.message}")
         }
-        return out.sortedBy { it.second }.map { it.first }.distinct()
+        return ShareAddresses.pick(ifaces)
     }
 }

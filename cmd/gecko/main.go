@@ -52,7 +52,8 @@ Usage:
   gecko kill <session>       end a session
   gecko agents [--json]      coding agents and what they are doing
   gecko ws open <name>       open a workspace template from the config
-  gecko host ls|add|rm|install   manage remote machines (ssh)
+  gecko host ls|add|rm|install   manage remote machines (ssh, or another Gecko
+                             by its link: gecko host add <name> --url <link>)
   gecko daemon [--listen a]  run the daemon in the foreground
   gecko share [on [addr]|off] [--json]   let other devices on this network open Gecko,
                              with a link of its own (new each time; off makes it invalid)
@@ -194,7 +195,7 @@ func cmdDefault() error {
 	c.Close()
 	autoService()
 	if config.IsTermux() {
-		fmt.Println("gecko daemon is running in Termux. Open this link in a browser, or with Paste link in the Gecko app (or tap Termux there):")
+		fmt.Println("gecko daemon is running in Termux. Open this link in a browser, or add it to a Gecko as a machine (+ next to Machines, Paste a Gecko link). The Gecko app does that itself under This phone, Termux:")
 		if err := cmdURL(); err != nil {
 			return err
 		}
@@ -661,19 +662,26 @@ func cmdHost(args []string) error {
 	}
 	switch sub {
 	case "ls", "list":
+		asJSON := len(args) > 0 && args[0] == "--json"
 		st := waitState()
+		if asJSON {
+			if st == nil {
+				return errors.New("the Gecko service isn't running")
+			}
+			return json.NewEncoder(os.Stdout).Encode(st.Hosts)
+		}
 		if st == nil {
 			cfg, err := config.Load()
 			if err != nil {
 				return err
 			}
 			for _, h := range cfg.Hosts {
-				fmt.Printf("%s\t%s\n", h.Name, h.SSH)
+				fmt.Printf("%s\t%s\n", h.Name, h.SSH+h.URL)
 			}
 			return nil
 		}
 		tw := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-		fmt.Fprintln(tw, "HOST\tSSH\tSTATUS\tOS")
+		fmt.Fprintln(tw, "HOST\tADDRESS\tSTATUS\tOS")
 		for _, h := range st.Hosts {
 			target := h.Target
 			if h.Local {
@@ -687,19 +695,7 @@ func cmdHost(args []string) error {
 		}
 		return tw.Flush()
 	case "add":
-		if len(args) != 2 {
-			return fmt.Errorf("usage: gecko host add <name> <ssh-destination>")
-		}
-		c, err := client.Connect(true)
-		if err != nil {
-			return err
-		}
-		defer c.Close()
-		_, err = c.Call(&proto.Msg{T: proto.TAddHost, Name: args[0], Target: args[1]})
-		if err == nil {
-			fmt.Printf("added %s. If gecko isn't installed there yet: gecko host install %s\n", args[0], args[0])
-		}
-		return err
+		return hostAdd(args)
 	case "rm", "remove":
 		if len(args) != 1 {
 			return fmt.Errorf("usage: gecko host rm <name>")
@@ -718,6 +714,62 @@ func cmdHost(args []string) error {
 		return hostInstall(args[0])
 	}
 	return fmt.Errorf("unknown host command %q", sub)
+}
+
+// hostAdd adds a machine: over ssh (gecko host add name me@devbox), or at
+// its Gecko link (gecko host add name --url LINK; "-" reads the link from
+// stdin, so the token isn't in the process list).
+func hostAdd(args []string) error {
+	fs := flag.NewFlagSet("host add", flag.ContinueOnError)
+	link := fs.String("url", "", "the other Gecko's link, as `gecko url` prints it there (- reads it from stdin)")
+	noCheck := fs.Bool("no-check", false, "add it without connecting first (with --url)")
+	var pos []string
+	rest := args
+	for len(rest) > 0 {
+		if err := fs.Parse(rest); err != nil {
+			return err
+		}
+		rest = fs.Args()
+		if len(rest) > 0 {
+			pos, rest = append(pos, rest[0]), rest[1:]
+		}
+	}
+	usage := fmt.Errorf("usage: gecko host add <name> <ssh-destination>\n       gecko host add <name> --url <gecko link> [--no-check]")
+	if *link == "" {
+		if len(pos) != 2 {
+			return usage
+		}
+	} else if len(pos) != 1 {
+		return usage
+	}
+	c, err := client.Connect(true)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	if *link == "" {
+		_, err = c.Call(&proto.Msg{T: proto.TAddHost, Name: pos[0], Target: pos[1]})
+		if err == nil {
+			fmt.Printf("added %s. If gecko isn't installed there yet: gecko host install %s\n", pos[0], pos[0])
+		}
+		return err
+	}
+	if *link == "-" {
+		b, err := io.ReadAll(io.LimitReader(os.Stdin, 4096))
+		if err != nil {
+			return err
+		}
+		*link = strings.TrimSpace(string(b))
+	}
+	m := &proto.Msg{T: proto.TAddHost, Kind: "link", Name: pos[0], Secret: *link}
+	if *noCheck {
+		m.Data = "nocheck"
+	}
+	if _, err = c.Call(m); err != nil {
+		return err
+	}
+	fmt.Printf("added %s\n", pos[0])
+	return nil
 }
 
 // hostInstall copies a matching gecko binary to the remote ~/.local/bin.

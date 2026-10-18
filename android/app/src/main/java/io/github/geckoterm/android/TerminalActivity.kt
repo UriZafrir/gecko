@@ -265,7 +265,8 @@ class TerminalActivity : AppCompatActivity() {
         val shared = if (intent.action == Intent.ACTION_SEND) intent.getStringExtra(Intent.EXTRA_TEXT) else null
         val wantId = intent.getStringExtra(EXTRA_MACHINE)
         val target = when {
-            wantId == LocalGecko.ID -> localPlaceholder()
+            // Termux was a machine of its own before it became This phone's (old notifications, shortcuts).
+            wantId == LocalGecko.ID || wantId == Termux.ID -> localPlaceholder()
             wantId != null -> store.get(wantId)
             shared != null -> machine ?: pickForShare(store, shared).let { return true }
             else -> machine ?: store.recent() ?: store.list().firstOrNull()
@@ -380,8 +381,6 @@ class TerminalActivity : AppCompatActivity() {
                 if (isDestroyed) return@runOnUiThread
                 when {
                     !ok -> showError(getString(R.string.err_cleartext, link.host))
-                    // Gecko in Termux isn't running (stopped, or Termux was ended): start it again.
-                    refused == null && m.id == Termux.ID -> { TermuxActivity.open(this); finish() }
                     refused == null -> showError(getString(R.string.err_unreachable, m.name, ""))
                     refused -> showError(getString(R.string.err_token))
                     else -> openPage(m)

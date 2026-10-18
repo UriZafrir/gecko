@@ -54,6 +54,7 @@ class WatchService : Service() {
 
     /** Follows the saved machines and this phone's Gecko: new ones join, removed ones stop. */
     fun sync() {
+        // Gecko in Termux isn't in the list: it's one of This phone's machines, watched through it.
         val machines = Gecko.machines(this).list().filter { it.token.isNotEmpty() } +
             listOfNotNull(if (StatusNote.phone != null) LocalGecko.machine(this) else null)
         val want = machines.associateBy { it.id }

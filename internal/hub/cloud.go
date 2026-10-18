@@ -113,7 +113,7 @@ func (h *Hub) reconcileCloud() {
 	}
 	direct := map[string]*Remote{}
 	for _, b := range h.backends {
-		if r, ok := b.(*Remote); ok && r.kind == KindSSH {
+		if r, ok := b.(*Remote); ok && (r.kind == KindSSH || r.kind == KindLink) {
 			if id := r.MachineID(); id != "" {
 				direct[id] = r
 			}

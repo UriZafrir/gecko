@@ -212,9 +212,13 @@ yourself first.
 Off by default. Turn it on (**⋮** next to **This phone**, or in the extra
 keys while on it, or **Open on another device** in the palette) and the
 phone's Gecko also listens on its Wi-Fi, Ethernet and Tailscale addresses,
-port 7682. The app shows the link and QR code for each address, the same
-kind Gecko shows on a computer: open it in a browser, or add it as a machine
-in another Gecko app.
+port 7682. The app shows the link and QR code for each address, Tailscale
+(or another VPN) first, then Wi-Fi and Ethernet, the same kind Gecko shows
+on a computer: open it in a browser, or add it as a machine in another
+Gecko app. It never offers the mobile data address: carriers hand out
+addresses from 100.64/10 (carrier-grade NAT), the same range as Tailscale,
+and no other device of yours can reach them. `gecko share` on a computer
+picks its addresses the same way.
 
 What that means:
 
@@ -241,14 +245,21 @@ On a computer, the same listener is `gecko share on [addr]` and
 
 [Termux](https://termux.dev) is a Linux environment for Android with its
 own package manager: `pkg install git tmux nodejs python golang openssh`,
-and the coding agents that run on those (Claude Code's npm package now
-installs a native build, and it has none for Android, so it doesn't run
-there; agents in Node or Python do). Gecko runs
-inside it, and the app shows it as **Termux** in the machine list, right
-after **This phone**, whenever Termux is installed. Tap it and the app
-starts Gecko in Termux and opens it like any machine: tabs, workspaces, the
-agent dock and its notifications, the extra keys and touch all work the
-same, with Termux's shell (bash, or what `chsh` picked) and packages.
+and the coding agents that run on those (Claude Code too, see
+[Claude Code in Termux](#claude-code-in-termux)). Gecko
+runs inside it, and Termux becomes **one of This phone's machines**: it is
+in This phone's sidebar under **Machines**, next to the phone itself (as an
+SSH machine or a relay machine would be), with its tabs and agents next to
+the phone's own. Open a tab on it from the same window (click **termux**
+under Machines, or pick it as the machine for a new tab), and its agents
+notify through This phone like any machine's. Its tabs have Termux's shell
+(bash, or what `chsh` picked) and packages; workspaces, the agent dock,
+the extra keys and touch all work the same.
+
+On the machine list, Termux is a line under **This phone**: "Termux: set
+up", "running", "not running" or "stopped". Tap it to set Termux up or to
+start it; **⋮** next to This phone has Start or Stop Gecko in Termux,
+Open Termux, the setup steps, and Remove Termux from This phone.
 
 ### Set up
 
@@ -275,15 +286,35 @@ checks again when you come back from Termux:
    the installer in a Termux session for you.
 
 Then the app starts `gecko daemon --listen 127.0.0.1:7683` in Termux, gets
-its link with `gecko url`, and connects. **⋮** next to Termux stops it
-(`gecko stop`, which ends its tabs), opens Termux, or shows the setup steps
-again.
+its link with `gecko url`, adds it to This phone's Gecko as the machine
+`termux` (as `gecko host add termux --url <link>` would, see
+[machines by their link](machines.md#another-gecko-by-its-link)) and opens
+This phone. **Stop Gecko in Termux** (`gecko stop`, which ends its tabs)
+keeps it stopped until you start it again.
+
+While This phone runs, it keeps Gecko in Termux running too: when Termux's
+Gecko isn't answering (Termux was closed with **Exit**, Android ended it,
+the phone restarted) the app starts it again in the background, every 10
+seconds at first and less often if it keeps failing. If its token changed
+(a new `~/.gecko-terminal` in Termux), the app gets the new link and hands
+it over. Removing **termux** from This phone's sidebar (×) also forgets it
+in the app.
 
 How it works: Termux's [RUN_COMMAND intent](https://github.com/termux/termux-app/wiki/RUN_COMMAND-Intent)
 runs `gecko` with Termux's `sh`, in the background (Termux's notification
 counts it as a task, which also keeps Termux running), and sends the output
-of `gecko url` back to the app. From then on it is a plain connection to
-`127.0.0.1:7683` with Gecko's token, as with a computer.
+of `gecko url` back to the app. The app keeps that link sealed with its
+Android Keystore key, and gives it to This phone's Gecko on its standard
+input (never on a command line), which keeps it in its `config.json`
+(`0600`) and connects to `127.0.0.1:7683` with the token, over the same
+WebSocket the web UI uses. Gecko in Termux needs nothing new for this: the
+v0.2.0 release there works as it is.
+
+Up to 0.2.0, the app opened Gecko in Termux as a separate machine to switch
+into, next to This phone. The new app moves that over by itself the first
+time it starts: Termux becomes This phone's machine, with no setup again.
+Its tabs carry on (they belong to Termux's Gecko); only the shells of This
+phone itself end when the app is updated, as with every app update.
 
 ### Without the app
 
@@ -294,7 +325,7 @@ instead). Run it again to update; a running Gecko is upgraded in place,
 keeping its tabs. Then:
 
 ```sh
-gecko               # starts the daemon, prints the link (open it in a browser, or Paste link in the app)
+gecko               # starts the daemon, prints the link (open it in a browser, or add it as a machine)
 gecko attach <tab>  # or use a tab right here in Termux
 gecko service install   # start at boot, with the Termux:Boot app
 ```
@@ -332,15 +363,18 @@ Android stops background work on its own, and Termux is no exception:
   notification) keeps the CPU awake for Termux while agents work with the
   screen off; `termux-wake-unlock` lets go.
 - **Exit** in Termux's notification ends everything in Termux, Gecko
-  included. The app then starts it again the next time you tap Termux.
+  included (and its tabs). While This phone runs, the app starts Gecko in
+  Termux again within seconds.
 
 ### F-Droid, GitHub and Google Play
 
 Gecko runs in all three, but the app starts it only in Termux from F-Droid
 or GitHub. The Google Play listing is a separate build, made and signed
 differently, without the RUN_COMMAND intent the app uses, so with it there
-is no **Termux** setup: run `gecko` in Termux and open its link in a
-browser, or **Paste link** in the app. Termux's add-ons (Termux:Boot,
+is no **Termux** setup: run `gecko` in Termux, then add its link to This
+phone yourself (in This phone's sidebar, **+** next to Machines, **Paste a
+Gecko link**). You start Gecko in Termux yourself then (`gecko`, or
+Termux:Boot). Termux's add-ons (Termux:Boot,
 Termux:API) have to come from the same place as Termux itself.
 
 The Play build targets a newer Android, which doesn't let Termux execute
@@ -355,10 +389,80 @@ warns when its Termux came from Play.
 Termux and the Gecko app are separate apps, and Android keeps their files
 apart: Gecko in Termux has Termux's home (`/data/data/com.termux/files/home`),
 its own `~/.gecko-terminal` (token, settings, tabs) and its own ssh keys,
-apart from **This phone**'s. The tabs of one aren't the other's, and Termux
-can't read the app's files or the other way round. `termux-setup-storage`
+apart from **This phone**'s. Each Gecko keeps its own tabs (This phone shows
+both), and Termux can't read the app's files or the other way round. `termux-setup-storage`
 gives Termux your shared storage (`~/storage`); the Gecko app has no storage
 permission. Both can reach each other only over `127.0.0.1`, with the token.
+
+### Claude Code in Termux
+
+Claude Code's npm package and its installer (`curl -fsSL
+https://claude.ai/install.sh | bash`) fetch a native build for glibc or
+musl Linux; there is none for Android. In Termux, `npm install -g
+@anthropic-ai/claude-code` ends with "claude native binary not installed",
+and the installer's download can't start ("cannot execute: required file
+not found": Android has no `/lib/ld-linux-aarch64.so.1`).
+
+**On an arm64 phone** (nearly all of them), Termux's glibc loader runs the
+official linux-arm64 build as it is. Let the Gecko installer set it up:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/eternaleclipse/gecko/main/packaging/termux/install.sh | sh -s -- --app --claude
+```
+
+or tick **Also install Claude Code** on the app's install step, or pick
+**Install Claude Code in Termux** in **⋮** next to This phone once Termux
+is set up. It installs Termux's `glibc-runner`, `jq` and `ripgrep`, and two
+small scripts:
+
+- `claude-update` downloads the latest release from Anthropic's release
+  bucket (`downloads.claude.ai/claude-code-releases`), checks its SHA-256
+  against that release's `manifest.json`, and keeps it in
+  `~/.local/share/claude-glibc` (about 270 MB). Run it to update: Claude Code's own
+  updater can't install here, so the wrapper turns it off.
+- `claude` runs that build with `grun` (glibc-runner), with
+  `DISABLE_AUTOUPDATER=1`, and `USE_BUILTIN_RIPGREP=0` so its searches use
+  Termux's `rg`.
+
+Then `claude` in a Gecko tab on **termux** starts it: the first-run screens,
+then sign in, and Gecko lists it as a `claude` agent on termux, with the
+agent dock and the notifications. This was tested on a Pixel 8 (arm64,
+Android 16) with Claude Code 2.1.302: `--version`, the interactive theme
+and login screens, and Gecko's agent detection. Our x86_64 emulators can't
+run arm64 Termux, so there we tested the installer's x86_64 path and
+`claude-update`'s download and checksum check (with a fake `uname`), not
+the arm64 build running.
+
+**On x86_64** (emulators, a few Chromebooks and tablets) this doesn't work:
+the linux-x64 build makes system calls that Android's seccomp filter for
+apps blocks, and dies with "Bad system call", through glibc-runner too. The
+first one is `access` (Claude Code 2.1.302 under `strace`: `SIGSYS ...
+si_syscall=__NR_access`), which the binary makes itself, so Termux's
+patched glibc can't help. arm64 Linux has no `access` call at all, which
+is why the arm64 build gets past it. `install.sh --claude` says so and
+skips it on x86_64.
+
+**The fallback, any CPU:** the normal Linux install inside a Debian that
+Termux's `proot-distro` runs. Its `proot` catches the blocked calls and
+makes them in a form Android allows. It is slower and bigger (Debian takes
+about 200 MB, Claude Code about 270 MB more); tested on x86_64 (Android 14
+emulator, Claude Code 2.1.302, Debian 13):
+
+```sh
+pkg install proot-distro
+proot-distro install debian
+proot-distro login debian -- bash -c 'apt-get update && apt-get install -y curl ca-certificates && curl -fsSL https://claude.ai/install.sh | bash'
+```
+
+Then, in a Gecko tab on **termux**:
+
+```sh
+proot-distro login debian --shared-tmp -- /root/.local/bin/claude
+```
+
+Gecko recognises it through proot too. Your projects can stay in Termux's
+home: `--bind $HOME:/root/termux` puts it at `~/termux` inside (or
+`--shared-home` binds Termux's home into it).
 
 ## Notifications
 

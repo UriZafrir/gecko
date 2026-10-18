@@ -15,6 +15,9 @@ data class Machine(
     val lastUsed: Long = 0,
 ) {
     val host: String get() = LinkParser.parse(url).host
+
+    /** Without the token, so a log line or a test failure can't show it. */
+    override fun toString() = "Machine(id=$id, name=$name, url=$url, token=${if (token.isEmpty()) "none" else "hidden"}, lastUsed=$lastUsed)"
 }
 
 /** Plain key-value storage (SharedPreferences on the phone, a map in tests). */

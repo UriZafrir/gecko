@@ -43,12 +43,43 @@ class PhoneService : Service() {
             StatusNote.post(this)
             // Watching agents in the background takes in this phone's Gecko too.
             if (ok) android.os.Handler(mainLooper).post { WatchService.instance?.sync() }
+            if (ok) keepTermux()
             if (!ok) stopSelf()
         }.start()
         return START_STICKY
     }
 
     private var netCallback: android.net.ConnectivityManager.NetworkCallback? = null
+    @Volatile private var termuxKeeper: Thread? = null
+
+    /**
+     * Gecko in Termux is one of This phone's machines once it's set up:
+     * hand its link to This phone's Gecko, and start it in Termux whenever
+     * it doesn't answer (Termux was ended, the phone restarted), unless it
+     * was stopped from the menu. Its link is checked again every minute, in
+     * case it was removed from This phone's machines.
+     */
+    @Synchronized
+    private fun keepTermux() {
+        if (termuxKeeper?.isAlive == true) return
+        termuxKeeper = Thread {
+            var n = 0
+            try {
+                while (!Thread.currentThread().isInterrupted) {
+                    if (PhoneTermux.setUp(this)) {
+                        if (n % 12 == 0) PhoneTermux.sync(this)
+                        PhoneTermux.keep(this)
+                    }
+                    n++
+                    Thread.sleep(5_000)
+                }
+            } catch (e: InterruptedException) {
+                // This phone stopped.
+            } catch (e: Exception) {
+                Log.w(TAG, "termux: ${e.message}")
+            }
+        }.apply { isDaemon = true; name = "termux-keeper"; start() }
+    }
 
     /** Keeps the DNS file for ssh current as the phone changes networks. */
     private fun watchNetwork() {
@@ -67,6 +98,7 @@ class PhoneService : Service() {
     }
 
     override fun onDestroy() {
+        termuxKeeper?.interrupt()
         StatusNote.phone = null
         WatchService.instance?.sync()
         StatusNote.repostSoon(this) // the watching alone, if it's on

@@ -102,7 +102,13 @@ func (h *Hub) addRemote(host config.Host) {
 	if host.Name == "" || host.Name == h.name {
 		return
 	}
-	r := NewRemote(host.Name, host.SSH, KindSSH, SSHDial(host.Name, host.BridgeCommand()), h)
+	var r *Remote
+	if host.URL != "" {
+		l := GeckoLink{Base: host.URL, Token: host.Token}
+		r = NewRemote(host.Name, host.URL, KindLink, LinkDial(l), h)
+	} else {
+		r = NewRemote(host.Name, host.SSH, KindSSH, SSHDial(host.Name, host.BridgeCommand()), h)
+	}
 	r.machine = host.Machine
 	h.mu.Lock()
 	if old := h.backends[host.Name]; old != nil {
@@ -415,13 +421,72 @@ func (h *Hub) UpdateHost(ctx context.Context, name string, log func(string)) err
 // AddHost adds (or replaces) a remote host and saves the config.
 func (h *Hub) AddHost(name, target, gecko string) error {
 	name = strings.TrimSpace(name)
-	if name == "" || strings.ContainsAny(name, "/ ") || target == "" {
-		return errors.New("host needs a name (no spaces or slashes) and an ssh target")
+	if target == "" {
+		return errors.New("a machine needs an ssh destination")
+	}
+	if err := h.checkHostName(name); err != nil {
+		return err
+	}
+	return h.saveHost(config.Host{Name: name, SSH: target, Gecko: gecko})
+}
+
+// checkHostName validates the name of a machine to add.
+func (h *Hub) checkHostName(name string) error {
+	if name == "" || strings.ContainsAny(name, "/ \t") {
+		return errors.New("a machine needs a name, without spaces or slashes")
 	}
 	if name == h.name {
 		return errors.New(name + " is this machine")
 	}
-	host := config.Host{Name: name, SSH: target, Gecko: gecko}
+	if b, ok := h.backend(name).(*Remote); ok && b.kind == KindCloud {
+		return errors.New(name + " is already a machine in your account")
+	}
+	return nil
+}
+
+// ProbeLink connects once to the Gecko at a link and reports its name, OS
+// and protocol version, so a machine is added only once it works.
+func (h *Hub) ProbeLink(link string) (name, goos string, version int, err error) {
+	l, err := ParseLink(link)
+	if err != nil {
+		return "", "", 0, err
+	}
+	if err := CheckLinkPolicy(l); err != nil {
+		return "", "", 0, err
+	}
+	r := NewRemote("probe", l.Base, KindLink, LinkDial(l), h)
+	lk, hello, err := r.open(r.dial)
+	if err != nil {
+		return "", "", 0, err
+	}
+	lk.close()
+	return hello.Host, hello.OS, hello.Version, nil
+}
+
+// AddLinkHost adds (or replaces) a machine reached at its Gecko link and
+// saves it. With check, it is added only if it answers with that token.
+func (h *Hub) AddLinkHost(name, link string, check bool) error {
+	name = strings.TrimSpace(name)
+	if err := h.checkHostName(name); err != nil {
+		return err
+	}
+	l, err := ParseLink(link)
+	if err != nil {
+		return err
+	}
+	if err := CheckLinkPolicy(l); err != nil {
+		return err
+	}
+	if check {
+		if _, _, _, err := h.ProbeLink(link); err != nil {
+			return err
+		}
+	}
+	return h.saveHost(config.Host{Name: name, URL: l.Base, Token: l.Token})
+}
+
+func (h *Hub) saveHost(host config.Host) error {
+	name := host.Name
 	hosts := h.cfg.Hosts[:0:0]
 	for _, x := range h.cfg.Hosts {
 		if x.Name != name {

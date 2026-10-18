@@ -101,3 +101,12 @@ class TermuxFlowTest {
         assertFalse(TermuxFlow.INSTALL.contains("—"))
     }
 }
+
+class TermuxClaudeInstallTest {
+    @Test fun installLineWithClaude() {
+        org.junit.Assert.assertEquals(TermuxFlow.INSTALL, TermuxFlow.install(TermuxFlow.INSTALL, claude = false))
+        org.junit.Assert.assertTrue(TermuxFlow.install(TermuxFlow.INSTALL, claude = true).endsWith("| sh -s -- --app --claude"))
+        org.junit.Assert.assertTrue(TermuxFlow.claudeSupported(arrayOf("arm64-v8a", "armeabi-v7a")))
+        org.junit.Assert.assertFalse("x86_64 hits seccomp on access", TermuxFlow.claudeSupported(arrayOf("x86_64", "arm64-v8a")))
+    }
+}

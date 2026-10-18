@@ -1382,7 +1382,9 @@ class App {
   }
 
   // Add (or fix) a machine: check the SSH connection with live output,
-  // offer to install gecko there, and only then add it.
+  // offer to install gecko there, and only then add it. Or paste another
+  // Gecko's link (Gecko in Termux, one on the LAN or a tailnet): checked
+  // the same way, then added; its token stays in the daemon's config.
   addHost(prefill = {}) {
     const guessName = (t) => {
       const host = t.replace(/^ssh:\/\//, '').replace(/^.*@/, '').replace(/^\[|\]?(:\d+)?\/?$/g, '').toLowerCase();
@@ -1391,10 +1393,16 @@ class App {
     const m = $('#modal');
     m.innerHTML = `<div class="card setup" role="dialog" aria-modal="true" aria-labelledby="setup-title">
       <h2 id="setup-title">${prefill.name ? `Fix ${esc(prefill.name)}` : 'Add a machine'}</h2>
-      <p class="sub">Gecko connects with your SSH keys and runs its own background service there, so sessions keep running when you disconnect.</p>
-      <label>SSH destination<input name="target" placeholder="me@devbox or me@devbox:2222" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+      <div class="setup-mode" role="tablist" aria-label="How to reach it">
+        <button role="tab" data-mode="ssh">Over SSH</button>
+        <button role="tab" data-mode="link">Paste a Gecko link</button>
+      </div>
+      <p class="sub" data-for="ssh">Gecko connects with your SSH keys and runs its own background service there, so sessions keep running when you disconnect.</p>
+      <p class="sub" data-for="link">For a machine already running Gecko: on it, run <code>gecko url</code> (in Termux too) or open Open on another device, and paste the link with its token. Plain http works only on this device, your LAN or a tailnet; anywhere else needs https.</p>
+      <label data-for="ssh">SSH destination<input name="target" placeholder="me@devbox or me@devbox:2222" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+      <label data-for="link">Gecko link<input name="link" placeholder="http://192.168.1.20:7681/?token=..." autocomplete="off" autocapitalize="off" spellcheck="false"></label>
       <label>Name in Gecko<input name="name" placeholder="devbox" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
-      <details><summary>Advanced</summary>
+      <details data-for="ssh"><summary>Advanced</summary>
         <label>Path to gecko on that machine<input name="gecko" placeholder="found on PATH or in ~/.local/bin" autocomplete="off" spellcheck="false"></label>
       </details>
       <div class="setup-status" role="status"></div>
@@ -1411,7 +1419,8 @@ class App {
     </div>`;
     m.hidden = false;
     const $m = (sel) => m.querySelector(sel);
-    const f = { target: $m('[name=target]'), name: $m('[name=name]'), gecko: $m('[name=gecko]'), secret: $m('[name=secret]'), usekey: $m('[name=usekey]') };
+    const f = { target: $m('[name=target]'), link: $m('[name=link]'), name: $m('[name=name]'), gecko: $m('[name=gecko]'), secret: $m('[name=secret]'), usekey: $m('[name=usekey]') };
+    let mode = prefill.mode === 'link' ? 'link' : 'ssh';
     const auth = $m('.setup-auth');
     // The key is the one of the machine doing the ssh: in the Android app,
     // the phone's on This phone, the computer's when it's connected to one.
@@ -1439,10 +1448,20 @@ class App {
       status.innerHTML = md(msg);
       status.className = 'setup-status ' + kind;
       const busy = st === 'busy';
-      for (const el of [main, recheck, f.target, f.name, f.gecko, f.secret, f.usekey]) el.disabled = busy;
-      main.textContent = { idle: 'Check connection', busy: 'Working…', ok: 'Add machine', missing: 'Install Gecko there', failed: 'Retry', password: 'Log in', hostkey: 'Trust and connect' }[st];
+      for (const el of [main, recheck, f.target, f.link, f.name, f.gecko, f.secret, f.usekey, ...m.querySelectorAll('[data-mode]')]) el.disabled = busy;
+      main.textContent = { idle: mode === 'link' ? 'Check link' : 'Check connection', busy: 'Working…', ok: 'Add machine', missing: 'Install Gecko there', failed: 'Retry', password: 'Log in', hostkey: 'Trust and connect' }[st];
       if (st !== 'busy') auth.hidden = st !== 'password';
       recheck.hidden = !(st === 'ok' || st === 'missing');
+    };
+    const setMode = (md) => {
+      mode = md;
+      for (const b of m.querySelectorAll('[data-mode]')) {
+        b.setAttribute('aria-selected', String(b.dataset.mode === md));
+        b.classList.toggle('on', b.dataset.mode === md);
+      }
+      for (const el of m.querySelectorAll('[data-for]')) el.hidden = el.dataset.for !== md;
+      log.hidden = true;
+      if (state !== 'busy') setState('idle');
     };
     const close = () => {
       secret = '';
@@ -1459,7 +1478,21 @@ class App {
         log.scrollTop = log.scrollHeight;
       },
     };
+    const checkLink = async () => {
+      const link = f.link.value.trim();
+      if (!link) return setState('failed', 'Paste the link `gecko url` prints on that machine.', 'bad');
+      setState('busy', 'Connecting…');
+      try {
+        const r = await this.conn.request({ t: 'probehost', kind: 'link', secret: link });
+        if (!this.hostSetup) return;
+        if (!nameEdited && r.host) f.name.value = r.host;
+        setState('ok', `Connected to the Gecko on \`${r.host}\` (${prettyOS(r.os)}).${(r.version || 0) < PROTOCOL ? ' It runs an older Gecko; it works, and updating it there brings the newest features.' : ''}`, 'good');
+      } catch (e) {
+        if (this.hostSetup) setState('failed', e.message, 'bad');
+      }
+    };
     const check = async (keepLog = false) => {
+      if (mode === 'link') return checkLink();
       const target = f.target.value.trim();
       if (!target) return setState('failed', 'Enter the SSH destination, for example me@devbox.', 'bad');
       if (keepLog !== true) log.textContent = '';
@@ -1523,7 +1556,8 @@ class App {
       if (!name || /[\s/]/.test(name)) return setState('ok', 'Give the machine a name without spaces or slashes.', 'bad');
       setState('busy', 'Adding…');
       try {
-        await this.conn.request({ t: 'addhost', name, target: f.target.value.trim(), data: f.gecko.value.trim() });
+        if (mode === 'link') await this.conn.request({ t: 'addhost', kind: 'link', name, secret: f.link.value.trim() });
+        else await this.conn.request({ t: 'addhost', name, target: f.target.value.trim(), data: f.gecko.value.trim() });
         close();
         this.toast(`Added \`${name}\`. Connecting…`);
       } catch (e) {
@@ -1547,14 +1581,17 @@ class App {
       if (state !== 'busy') setState('idle');
     });
     f.gecko.addEventListener('input', () => state !== 'busy' && setState('idle'));
+    f.link.addEventListener('input', () => state !== 'busy' && setState('idle'));
+    for (const b of m.querySelectorAll('[data-mode]')) b.onclick = () => { setMode(b.dataset.mode); (mode === 'link' ? f.link : f.target).focus(); };
     f.name.addEventListener('input', () => { nameEdited = true; });
     m.onkeydown = (ev) => {
       if (ev.key === 'Escape') { ev.preventDefault(); close(); }
       if (ev.key === 'Enter' && ev.target.tagName === 'INPUT') { ev.preventDefault(); primary(); }
     };
-    setState('idle');
+    setMode(mode);
     if (prefill.error) setState('failed', prefill.error, 'bad');
-    (f.target.value ? main : f.target).focus();
+    if (mode === 'link') f.link.focus();
+    else (f.target.value ? main : f.target).focus();
     if (prefill.check) check();
   }
 
@@ -1829,7 +1866,7 @@ class App {
         case 'host-update': return this.updateHost(d.host);
         case 'host-fix': {
           const h = this.hosts.find((x) => x.name === d.host);
-          return this.addHost({ name: d.host, target: h?.target, error: h?.error });
+          return this.addHost({ name: d.host, target: h?.kind === 'link' ? '' : h?.target, mode: h?.kind === 'link' ? 'link' : 'ssh', error: h?.error });
         }
         case 'tmux':
           return this.clickOrDouble(`tmux:${d.host}/${d.name}`, () => this.openTmux(d.host, d.name), () => this.renameTmuxSession(d.host, d.name));
@@ -2096,11 +2133,11 @@ class App {
     if (hostName) {
       const h = this.hosts.find((x) => x.name === hostName);
       if (!h) return null;
-      const outdated = !h.local && h.status === 'connected' && (h.version || 0) < PROTOCOL;
+      const outdated = !h.local && h.kind !== 'link' && h.status === 'connected' && (h.version || 0) < PROTOCOL;
       return [
         { label: `New tab on ${h.name}`, disabled: h.status !== 'connected', run: () => this.newTab({ host: h.name, cwd: '' }) },
-        !h.local && h.kind !== 'cloud' && h.status === 'error' && { label: 'Fix connection…', run: () => this.addHost({ name: h.name, target: h.target, error: h.error }) },
-        !h.local && h.kind !== 'cloud' && h.status === 'connected' && { label: outdated ? 'Update Gecko' : 'Reinstall Gecko', hint: 'Its tabs keep running', run: () => this.updateHost(h.name) },
+        !h.local && h.kind !== 'cloud' && h.status === 'error' && { label: 'Fix connection…', run: () => this.addHost({ name: h.name, target: h.kind === 'link' ? '' : h.target, mode: h.kind === 'link' ? 'link' : 'ssh', error: h.error }) },
+        !h.local && h.kind !== 'cloud' && h.kind !== 'link' && h.status === 'connected' && { label: outdated ? 'Update Gecko' : 'Reinstall Gecko', hint: 'Its tabs keep running', run: () => this.updateHost(h.name) },
         this.cloud && { label: 'Devices…', hint: 'Your account', run: () => this.openDevices() },
         !h.local && sep,
         h.kind === 'cloud'
@@ -2924,8 +2961,9 @@ class App {
       else add(`Make ${cur.remote} a Gecko machine…`, 'Install Gecko there; its tabs survive disconnects and show up here', () => this.addHost({ target: cur.remote, check: true }), 'Command', undefined, 'ssh install remote host server adopt');
     }
     add('Add a machine…', 'Run sessions on another computer over SSH', () => this.addHost(), 'Command', undefined, 'ssh host server remote connect computer');
+    add('Add a machine by its Gecko link…', 'Another Gecko on this device, the LAN or a tailnet, such as Gecko in Termux', () => this.addHost({ mode: 'link' }), 'Command', undefined, 'link url token termux paste host machine');
     for (const h of this.hosts) {
-      if (!h.local && h.kind !== 'cloud' && h.status === 'connected') add(`Update Gecko on ${h.name}`, (h.version || 0) < PROTOCOL ? 'It runs an older version; its tabs keep running' : 'Reinstall this version there; its tabs keep running', () => this.updateHost(h.name), 'Command', undefined, 'upgrade install remote machine host');
+      if (!h.local && h.kind !== 'cloud' && h.kind !== 'link' && h.status === 'connected') add(`Update Gecko on ${h.name}`, (h.version || 0) < PROTOCOL ? 'It runs an older version; its tabs keep running' : 'Reinstall this version there; its tabs keep running', () => this.updateHost(h.name), 'Command', undefined, 'upgrade install remote machine host');
     }
     for (const h of this.hosts) if (!h.local && h.kind !== 'cloud') add(`Remove machine ${h.name}`, 'Its sessions keep running there', () => this.removeHost(h.name), 'Command');
     if (this.cloud) {
@@ -3536,7 +3574,8 @@ class App {
       const tm = this.tmux.filter((t) => t.host === h.name);
       const cloud = h.kind === 'cloud';
       const broken = !h.local && !cloud && h.status === 'error';
-      const outdated = !h.local && h.status === 'connected' && (h.version || 0) < PROTOCOL;
+      // A machine reached at its link updates on its own side (gecko upgrade there).
+      const outdated = !h.local && h.kind !== 'link' && h.status === 'connected' && (h.version || 0) < PROTOCOL;
       const where = signedIn ? this.hostWhere(h) : h.local ? 'this machine' : h.status === 'connected' ? h.os || '' : h.status;
       let counts = '';
       if (signedIn) {
@@ -3571,7 +3610,7 @@ class App {
       for (const h of this.sortedHosts()) parts.push(hostRow(h));
     } else {
       // Signed in: grouped by how Gecko reaches each machine.
-      const groups = [['Local', (h) => h.local], ['SSH', (h) => !h.local && h.kind !== 'cloud'], ['Cloud', (h) => h.kind === 'cloud']];
+      const groups = [['Local', (h) => h.local], ['SSH', (h) => !h.local && h.kind !== 'cloud' && h.kind !== 'link'], ['Gecko links', (h) => h.kind === 'link'], ['Cloud', (h) => h.kind === 'cloud']];
       for (const [title, test] of groups) {
         const hs = this.sortedHosts().filter(test);
         if (!hs.length && title !== 'Cloud') continue;
