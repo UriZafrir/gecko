@@ -1,3 +1,12 @@
+gecko (0.2.1-1) unstable; urgency=medium
+
+  * New upstream release 0.2.1: Termux is one of This phone's machines in
+    the Android app, machines can be added by their Gecko link, Claude Code
+    in Termux on arm64, share links pick the right address, and the Android
+    app's Termux setup no longer writes the link token to logcat.
+
+ -- Gecko contributors <gecko@users.noreply.github.com>  Sun, 18 Oct 2026 12:00:00 +0000
+
 gecko (0.2.0-1) unstable; urgency=medium
 
   * New upstream release 0.2.0: Android and iOS apps, desktop apps, Linux
