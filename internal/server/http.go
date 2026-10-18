@@ -210,7 +210,8 @@ func (s *HTTP) info(w http.ResponseWriter, r *http.Request) {
 }
 
 // ShareURLs lists URLs (with token) other devices can open, e.g. a phone on
-// the same network or tailnet. Empty when listening on loopback only.
+// the same network or tailnet: Tailscale first, then the LAN, never a mobile
+// data address (see shareHosts). Empty when listening on loopback only.
 func ShareURLs(listen, token string) []string {
 	host, port, err := net.SplitHostPort(listen)
 	if err != nil {
@@ -222,12 +223,8 @@ func ShareURLs(listen, token string) []string {
 	var hosts []string
 	if host != "" && host != "0.0.0.0" && host != "::" {
 		hosts = []string{host}
-	} else if addrs, err := net.InterfaceAddrs(); err == nil {
-		for _, a := range addrs {
-			if n, ok := a.(*net.IPNet); ok && !n.IP.IsLoopback() && n.IP.To4() != nil {
-				hosts = append(hosts, n.IP.String())
-			}
-		}
+	} else {
+		hosts = shareHosts(interfaceAddrs())
 	}
 	var out []string
 	for _, h := range hosts {

@@ -65,12 +65,14 @@ object ShareUi {
     fun showLinks(a: Activity, known: LocalGecko.Share? = null) {
         Thread {
             val st = known ?: LocalGecko.shareState(a)
-            val links = st.links(LocalGecko.lanAddresses())
-            a.runOnUiThread { linksDialog(a, st, links) }
+            val addrs = LocalGecko.shareAddresses(a)
+            val links = st.links(addrs.map { it.ip })
+            val kinds = addrs.map { a.getString(if (it.kind == ShareAddresses.Kind.Tunnel) R.string.share_via_tunnel else R.string.share_via_lan) }
+            a.runOnUiThread { linksDialog(a, st, links, kinds) }
         }.start()
     }
 
-    private fun linksDialog(a: Activity, st: LocalGecko.Share, links: List<String>) {
+    private fun linksDialog(a: Activity, st: LocalGecko.Share, links: List<String>, kinds: List<String>) {
         val dp = { n: Int -> TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, n.toFloat(), a.resources.displayMetrics).toInt() }
         val col = LinearLayout(a).apply {
             orientation = LinearLayout.VERTICAL
@@ -87,7 +89,8 @@ object ShareUi {
             links.isEmpty() -> col.addView(text(a.getString(R.string.share_no_network)))
             else -> {
                 col.addView(text(a.getString(R.string.share_scan)))
-                for (link in links) {
+                for ((i, link) in links.withIndex()) {
+                    kinds.getOrNull(i)?.let { k -> col.addView(text(k, 15f).apply { setPadding(0, dp(16), 0, 0) }) }
                     col.addView(ImageView(a).apply {
                         setImageBitmap(qr(link, dp(220)))
                         contentDescription = link
