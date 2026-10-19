@@ -23,6 +23,14 @@ final class DevicesTour: GeckoUITestCase {
 
         launch(open: link, name: "studio-mac")
         allowNotificationsIfAsked()
+        // The first page on a just-booted Simulator has sometimes never
+        // loaded ("ready": 0): launch once more before failing.
+        if !waitFor(40, { ($0["online"] as? String) == "online" && ($0["sync"] as? Bool) == true }) {
+            XCTContext.runActivity(named: "the page didn't load; launching again") { _ in
+                app.terminate()
+                launch(open: link, name: "studio-mac")
+            }
+        }
         var p = waitOnline()
         beat(1.5)
         shot("02-terminal")
@@ -43,6 +51,14 @@ final class DevicesTour: GeckoUITestCase {
         if !waitFor(10, ran) {
             // Seen once on a just-booted Simulator: the line typed, its Return lost.
             XCTContext.runActivity(named: "the Return was lost; pressing it again") { _ in app.typeText("\n") }
+        }
+        if !waitFor(10, ran) {
+            // ...or the whole line (the keyboard wasn't up yet): type it again.
+            XCTContext.runActivity(named: "the line was lost; typing it again") { _ in
+                tapTerminal()
+                beat()
+                app.typeText("echo tour-$((40+2))\n")
+            }
         }
         p = waitProbe("the command ran", timeout: 15, ran)
         let id = p["active"] as? String ?? ""
