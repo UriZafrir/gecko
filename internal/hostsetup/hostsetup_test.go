@@ -3,6 +3,7 @@ package hostsetup
 import (
 	"archive/zip"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -94,5 +95,59 @@ func TestFromAPK(t *testing.T) {
 	}
 	if _, err := fromAPK(apk, "riscv64", dir); err == nil {
 		t.Error("riscv64")
+	}
+}
+
+// installDir runs on the machine: it picks the gecko `gecko bridge` runs
+// there when this login may replace it, else ~/.local/bin, and lists the
+// other geckos it leaves.
+func TestInstallDir(t *testing.T) {
+	pick := func(home string) (dir string, others []string) {
+		t.Helper()
+		cmd := exec.Command("sh", "-c", installDir)
+		cmd.Env = []string{"HOME=" + home, "PATH=/usr/bin:/bin"}
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("%v: %s", err, out)
+		}
+		for _, l := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+			if v, ok := strings.CutPrefix(l, "GECKO_DIR: "); ok {
+				dir = v
+			} else if v, ok := strings.CutPrefix(l, "GECKO_OTHER: "); ok {
+				others = append(others, v)
+			}
+		}
+		return
+	}
+	put := func(p string, mode os.FileMode) {
+		os.MkdirAll(filepath.Dir(p), 0o755)
+		if err := os.WriteFile(p, []byte("#!/bin/sh\necho gecko v1\n"), mode); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Nothing there yet: ~/.local/bin, made.
+	home := t.TempDir()
+	if dir, _ := pick(home); dir != home+"/.local/bin" {
+		t.Fatalf("no gecko: %q", dir)
+	}
+	if st, err := os.Stat(home + "/.local/bin"); err != nil || !st.IsDir() {
+		t.Fatal("~/.local/bin not made")
+	}
+	// One in ~/go/bin (go install): that one is replaced, not shadowed.
+	home = t.TempDir()
+	put(home+"/go/bin/gecko", 0o755)
+	if dir, others := pick(home); dir != home+"/go/bin" || len(others) != 0 {
+		t.Fatalf("gecko in ~/go/bin: %q %q", dir, others)
+	}
+	// One in a folder this login can't write: ~/.local/bin, and the other
+	// one is named.
+	home = t.TempDir()
+	put(home+"/bin/gecko", 0o755)
+	os.Chmod(home+"/bin", 0o555)
+	defer os.Chmod(home+"/bin", 0o755)
+	if os.Getuid() != 0 {
+		if dir, others := pick(home); dir != home+"/.local/bin" || len(others) != 1 || others[0] != home+"/bin/gecko" {
+			t.Fatalf("gecko in a read-only folder: %q %q", dir, others)
+		}
 	}
 }

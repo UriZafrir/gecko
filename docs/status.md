@@ -32,6 +32,12 @@ New in 0.3.0:
   machine (see [The anchor](anchor.md)). The server now enforces scope: relay
   peers only get that machine's own tabs, whatever they ask for. v9 machines
   still work with a v10 anchor.
+- **One gecko per machine:** `make install` and Update Gecko restart the
+  service with the binary they just installed, wherever the old one ran
+  from, and other copies become links to it (see
+  [Where gecko lives](install.md#where-gecko-lives)). A restart that can't
+  work (a binary still being copied) now fails up front with the reason and
+  leaves the machines connected, instead of "write |1: file already closed".
 - **Web app on phones:** installable, with Settings on the tab bar, pinch for
   text size, and tabs that switch on every tap. `make test-pwa` runs it in
   WebKit and Chromium, and CI also runs Safari in the iOS Simulator.

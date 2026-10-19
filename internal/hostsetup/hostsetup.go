@@ -24,6 +24,7 @@ import (
 type Result struct {
 	OS, Arch string // gecko naming: linux/amd64, darwin/arm64, ...
 	Gecko    string // `gecko version` output; "" when Missing
+	Path     string // where that gecko is (the one `gecko bridge` runs there)
 	Missing  bool   // reachable, but gecko isn't installed
 }
 
@@ -85,7 +86,7 @@ func withoutBatch(opts []string) []string {
 // shQuote quotes s for a POSIX shell.
 func shQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
-const remotePath = `PATH="$HOME/.local/bin:$HOME/bin:$HOME/go/bin:/usr/local/bin:/opt/homebrew/bin:$PATH"`
+var remotePath = config.RemotePath
 
 // run executes cmd, sending each output line to log, and returns the last
 // line of output (useful as an error message).
@@ -147,7 +148,7 @@ func ProbeWith(ctx context.Context, target string, o Options, log func(string)) 
 		// Like ssh-copy-id, over this same login.
 		keyStep = `umask 077; mkdir -p ~/.ssh && touch ~/.ssh/authorized_keys && { grep -qxF ` + shQuote(pub) + ` ~/.ssh/authorized_keys || printf '%s\n' ` + shQuote(pub) + ` >> ~/.ssh/authorized_keys; } && echo GECKO_KEY_ADDED; `
 	}
-	script := keyStep + `uname -sm; ` + remotePath + `; if command -v ` + gecko + ` >/dev/null 2>&1; then echo "GECKO: $(` + gecko + ` version)"; else echo GECKO_MISSING; fi`
+	script := keyStep + `uname -sm; ` + remotePath + `; if command -v ` + gecko + ` >/dev/null 2>&1; then echo "GECKO_PATH: $(command -v ` + gecko + `)"; echo "GECKO: $(` + gecko + ` version)"; else echo GECKO_MISSING; fi`
 	var res Result
 	var all []string
 	last, err := run(sshCmdWith(ctx, target, "sh -c "+shQuote(script), o), func(line string) {
@@ -155,6 +156,8 @@ func ProbeWith(ctx context.Context, target string, o Options, log func(string)) 
 		switch {
 		case line == "GECKO_KEY_ADDED":
 			log("added this device's key to ~/.ssh/authorized_keys there")
+		case strings.HasPrefix(line, "GECKO_PATH: "):
+			res.Path = strings.TrimPrefix(line, "GECKO_PATH: ")
 		case strings.HasPrefix(line, "GECKO: "):
 			res.Gecko = strings.TrimPrefix(line, "GECKO: ")
 			log("found " + res.Gecko)
@@ -218,22 +221,48 @@ func Binary(goos, goarch string) (string, error) {
 	return "", fmt.Errorf("no gecko build for %s/%s here; run `make dist` in the gecko repo", goos, goarch)
 }
 
-// Install copies a matching gecko to ~/.local/bin/gecko on target.
-func Install(ctx context.Context, target string, res Result, log func(string)) error {
+// Install copies a matching gecko to target and returns where it went
+// there: over the gecko `gecko bridge` runs there when this login may
+// replace it, else ~/.local/bin/gecko, which comes first for the bridge.
+// So a machine keeps one gecko, the one its connections run.
+func Install(ctx context.Context, target string, res Result, log func(string)) (string, error) {
 	return InstallWith(ctx, target, res, Options{}, log)
 }
 
+// installDir picks the folder to install into, on the machine (see
+// Install), and prints it: the folder of the gecko the bridge runs if it is
+// a file this login may replace, else ~/.local/bin (made if needed). Any
+// other gecko it would leave there is listed after it.
+var installDir = remotePath + `; d="$HOME/.local/bin"; p=$(command -v gecko 2>/dev/null); ` +
+	`case "$p" in /*) if [ -f "$p" ] && [ ! -L "$p" ] && [ -w "${p%/*}" ] && [ -w "$p" ]; then d=${p%/*}; fi ;; esac; ` +
+	`mkdir -p "$d" && echo "GECKO_DIR: $d" && for x in ` + strings.Join(config.BinDirs, " ") + `; do ` +
+	`[ -f "$x/gecko" ] && [ "$x" != "$d" ] && echo "GECKO_OTHER: $x/gecko"; done; true`
+
 // InstallWith is Install, logging in with o.Secret if there is one.
-func InstallWith(ctx context.Context, target string, res Result, o Options, log func(string)) error {
+func InstallWith(ctx context.Context, target string, res Result, o Options, log func(string)) (string, error) {
 	defer forgetSecret(o.Secret)
 	bin, err := Binary(res.OS, res.Arch)
 	if err != nil {
-		return err
+		return "", err
 	}
 	dest, port := config.SplitTarget(target)
-	log("$ ssh " + dest + " mkdir -p ~/.local/bin")
-	if last, err := run(sshCmdWith(ctx, target, "mkdir -p ~/.local/bin", o), log); err != nil {
-		return errors.New(Explain(last, ""))
+	dir := ""
+	var others []string
+	last, err := run(sshCmdWith(ctx, target, "sh -c "+shQuote(installDir), o), func(line string) {
+		switch {
+		case strings.HasPrefix(line, "GECKO_DIR: "):
+			dir = strings.TrimPrefix(line, "GECKO_DIR: ")
+		case strings.HasPrefix(line, "GECKO_OTHER: "):
+			others = append(others, strings.TrimPrefix(line, "GECKO_OTHER: "))
+		default:
+			log(line)
+		}
+	})
+	if err != nil {
+		return "", errors.New(Explain(last, ""))
+	}
+	if !strings.HasPrefix(dir, "/") {
+		return "", errors.New("couldn't find a folder to install gecko into there")
 	}
 	user, host := "", dest
 	if i := strings.LastIndexByte(dest, '@'); i >= 0 {
@@ -250,20 +279,30 @@ func InstallWith(ctx context.Context, target string, res Result, o Options, log 
 	if port != "" {
 		args = append(args, "-P", port)
 	}
-	args = append(args, bin, user+host+":.local/bin/gecko.new")
-	log("$ scp gecko-" + res.OS + "-" + res.Arch + " " + dest + ":~/.local/bin/gecko")
+	// Copied under another name and renamed over the old one: the gecko
+	// running there keeps its file, so this never fails with "text file
+	// busy", and nothing there ever starts a half-copied binary.
+	exe, tmp := dir+"/gecko", dir+"/.gecko.new"
+	args = append(args, bin, user+host+":"+tmp)
+	log("$ scp gecko-" + res.OS + "-" + res.Arch + " " + dest + ":" + exe)
 	scp := execx.CommandContext(ctx, "scp", args...)
 	if o.Secret != "" {
 		scp.Env = append(os.Environ(), askpassEnv(o.Secret)...)
 	}
 	if last, err := run(scp, log); err != nil {
-		return errors.New(Explain(last, ""))
+		return "", errors.New(Explain(last, ""))
 	}
-	if last, err := run(sshCmdWith(ctx, target, "chmod +x ~/.local/bin/gecko.new && mv ~/.local/bin/gecko.new ~/.local/bin/gecko", o), log); err != nil {
-		return errors.New(Explain(last, ""))
+	// And it must run there (a noexec home, another CPU) before it
+	// replaces anything.
+	finish := "chmod 755 " + shQuote(tmp) + " && { " + shQuote(tmp) + " version >/dev/null || { rm -f " + shQuote(tmp) + "; echo 'the copied gecko does not run there'; exit 1; }; } && mv -f " + shQuote(tmp) + " " + shQuote(exe)
+	if last, err := run(sshCmdWith(ctx, target, "sh -c "+shQuote(finish), o), log); err != nil {
+		return "", errors.New(Explain(last, ""))
 	}
-	log("installed")
-	return nil
+	log("installed " + exe)
+	for _, x := range others {
+		log("note: " + x + " is another gecko there; " + exe + " comes first for Gecko's connections, but a shell may still run the other one. Remove it, or run `" + exe + " upgrade --installed` there")
+	}
+	return exe, nil
 }
 
 // Explain turns common ssh / shell failures into what to do about them.

@@ -169,18 +169,24 @@ func Run(cfg *config.Config, listen string) error {
 	defer share.stop()
 	h.Share = share.set
 
-	h.Upgrade = func() error {
-		// Close QUIC sessions properly first: unlike TCP, nothing tells a
-		// browser that a UDP socket went away with the old process.
-		web.CloseWT()
-		var err error
-		if extra != nil {
-			err = upgrade(m, h, extra, hl) // the one at the current path
-		} else {
-			err = upgrade(m, h, ln, hl)
+	h.Upgrade = func(want string) (func() error, error) {
+		exe, err := upgradeTarget(want)
+		if err != nil {
+			return nil, err
 		}
-		startWT() // still here, so the upgrade failed
-		return err
+		return func() error {
+			// Close QUIC sessions properly first: unlike TCP, nothing tells a
+			// browser that a UDP socket went away with the old process.
+			web.CloseWT()
+			var err error
+			if extra != nil {
+				err = upgrade(exe, m, h, extra, hl) // the one at the current path
+			} else {
+				err = upgrade(exe, m, h, ln, hl)
+			}
+			startWT() // still here, so the upgrade failed
+			return err
+		}, nil
 	}
 
 	sig := make(chan os.Signal, 1)

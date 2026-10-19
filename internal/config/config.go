@@ -240,6 +240,16 @@ func Token() (string, error) {
 	return t, os.WriteFile(p, []byte(t+"\n"), 0o600)
 }
 
+// BinDirs are where Gecko looks for gecko on a machine it reaches over SSH,
+// first to last, before the login's own PATH: `gecko bridge` runs the first
+// one found, and so do the checks and installs of the Add machine dialog.
+// `make install` (~/.local/bin by default) and an install from another
+// machine (~/.local/bin) put it in the first of them.
+var BinDirs = []string{"$HOME/.local/bin", "$HOME/bin", "$HOME/go/bin", "/usr/local/bin", "/opt/homebrew/bin"}
+
+// RemotePath is the shell assignment that gives PATH that order.
+var RemotePath = `PATH="` + strings.Join(BinDirs, ":") + `:$PATH"`
+
 // BridgeCommand returns the argv that connects to host's daemon.
 func (h Host) BridgeCommand() []string {
 	if len(h.Command) > 0 {
@@ -249,7 +259,7 @@ func (h Host) BridgeCommand() []string {
 	if gecko == "" {
 		gecko = "gecko"
 	}
-	remote := `sh -c 'PATH="$HOME/.local/bin:$HOME/bin:$HOME/go/bin:/usr/local/bin:/opt/homebrew/bin:$PATH"; exec ` + gecko + ` bridge'`
+	remote := `sh -c '` + RemotePath + `; exec ` + gecko + ` bridge'`
 	dest, port := SplitTarget(h.SSH)
 	argv := []string{"ssh", "-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
 		// Nobody is there to answer "trust this host?", so trust a new host
