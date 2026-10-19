@@ -3,7 +3,7 @@
 [Docs](README.md)
 
 ```sh
-gecko host install devbox      # copies the right binary to devbox:~/.local/bin
+gecko host install devbox      # copies the right binary to devbox (see below)
 gecko host add devbox me@devbox
 ```
 
@@ -34,6 +34,17 @@ runs ssh with `BatchMode` (no password prompts) and
 remote daemon starts on demand, detached from the SSH session, and keeps
 running. On Linux with lingering enabled it runs as a transient systemd user
 unit, so logind won't clean it up at logout.
+
+Installing and **Update Gecko** replace the gecko that `gecko bridge` runs
+there when the login may write it, and otherwise copy it to
+`~/.local/bin/gecko`, which the bridge looks in first (see
+[Where gecko lives](install.md#where-gecko-lives)). The copy goes under a
+temporary name and is renamed over the old file once it runs there, so the
+gecko running there is never overwritten in place. Update Gecko then
+restarts the service there with that binary, keeping its tabs, and checks
+the build that comes back; a Gecko there from before 0.3 can only restart
+into the binary it was started from, and the dialog says what to run there
+once.
 
 Any command that runs `gecko bridge` on the other side works as a transport,
 for example a container:

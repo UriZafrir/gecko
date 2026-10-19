@@ -55,9 +55,11 @@ type subscriber struct {
 
 // Hub is the federation point.
 type Hub struct {
-	// Upgrade, if set, replaces the daemon with the binary on disk while
-	// keeping sessions (see daemon.upgrade). It only returns on failure.
-	Upgrade func() error
+	// Upgrade, if set, checks that the daemon can restart in place with
+	// the gecko binary at exe ("" for the one it runs) and returns what
+	// does it, keeping sessions (see daemon.upgrade). That only returns on
+	// failure.
+	Upgrade func(exe string) (func() error, error)
 	// Share, if set, turns the listener for other devices on or off (on
 	// with addr), or reports it (action ""). See daemon.sharer.
 	Share func(action, addr string) (proto.ShareState, error)
@@ -473,22 +475,45 @@ func (h *Hub) UpdateHost(ctx context.Context, name string, log func(string)) err
 	if err != nil {
 		return err
 	}
-	if err := hostsetup.Install(ctx, target, res, log); err != nil {
+	exe, err := hostsetup.Install(ctx, target, res, log)
+	if err != nil {
 		return err
 	}
-	log("restarting Gecko on " + name + " (its tabs keep running)")
-	if err := r.RestartInPlace(); err != nil {
-		return err
+	_, before := r.Build()
+	log("restarting Gecko on " + name + " with " + exe + " (its tabs keep running)")
+	if err := r.RestartInPlace(exe); err != nil {
+		return fmt.Errorf("installed %s on %s, but it didn't restart: %v", exe, name, err)
 	}
-	// The link drops and comes back with the new version.
-	for i := 0; i < 100; i++ {
+	// The link drops and comes back from the restarted gecko.
+	dropped := false
+	for i := 0; i < 150; i++ {
 		time.Sleep(200 * time.Millisecond)
-		if r.Version() == proto.Version && r.Info().Status == "connected" {
-			log("updated: " + name + " now runs this Gecko")
-			return nil
+		build, start := r.Build()
+		if r.Info().Status != "connected" {
+			dropped = true
+			continue
 		}
+		if before != "" && start == before {
+			if dropped {
+				return errors.New("Gecko on " + name + " couldn't restart; see its log there (~/.gecko-terminal/state/daemon.log)")
+			}
+			continue
+		}
+		if before == "" && !dropped {
+			continue
+		}
+		if build == "" {
+			// A Gecko before 0.3 restarts only into the binary it was
+			// started from, and that wasn't the one just installed.
+			return fmt.Errorf("%s restarted, but still runs the older Gecko it was started from, not the one installed at %s. On %s run once: gecko stop && %s (this closes its tabs; later updates keep them)", name, exe, name, exe)
+		}
+		if r.Version() < proto.Version || Build != "" && build != Build {
+			return fmt.Errorf("%s restarted, but runs Gecko %s, not %s from %s. On %s run: %s upgrade", name, build, Build, exe, name, exe)
+		}
+		log("updated: " + name + " now runs this Gecko")
+		return nil
 	}
-	return errors.New(name + " didn't come back after restarting; check gecko's log there (~/.local/state/gecko/daemon.log)")
+	return errors.New(name + " didn't come back after restarting; check gecko's log there (~/.gecko-terminal/state/daemon.log)")
 }
 
 // AddHost adds (or replaces) a remote host and saves the config.
@@ -675,6 +700,38 @@ func (h *Hub) Children() []int {
 		}
 	}
 	return pids
+}
+
+// Build is this gecko's build ("v0.2.0"), set by main, to tell whether a
+// machine runs the same one.
+var Build string
+
+// Suspend takes every remote link down while this daemon restarts in
+// place, and keeps them down: the new process connects again. Resume
+// brings them back when the restart failed.
+func (h *Hub) Suspend() {
+	for _, r := range h.remotes() {
+		r.suspend()
+	}
+}
+
+// Resume reconnects the links Suspend took down.
+func (h *Hub) Resume() {
+	for _, r := range h.remotes() {
+		r.resume()
+	}
+}
+
+func (h *Hub) remotes() []*Remote {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	var out []*Remote
+	for _, b := range h.backends {
+		if r, ok := b.(*Remote); ok {
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 // Close shuts down remote connections.
