@@ -24,6 +24,22 @@ Apps and packages, each built and smoke-tested in CI:
 - **Termux:** Gecko runs in [Termux](android.md#termux) on Android, and the
   Android app opens it like any other machine.
 
+New in 0.3.1:
+
+- **Make anchor (protocol 11):** any machine in the sidebar can become the
+  anchor, and the icon always marks it (see
+  [Make anchor](anchor.md#make-anchor-protocol-11)). The choice is remembered
+  across launches, with a **Back to** list, anchoring through the relay is on
+  by default, and the window keeps its own settings after a switch. Upgrade
+  the anchor or door and the machines: a v10 machine says "Update Gecko on X
+  to make it the anchor".
+- **One gecko per machine:** `make install` and Update Gecko restart the
+  service with the binary they just installed, wherever the old one ran
+  from, and other copies become links to it (see
+  [Where gecko lives](install.md#where-gecko-lives)). A restart that can't
+  work (a binary still being copied) now fails up front with the reason and
+  leaves the machines connected, instead of "write |1: file already closed".
+
 New in 0.3.0:
 
 - **Transparency:** background opacity shows the desktop on macOS and
@@ -32,12 +48,6 @@ New in 0.3.0:
   machine (see [The anchor](anchor.md)). The server now enforces scope: relay
   peers only get that machine's own tabs, whatever they ask for. v9 machines
   still work with a v10 anchor.
-- **One gecko per machine:** `make install` and Update Gecko restart the
-  service with the binary they just installed, wherever the old one ran
-  from, and other copies become links to it (see
-  [Where gecko lives](install.md#where-gecko-lives)). A restart that can't
-  work (a binary still being copied) now fails up front with the reason and
-  leaves the machines connected, instead of "write |1: file already closed".
 - **Web app on phones:** installable, with Settings on the tab bar, pinch for
   text size, and tabs that switch on every tap. `make test-pwa` runs it in
   WebKit and Chromium, and CI also runs Safari in the iOS Simulator.
