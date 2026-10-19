@@ -224,7 +224,7 @@ func (c *client) handle(m *proto.Msg) {
 		if m.Scope == hub.ScopeLocal {
 			c.scope = hub.ScopeLocal
 		}
-		reply := &proto.Msg{T: proto.THello, Rid: m.Rid, Host: h.Name(), Version: proto.Version, OS: runtime.GOOS, Text: startID, Machine: h.MachineID(), Scope: c.scope, Node: h.Node()}
+		reply := &proto.Msg{T: proto.THello, Rid: m.Rid, Host: h.Name(), Version: proto.Version, OS: runtime.GOOS, Text: startID, Build: Build.Version, Machine: h.MachineID(), Scope: c.scope, Node: h.Node()}
 		if c.anchorErr != "" {
 			// It asked for another anchor and couldn't get there: say why,
 			// and serve it here.
@@ -412,10 +412,18 @@ func (c *client) handle(m *proto.Msg) {
 			c.reply(m, nil, errors.New("this Gecko service can't restart itself in place"))
 			return
 		}
+		// The binary is checked first, so a restart that can't work (a
+		// file still being copied, another system's build) is reported
+		// here and changes nothing.
+		run, err := h.Upgrade(m.Data)
+		if err != nil {
+			c.reply(m, nil, err)
+			return
+		}
 		c.reply(m, nil, nil)
 		go func() {
 			time.Sleep(200 * time.Millisecond) // let the reply go out first
-			if err := h.Upgrade(); err != nil {
+			if err := run(); err != nil {
 				log.Printf("upgrade failed: %v", err)
 			}
 		}()
@@ -482,7 +490,8 @@ func (c *client) handle(m *proto.Msg) {
 		goos, goarch, _ := strings.Cut(m.OS, "/")
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 		defer cancel()
-		c.reply(m, nil, hostsetup.InstallWith(ctx, m.Target, hostsetup.Result{OS: goos, Arch: goarch}, hostsetup.Options{Secret: m.Secret}, log))
+		_, err := hostsetup.InstallWith(ctx, m.Target, hostsetup.Result{OS: goos, Arch: goarch}, hostsetup.Options{Secret: m.Secret}, log)
+		c.reply(m, nil, err)
 	case proto.TTrustHost:
 		if c.scope == hub.ScopeLocal {
 			c.reply(m, nil, errors.New("machines can only be set up from the Gecko you are using directly, not through another one"))

@@ -27,6 +27,7 @@ import (
 	"github.com/gecko-term/gecko/internal/daemon"
 	"github.com/gecko-term/gecko/internal/execx"
 	"github.com/gecko-term/gecko/internal/hostsetup"
+	"github.com/gecko-term/gecko/internal/hub"
 	"github.com/gecko-term/gecko/internal/proto"
 	"github.com/gecko-term/gecko/internal/server"
 	"github.com/gecko-term/gecko/internal/session"
@@ -83,6 +84,7 @@ Config: ` + "%s" + `
 func main() {
 	session.Version = version
 	server.Build = server.BuildInfo{Version: version, Commit: buildCommit, Time: buildTime}
+	hub.Build = version
 	// Linked as ssh, ssh-keygen or scp (the Android app does, since Android
 	// has none): behave as that program.
 	switch strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe") {
@@ -793,7 +795,8 @@ func hostInstall(name string) error {
 	if err != nil {
 		return err
 	}
-	return hostsetup.Install(ctx, target, res, log)
+	_, err = hostsetup.Install(ctx, target, res, log)
+	return err
 }
 
 // cmdBridge pipes stdio to the local daemon socket; remote hosts run this
@@ -815,12 +818,24 @@ func cmdBridge() error {
 	return nil
 }
 
-// cmdUpgrade restarts the daemon in place with the binary on disk. Shells,
-// agents and their output survive; clients reconnect on their own.
+// cmdUpgrade restarts the daemon in place with this binary, wherever the
+// running one was started from. Shells, agents and their output survive;
+// clients reconnect on their own.
 func cmdUpgrade(args []string) error {
 	fs := flag.NewFlagSet("upgrade", flag.ExitOnError)
 	ifRunning := fs.Bool("if-running", false, "do nothing when no daemon is running")
+	installed := fs.Bool("installed", false, "for installers (make install): also make every other gecko on this machine a link to this one, and restart the service if it runs")
 	_ = fs.Parse(args)
+	exe, err := config.Executable()
+	if err != nil {
+		return err
+	}
+	if *installed {
+		*ifRunning = true
+		tidyInstall(exe, os.Stdout)
+	} else {
+		warnOtherCopies(exe, os.Stderr)
+	}
 	c, err := client.Connect(false)
 	if err != nil {
 		if *ifRunning {
@@ -831,7 +846,7 @@ func cmdUpgrade(args []string) error {
 	}
 	before := c.Start
 	ss, _ := c.Sessions()
-	_, err = c.Call(&proto.Msg{T: proto.TUpgrade})
+	_, err = c.Call(&proto.Msg{T: proto.TUpgrade, Data: exe})
 	c.Close()
 	if err != nil {
 		if strings.Contains(err.Error(), "bad request") || strings.Contains(err.Error(), "doesn't know") {
@@ -846,13 +861,18 @@ func cmdUpgrade(args []string) error {
 		if err != nil {
 			continue
 		}
-		after, kept := c.Start, 0
+		after, build, kept := c.Start, c.Build, 0
 		if list, err := c.Sessions(); err == nil {
 			kept = len(list)
 		}
 		c.Close()
 		if after != before {
-			fmt.Printf("gecko service restarted with %s; kept %d of %d sessions\n", version, kept, len(ss))
+			if build != version {
+				// A service from before Gecko 0.3 restarts into the binary
+				// it was started from, whichever gecko asks.
+				return fmt.Errorf("the service restarted, but runs %s, not %s (%s): it was started from another gecko. Restart it once with `gecko stop && %s` (this closes its sessions)", orUnknown(build), version, exe, exe)
+			}
+			fmt.Printf("gecko service restarted with %s (%s); kept %d of %d sessions\n", version, exe, kept, len(ss))
 			return nil
 		}
 	}

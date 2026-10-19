@@ -18,6 +18,10 @@ func readHandoff() (*handoff, error) { return nil, nil }
 
 func reap([]int) {}
 
-func upgrade(*session.Manager, *hub.Hub, net.Listener, net.Listener) error {
-	return errors.New("restarting in place isn't supported on Windows yet; use gecko stop && gecko")
+var errNoUpgrade = errors.New("restarting in place isn't supported on Windows yet; use gecko stop && gecko")
+
+func upgradeTarget(string) (string, error) { return "", errNoUpgrade }
+
+func upgrade(string, *session.Manager, *hub.Hub, net.Listener, net.Listener) error {
+	return errNoUpgrade
 }

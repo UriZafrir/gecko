@@ -16,6 +16,7 @@ type Client struct {
 	Host    string
 	Version int    // protocol version of the daemon
 	Start   string // changes when the daemon restarts in place
+	Build   string // the daemon's build ("v0.2.0"), "" before Gecko 0.3
 	rid     int
 }
 
@@ -31,7 +32,7 @@ func Connect(start bool) (*Client, error) {
 		conn.Close()
 		return nil, err
 	}
-	c.Host, c.Version, c.Start = r.Host, r.Version, r.Text
+	c.Host, c.Version, c.Start, c.Build = r.Host, r.Version, r.Text, r.Build
 	return c, nil
 }
 

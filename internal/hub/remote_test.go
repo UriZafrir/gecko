@@ -3,7 +3,9 @@ package hub
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -40,6 +42,13 @@ func fakeBridge() {
 			_ = proto.WriteJSON(c, &proto.Msg{T: proto.THello, Host: "fake", Version: proto.Version, OS: "linux"})
 		case proto.TList:
 			_ = proto.WriteJSON(c, &proto.Msg{T: proto.TReply, Rid: m.Rid, OK: true})
+		case "fake-exit":
+			// Gone, like a bridge whose daemon restarted, but a helper of
+			// ssh's (a ProxyCommand, say) keeps the stderr pipe open.
+			sleep := exec.Command("sleep", "3")
+			sleep.Stderr = os.Stderr
+			_ = sleep.Start()
+			os.Exit(0)
 		case proto.TPing:
 			pings++
 			if limit > 0 && pings > limit {
@@ -99,3 +108,75 @@ func TestRemoteDeadLinkRedials(t *testing.T) {
 		t.Fatal("rtt kept after the link dropped")
 	}
 }
+
+// hubWithMachine is a hub with one SSH machine, "there", reached through
+// the fake bridge.
+func hubWithMachine(t *testing.T) (*Hub, *Remote) {
+	t.Setenv("GECKO_HOME", t.TempDir())
+	t.Setenv("GECKO_FAKE_BRIDGE", "1")
+	cfg := &config.Config{Name: "here", Hosts: []config.Host{{Name: "there", SSH: "there", Command: []string{os.Args[0], "-test.run=^$"}}}}
+	h := New(cfg, session.NewManager(session.Options{Host: "here", Shell: "/bin/sh", ScriptsDir: t.TempDir()}))
+	t.Cleanup(h.Close)
+	r := h.backend("there").(*Remote)
+	waitFor(t, "connected", 5*time.Second, func() bool { return r.Info().Status == "connected" })
+	return h, r
+}
+
+// A request on a machine whose link was closed (as an in-place restart
+// used to do with every link) must say the machine is offline, not write
+// to the closed pipe: "write |1: file already closed" is what Update
+// Gecko showed after a restart failed.
+func TestClosedRemoteSaysOffline(t *testing.T) {
+	_, r := hubWithMachine(t)
+	r.Close()
+	_, err := r.request(&proto.Msg{T: proto.TList})
+	if err == nil || strings.Contains(err.Error(), "file already closed") || !strings.Contains(err.Error(), "offline") {
+		t.Fatalf("request on a closed machine: %v", err)
+	}
+}
+
+// A restart in place takes the links down (Suspend). When it fails, the
+// daemon carries on, and so must its machines (Resume), instead of
+// staying "connected" over dead links.
+func TestFailedRestartKeepsMachines(t *testing.T) {
+	h, r := hubWithMachine(t)
+	h.Suspend()
+	if _, err := r.request(&proto.Msg{T: proto.TList}); err == nil || !strings.Contains(err.Error(), "offline") {
+		t.Fatalf("request while suspended: %v", err)
+	}
+	time.Sleep(1500 * time.Millisecond) // past the first redial
+	if st := r.Info().Status; st == "connected" {
+		t.Fatal("redialed while suspended")
+	}
+	h.Resume()
+	waitFor(t, "connected again", 5*time.Second, func() bool { return r.Info().Status == "connected" })
+	if _, err := r.request(&proto.Msg{T: proto.TList}); err != nil {
+		t.Fatalf("request after resume: %v", err)
+	}
+}
+
+// The link drops while ssh's stderr is still held open by a helper, so
+// reaping ssh takes a while: requests meanwhile must say the machine is
+// offline, not hit the closed stdin pipe.
+func TestDroppedLinkSaysOffline(t *testing.T) {
+	_, r := hubWithMachine(t)
+	if err := r.send(&proto.Msg{T: "fake-exit"}); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(500 * time.Millisecond)
+	_, err := r.request(&proto.Msg{T: proto.TList})
+	if err == nil || strings.Contains(err.Error(), "file already closed") {
+		t.Fatalf("request on a dropped link: %v", err)
+	}
+	// And the link writer itself never says "file already closed".
+	w := &linkWriter{w: nopCloser{}}
+	w.close()
+	if _, err := w.Write([]byte("x")); err != errLinkClosed {
+		t.Fatalf("write on a closed link: %v", err)
+	}
+}
+
+type nopCloser struct{}
+
+func (nopCloser) Write(p []byte) (int, error) { return len(p), nil }
+func (nopCloser) Close() error                { return nil }

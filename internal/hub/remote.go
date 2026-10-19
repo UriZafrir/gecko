@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -38,6 +39,8 @@ type Remote struct {
 	errMsg   string
 	os       string
 	version  int
+	build    string // the gecko build there (hello "build"), "" if it doesn't say
+	start    string // changes when the gecko there restarts in place (hello "text")
 	sessions map[string]proto.SessionInfo
 	tmux     []proto.TmuxSession
 	pending  map[int]chan *proto.Msg
@@ -45,8 +48,11 @@ type Remote struct {
 	subs     map[string]*rsub
 	subN     int
 	closed   bool
-	stop     chan struct{}
-	wake     chan struct{}
+	// suspended: the link is down on purpose while this daemon restarts
+	// in place (Hub.Suspend); Run waits instead of redialing.
+	suspended bool
+	stop      chan struct{}
+	wake      chan struct{}
 
 	rtt     time.Duration // last ping round trip; 0 = unknown
 	rttSent time.Duration // the value last broadcast in host state
@@ -124,10 +130,15 @@ func SSHDial(name string, argv []string) DialFunc {
 		cmd := execx.Command(argv[0], argv[1:]...)
 		stderr := &tailBuf{}
 		cmd.Stderr = stderr
-		in, err := cmd.StdinPipe()
+		// A helper ssh leaves behind (a ProxyCommand, a control master)
+		// may keep its stderr open: don't wait for it forever once ssh
+		// itself is gone.
+		cmd.WaitDelay = 2 * time.Second
+		pipe, err := cmd.StdinPipe()
 		if err != nil {
 			return nil, err
 		}
+		in := &linkWriter{w: pipe}
 		out, err := cmd.StdoutPipe()
 		if err != nil {
 			return nil, err
@@ -136,7 +147,7 @@ func SSHDial(name string, argv []string) DialFunc {
 			return nil, err
 		}
 		conn := proto.NewStreamConn(out, in, closerFunc(func() error {
-			in.Close()
+			in.close()
 			_ = cmd.Process.Kill()
 			return nil
 		}))
@@ -154,10 +165,46 @@ func SSHDial(name string, argv []string) DialFunc {
 	}
 }
 
+// linkWriter is the stdin of an ssh link. Once the link is closed, a write
+// says so, instead of os/exec's "write |1: file already closed".
+type linkWriter struct {
+	mu     sync.Mutex
+	w      io.WriteCloser
+	closed bool
+}
+
+// errLinkClosed is a write on a link that was closed (it dropped, or this
+// Gecko is restarting).
+var errLinkClosed = errors.New("connection closed")
+
+func (l *linkWriter) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	closed := l.closed
+	l.mu.Unlock()
+	if closed {
+		return 0, errLinkClosed
+	}
+	n, err := l.w.Write(p)
+	if errors.Is(err, os.ErrClosed) {
+		err = errLinkClosed
+	}
+	return n, err
+}
+
+func (l *linkWriter) close() {
+	l.mu.Lock()
+	l.closed = true
+	l.mu.Unlock()
+	l.w.Close()
+}
+
 // Run keeps the connection up until Close.
 func (r *Remote) Run() {
 	backoff := time.Second
 	for {
+		if !r.waitResumed() {
+			return
+		}
 		start := time.Now()
 		err := r.serve()
 		r.mu.Lock()
@@ -168,10 +215,10 @@ func (r *Remote) Run() {
 		r.conn = nil
 		r.rtt, r.rttSent = 0, 0
 		r.status, r.errMsg = "error", err.Error()
-		for rid, ch := range r.pending {
-			close(ch)
-			delete(r.pending, rid)
+		if r.suspended {
+			r.status, r.errMsg = "connecting", ""
 		}
+		r.failPending()
 		r.mu.Unlock()
 		r.hub.stateChanged()
 		if time.Since(start) > 30*time.Second {
@@ -187,6 +234,68 @@ func (r *Remote) Run() {
 		backoff = min(backoff*2, 30*time.Second)
 		r.setStatus("connecting", "")
 	}
+}
+
+// waitResumed waits while the remote is suspended; false once it is closed.
+func (r *Remote) waitResumed() bool {
+	for {
+		r.mu.Lock()
+		closed, suspended := r.closed, r.suspended
+		r.mu.Unlock()
+		if closed {
+			return false
+		}
+		if !suspended {
+			return true
+		}
+		select {
+		case <-r.wake:
+		case <-r.stop:
+			return false
+		}
+	}
+}
+
+// failPending ends every request still waiting for a reply; callers hold r.mu.
+func (r *Remote) failPending() {
+	for rid, ch := range r.pending {
+		close(ch)
+		delete(r.pending, rid)
+	}
+}
+
+// drop forgets conn as the live link the moment it fails, before the
+// helper behind it has been reaped, so nothing writes to it in between:
+// requests then say the machine is offline.
+func (r *Remote) drop(conn proto.Conn) {
+	r.mu.Lock()
+	if r.conn == conn {
+		r.conn = nil
+		r.failPending()
+	}
+	r.mu.Unlock()
+}
+
+// suspend takes the link down while this daemon restarts in place, and
+// keeps it down until resume: either the new process connects again, or
+// the restart failed and this one carries on.
+func (r *Remote) suspend() {
+	r.mu.Lock()
+	r.suspended = true
+	conn := r.conn
+	r.conn = nil
+	r.failPending()
+	r.mu.Unlock()
+	if conn != nil {
+		conn.Close()
+	}
+}
+
+func (r *Remote) resume() {
+	r.mu.Lock()
+	r.suspended = false
+	r.mu.Unlock()
+	r.Wake()
 }
 
 // Wake retries a disconnected link now instead of after the backoff (the
@@ -233,7 +342,7 @@ func (r *Remote) open(dial DialFunc) (*Link, *proto.Msg, error) {
 		return nil, nil, err
 	}
 	r.mu.Lock()
-	if r.closed {
+	if r.closed || r.suspended {
 		r.mu.Unlock()
 		link.close()
 		return nil, nil, errors.New("closed")
@@ -295,6 +404,8 @@ func (r *Remote) serve() error {
 	}
 	conn := link.Conn
 	defer link.close()
+	// Runs first: the link is forgotten before link.close waits for ssh.
+	defer r.drop(conn)
 	if err := r.hub.claimNode(hello.Node, r); err != nil {
 		return err
 	}
@@ -304,7 +415,12 @@ func (r *Remote) serve() error {
 	if hello.Machine != "" {
 		r.machine = hello.Machine
 	}
+	if r.closed || r.suspended {
+		r.mu.Unlock()
+		return errors.New("closed")
+	}
 	r.conn, r.os, r.version, r.status, r.errMsg, r.via = conn, hello.OS, hello.Version, "connected", "", via
+	r.build, r.start = hello.Build, hello.Text
 	r.mu.Unlock()
 	r.hub.stateChanged()
 	if learned {
@@ -509,7 +625,10 @@ func (r *Remote) requestTimeout(m *proto.Msg, timeout time.Duration) (*proto.Msg
 	r.pending[m.Rid] = ch
 	r.mu.Unlock()
 	if err := proto.WriteJSON(conn, m); err != nil {
-		return nil, err
+		r.mu.Lock()
+		delete(r.pending, m.Rid)
+		r.mu.Unlock()
+		return nil, fmt.Errorf("host %s disconnected (%v)", r.name, err)
 	}
 	select {
 	case reply, ok := <-ch:
@@ -535,7 +654,7 @@ func (r *Remote) Info() proto.HostInfo {
 	if r.rtt > 0 {
 		ms = max(1, int((r.rtt+time.Millisecond/2)/time.Millisecond))
 	}
-	info := proto.HostInfo{Name: r.name, Target: r.target, Status: r.status, Error: r.errMsg, OS: r.os, Version: r.version,
+	info := proto.HostInfo{Name: r.name, Target: r.target, Status: r.status, Error: r.errMsg, OS: r.os, Version: r.version, Build: r.build,
 		Kind: r.kind, Machine: r.machine, LastSeen: r.lastSeen, RTT: ms}
 	if r.conn != nil {
 		info.Via = r.via
@@ -677,10 +796,19 @@ func (r *Remote) ListDir(dir string) (string, []proto.DirEntry, string, error) {
 }
 
 // RestartInPlace asks the gecko on that machine to restart with the binary
-// on its disk, keeping its sessions (protocol 3+). The link then reconnects.
-func (r *Remote) RestartInPlace() error {
-	_, err := r.request(&proto.Msg{T: proto.TUpgrade})
+// at exe there (its own path when ""; Geckos before 0.3 always take their
+// own), keeping its sessions (protocol 3+). The link then reconnects.
+func (r *Remote) RestartInPlace(exe string) error {
+	_, err := r.request(&proto.Msg{T: proto.TUpgrade, Data: exe})
 	return err
+}
+
+// Build is the gecko build the remote reported ("" if it doesn't say), and
+// start an id that changes whenever it restarts in place.
+func (r *Remote) Build() (build, start string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.build, r.start
 }
 
 // Version is the protocol version the remote gecko reported.
@@ -710,6 +838,8 @@ func (r *Remote) Close() {
 	r.closed = true
 	close(r.stop)
 	conn := r.conn
+	r.conn = nil // a request now says offline instead of writing to a closed link
+	r.failPending()
 	r.mu.Unlock()
 	if conn != nil {
 		conn.Close()

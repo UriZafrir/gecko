@@ -82,6 +82,10 @@ type Msg struct {
 	// hello reply: a random id of this running Gecko (new each start), so
 	// a hub can tell a link back to itself, or two links to one Gecko.
 	Node string `json:"node,omitempty"`
+	// hello reply: the build of the Gecko that answered (what `gecko
+	// version` says, like "v0.2.0"), so a client can tell a restart picked
+	// up the binary it meant. Older Geckos don't say.
+	Build string `json:"build,omitempty"`
 	// hello: make another machine the anchor. Anchor names the machines to
 	// go through, each as the previous Gecko calls it: the Gecko this
 	// client connected to (the door) opens an owner connection to
@@ -154,7 +158,7 @@ const (
 	TProbeHost   = "probehost"   // target, data, sub -> "hostlog" pushes, reply{os, text (version), missing}
 	TInstall     = "installhost" // target, os ("linux/amd64"), sub -> "hostlog" pushes, reply
 	THostLog     = "hostlog"     // push: sub, text (one line of ssh output)
-	TUpgrade     = "upgrade"     // restart the service with the binary on disk, keeping sessions
+	TUpgrade     = "upgrade"     // data (optional): the gecko binary to restart into; restart the service with it, keeping sessions
 	TWindow      = "window"      // text: JSON window bounds after fitting, so `gecko open` can start there
 	TListDir     = "listdir"     // id (which host), dir ("" = the tab's cwd, ~ ok) -> reply{dir, entries, text: home}
 	TUpdateHost  = "updatehost"  // name, sub -> "hostlog" pushes; installs this gecko there and restarts it in place
@@ -325,6 +329,9 @@ type HostInfo struct {
 	Version int    `json:"version,omitempty"`
 	Error   string `json:"error,omitempty"`
 	OS      string `json:"os,omitempty"`
+	// Build is the build of the gecko on that machine, when it says
+	// ("v0.2.0"; see Msg.Build).
+	Build string `json:"build,omitempty"`
 	// RTT is the last measured round trip from this hub to that machine,
 	// in milliseconds (0 = not measured yet, or the local machine).
 	RTT int `json:"rtt,omitempty"`

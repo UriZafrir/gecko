@@ -71,21 +71,29 @@ packages: web
 package-mac package-appimage package-windows: web
 	GO="$(GO)" VERSION="$(VERSION)" PKG_VERSION="$(PKG_VERSION)" LDFLAGS="$(LDFLAGS)" packaging/desktop/build.sh $(@:package-%=%)
 
+# gecko goes to $(PREFIX)/bin/gecko (~/.local/bin/gecko by default), the
+# first place Gecko's SSH connections look (see docs/install.md). DESTDIR
+# stages the files for a package instead and leaves this machine alone.
 install: all
-	install -d $(PREFIX)/bin
-	install bin/gecko $(PREFIX)/bin/gecko
-	@# Restart a running service with the new binary, keeping its sessions.
-	@-$(PREFIX)/bin/gecko upgrade --if-running
+	install -d $(DESTDIR)$(PREFIX)/bin
+	@# Under another name, then renamed over the old one: a running gecko
+	@# keeps its file (no "text file busy"), and nothing ever starts a
+	@# half-copied binary.
+	install -m 755 bin/gecko $(DESTDIR)$(PREFIX)/bin/.gecko.new
+	mv -f $(DESTDIR)$(PREFIX)/bin/.gecko.new $(DESTDIR)$(PREFIX)/bin/gecko
+	@# One gecko on this machine: every other copy becomes a link to this
+	@# one, and a running service restarts with it, keeping its sessions.
+	@if [ -z "$(DESTDIR)" ]; then $(PREFIX)/bin/gecko upgrade --installed || true; fi
 	@if [ "$$(uname -s)" = Linux ]; then $(MAKE) --no-print-directory install-desktop; fi
 
 # App-menu launcher (freedesktop: GNOME, KDE, ...), runs `gecko open`.
 install-desktop:
-	install -d $(PREFIX)/share/applications $(PREFIX)/share/icons/hicolor/scalable/apps
-	sed 's|@BIN@|$(PREFIX)/bin/gecko|' packaging/linux/gecko.desktop > $(PREFIX)/share/applications/gecko.desktop
-	install -m 644 packaging/linux/gecko.svg $(PREFIX)/share/icons/hicolor/scalable/apps/gecko.svg
-	-update-desktop-database $(PREFIX)/share/applications 2>/dev/null
+	install -d $(DESTDIR)$(PREFIX)/share/applications $(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps
+	sed 's|@BIN@|$(PREFIX)/bin/gecko|' packaging/linux/gecko.desktop > $(DESTDIR)$(PREFIX)/share/applications/gecko.desktop
+	install -m 644 packaging/linux/gecko.svg $(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/gecko.svg
+	@if [ -z "$(DESTDIR)" ]; then update-desktop-database $(PREFIX)/share/applications 2>/dev/null || true; fi
 	@# GNOME reads icons through this cache; a stale one hides new or changed icons.
-	@if [ -f $(PREFIX)/share/icons/hicolor/icon-theme.cache ] || command -v gtk-update-icon-cache >/dev/null; then \
+	@if [ -z "$(DESTDIR)" ] && { [ -f $(PREFIX)/share/icons/hicolor/icon-theme.cache ] || command -v gtk-update-icon-cache >/dev/null; }; then \
 		gtk-update-icon-cache -f -t -q $(PREFIX)/share/icons/hicolor 2>/dev/null || true; fi
 
 # Android app (android/): a debug APK at android/app/build/outputs/apk/debug.
