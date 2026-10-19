@@ -22,6 +22,27 @@ type unixPty struct {
 	tty    string
 	exited chan struct{}
 	once   sync.Once
+
+	// A pipe Close writes to, polled next to the master: a reader waiting
+	// in WaitReadable wakes even when the hangup alone wouldn't wake it
+	// (a closed tab then stayed listed, its shell a zombie, and came back).
+	wakeR, wakeW int
+	wmu          sync.Mutex
+}
+
+func newUnixPty(f *os.File, cmd *exec.Cmd, pid int, tty string) (*unixPty, error) {
+	var w [2]int
+	syscall.ForkLock.RLock() // no child may inherit the pipe before it is close-on-exec
+	err := unix.Pipe(w[:])
+	if err == nil {
+		unix.CloseOnExec(w[0])
+		unix.CloseOnExec(w[1])
+	}
+	syscall.ForkLock.RUnlock()
+	if err != nil {
+		return nil, err
+	}
+	return &unixPty{f: f, cmd: cmd, pid: pid, tty: tty, exited: make(chan struct{}), wakeR: w[0], wakeW: w[1]}, nil
 }
 
 // Start launches opts.Argv attached to a new pty.
@@ -51,7 +72,14 @@ func Start(opts Options) (Pty, error) {
 		return nil, err
 	}
 	ptmx.Fd() // put the master in blocking mode; reads are gated by WaitReadable
-	return &unixPty{f: ptmx, cmd: cmd, pid: cmd.Process.Pid, tty: tty.Name(), exited: make(chan struct{})}, nil
+	p, err := newUnixPty(ptmx, cmd, cmd.Process.Pid, tty.Name())
+	if err != nil {
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		ptmx.Close()
+		_ = cmd.Wait()
+		return nil, err
+	}
+	return p, nil
 }
 
 // Adopt wraps a pty master inherited from a previous gecko process (see
@@ -63,7 +91,7 @@ func Adopt(fd uintptr, pid int, tty string) (Pty, error) {
 		return nil, errors.New("bad pty fd")
 	}
 	unix.CloseOnExec(int(fd))
-	return &unixPty{f: f, pid: pid, tty: tty, exited: make(chan struct{})}, nil
+	return newUnixPty(f, nil, pid, tty)
 }
 
 func (p *unixPty) Read(b []byte) (int, error)  { return p.f.Read(b) }
@@ -77,12 +105,19 @@ func (p *unixPty) Fd() uintptr { return p.f.Fd() }
 // WaitReadable blocks until a Read would not block (data, hangup or error).
 // Readers wait here without holding any locks and then read under the
 // session lock, so a session can be paused at an exact byte boundary.
+// After Close it returns os.ErrClosed.
 func (p *unixPty) WaitReadable() error {
-	fds := []unix.PollFd{{Fd: int32(p.f.Fd()), Events: unix.POLLIN}}
+	fds := []unix.PollFd{
+		{Fd: int32(p.f.Fd()), Events: unix.POLLIN},
+		{Fd: int32(p.wakeR), Events: unix.POLLIN},
+	}
 	for {
 		_, err := unix.Poll(fds, -1)
 		if err == unix.EINTR {
 			continue
+		}
+		if err == nil && fds[1].Revents != 0 {
+			return os.ErrClosed
 		}
 		return err
 	}
@@ -99,6 +134,11 @@ func (p *unixPty) Close() error {
 	p.once.Do(func() {
 		pid := p.pid
 		_ = syscall.Kill(-pid, syscall.SIGHUP)
+		p.wmu.Lock()
+		if p.wakeW >= 0 {
+			_, _ = unix.Write(p.wakeW, []byte{1}) // before the master's fd number can be reused
+		}
+		p.wmu.Unlock()
 		err = p.f.Close() // the kernel hangs up the foreground job too
 		go func() {
 			select {
@@ -111,8 +151,10 @@ func (p *unixPty) Close() error {
 	return err
 }
 
+// Wait is called once reading has stopped: it also closes the wake pipe.
 func (p *unixPty) Wait() (int, error) {
 	defer close(p.exited)
+	defer p.closeWake()
 	if p.cmd != nil {
 		err := p.cmd.Wait()
 		if p.cmd.ProcessState != nil {
@@ -135,4 +177,14 @@ func (p *unixPty) Wait() (int, error) {
 		return 128 + int(ws.Signal()), nil
 	}
 	return ws.ExitStatus(), nil
+}
+
+func (p *unixPty) closeWake() {
+	p.wmu.Lock()
+	defer p.wmu.Unlock()
+	if p.wakeW >= 0 {
+		unix.Close(p.wakeR)
+		unix.Close(p.wakeW)
+		p.wakeR, p.wakeW = -1, -1
+	}
 }
