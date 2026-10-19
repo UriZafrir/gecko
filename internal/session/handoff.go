@@ -54,6 +54,11 @@ func (m *Manager) Freeze() (states []State, thaw func(), err error) {
 			thaw()
 			return nil, nil, errors.New("keeping sessions across a restart isn't supported on this platform")
 		}
+		if fp.Fd() == ^uintptr(0) {
+			// Closed and still ending: it isn't handed over (its fd is gone,
+			// and passing it on failed the whole upgrade).
+			continue
+		}
 		data, start := s.ring.ReadFrom(0)
 		states = append(states, State{
 			Info: s.infoLocked(), Fd: fp.Fd(), Pid: s.pty.Pid(), TTY: s.info.TTY,
