@@ -67,9 +67,9 @@ func pageOn(t *testing.T, h *hub.Hub, anchor ...string) (proto.Msg, func(proto.M
 }
 
 // Make anchor on a machine reached only through the account: the relay
-// gives the laptop devbox's own tabs, so devbox becomes the anchor only
-// once its owner allowed that (gecko anchor account on); then the page on
-// the laptop is devbox's owner client, through the relay.
+// gives the laptop's page devbox as its anchor with owner rights (on by
+// default: both are the owner's approved machines), and refuses once
+// devbox's owner turned that off (gecko anchor account off).
 func TestMakeAnchorThroughRelay(t *testing.T) {
 	f := newFleet(t)
 	laptop, devbox := f.machine("laptop"), f.machine("devbox")
@@ -85,19 +85,6 @@ func TestMakeAnchorThroughRelay(t *testing.T) {
 	}
 	waitFor(t, "devbox connected over the relay", func() bool { return connected(laptop, "devbox") })
 
-	// Off (the default): the page stays on the laptop and hears what to do.
-	hello, _, _ := pageOn(t, laptop.hub, "devbox")
-	if hello.Host != "laptop" || hello.Kind != hub.KindAnchor || !strings.Contains(hello.Error, "anchor account on") {
-		t.Fatalf("relay anchor while off: %+v", hello)
-	}
-	if devbox.hub.Backend("box") == nil {
-		t.Fatal("box went away")
-	}
-
-	// devbox's owner allows it.
-	if err := devbox.hub.SetAnchorFromAccount(true); err != nil {
-		t.Fatal(err)
-	}
 	hello, call, next := pageOn(t, laptop.hub, "devbox")
 	if hello.Host != "devbox" || hello.Door != "laptop" || hello.Scope != hub.ScopeAll || hello.Error != "" {
 		t.Fatalf("relay anchor while on: %+v", hello)
@@ -116,6 +103,19 @@ func TestMakeAnchorThroughRelay(t *testing.T) {
 	if r.Error != "" || r.Session.Host != "box" {
 		t.Fatalf("create on devbox's machine through the relay: %+v", r)
 	}
+	// devbox's owner turns it off: the page stays on the laptop and hears
+	// what to do.
+	if err := devbox.hub.SetAnchorFromAccount(false); err != nil {
+		t.Fatal(err)
+	}
+	hello, _, _ = pageOn(t, laptop.hub, "devbox")
+	if hello.Host != "laptop" || hello.Kind != hub.KindAnchor || !strings.Contains(hello.Error, "anchor account on") {
+		t.Fatalf("relay anchor while off: %+v", hello)
+	}
+	if devbox.hub.Backend("box") == nil {
+		t.Fatal("box went away")
+	}
+
 	// Back on the laptop: its own list, devbox one of its machines again.
 	hello, _, next = pageOn(t, laptop.hub)
 	if hello.Host != "laptop" || hello.Door != "" {

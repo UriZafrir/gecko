@@ -180,7 +180,7 @@ const (
 	// TAnchor reads or changes how this Gecko may become the anchor: name
 	// "account", data "on", "off" or "" (status) -> reply{text: "on"|"off"}.
 	// On lets the account's other machines make it the anchor through the
-	// relay (off by default; see docs/anchor.md). Owner clients only.
+	// relay (on by default; see docs/anchor.md). Owner clients only.
 	TAnchor = "anchor"
 )
 

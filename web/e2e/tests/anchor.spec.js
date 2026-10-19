@@ -14,10 +14,10 @@ const shots = process.env.ANCHOR_SHOTS || '';
 const procs = [];
 let phoneURL = '';
 
-async function daemon(name, port, hosts = []) {
+async function daemon(name, port, hosts = [], theme = 'tokyo-night') {
   const home = mkdtempSync(join(tmpdir(), `gk-${name}-`));
   writeFileSync(join(home, 'config.json'), JSON.stringify({ name, hosts }));
-  writeFileSync(join(home, 'settings.json'), '{"theme":"tokyo-night"}\n');
+  writeFileSync(join(home, 'settings.json'), JSON.stringify({ theme }) + '\n');
   const d = spawn(join(root, 'bin/gecko'), ['daemon', '--listen', `127.0.0.1:${port}`], {
     env: { ...process.env, GECKO_HOME: home, GECKO_WEB_DIR: join(root, 'web/dist'), SHELL: '/bin/sh', PS1: '$ ' },
     stdio: ['ignore', 'ignore', 'inherit'],
@@ -37,7 +37,8 @@ async function daemon(name, port, hosts = []) {
 }
 
 test.beforeAll(async () => {
-  const ubuntu = await daemon('ubuntu', 7953);
+  // ubuntu has a light theme: after Make anchor the window keeps the phone's.
+  const ubuntu = await daemon('ubuntu', 7953, [], 'gecko-light');
   const phone = await daemon('phone', 7952, [{ name: 'ubuntu', url: ubuntu.base, token: ubuntu.token }]);
   phoneURL = `${phone.base}?token=${phone.token}`;
 });
@@ -139,6 +140,9 @@ test('Make anchor on ubuntu, the icon moves and "via ubuntu" shows; it survives 
   await page.locator('#modal [data-yes]').click();
   await synced(page, 'ubuntu');
   expect(await page.evaluate(() => [window.gecko.proxied, window.gecko.door])).toEqual([true, 'phone']);
+  // The window's settings are the client's: the phone's theme, not ubuntu's light one.
+  await page.waitForTimeout(300);
+  expect(await page.evaluate(() => window.gecko.settings.theme)).toBe('tokyo-night');
   await page.evaluate(async () => { if (!window.gecko.sessions.size) await window.gecko.newTab({ name: 'on-ubuntu' }); });
   await expect(page.locator('#statusline .sl-anchor')).toHaveText('via ubuntu');
   await drawer(page);

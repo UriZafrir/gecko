@@ -82,7 +82,7 @@ async function shot(name) {
 const STATE = `(() => { const g = window.gecko, a = document.querySelector('#side .host.anchor'), v = document.querySelector('#statusline .sl-anchor');
   return { host: g.hostName, proxied: !!g.proxied, door: g.door, anchorRow: a && a.dataset.host, icon: !!(a && a.querySelector('.anchor-badge .anc')),
     edge: a ? getComputedStyle(a.querySelector('.host-row')).boxShadow : '', via: v ? v.textContent : '',
-    prev: [...document.querySelectorAll('#side .prev-anchor')].map((e) => e.dataset.prev), desktop: !!window.geckoDesktop }; })()`;
+    prev: [...document.querySelectorAll('#side .prev-anchor')].map((e) => e.dataset.prev), desktop: !!window.geckoDesktop, theme: g.settings.theme }; })()`;
 
 async function main() {
   const exe = path.join(repo, 'bin', win32 ? 'gecko.exe' : 'gecko');
@@ -96,10 +96,10 @@ async function main() {
   };
   const procs = [];
   const envOf = (n) => ({ ...process.env, GECKO_HOME: homeOf(n) });
-  const setup = (n, cfg) => {
+  const setup = (n, cfg, theme = 'tokyo-night') => {
     fs.mkdirSync(path.join(homeOf(n), 'state'), { recursive: true, mode: 0o700 });
     fs.writeFileSync(path.join(homeOf(n), 'config.json'), JSON.stringify(cfg));
-    fs.writeFileSync(path.join(homeOf(n), 'settings.json'), JSON.stringify({ theme: 'tokyo-night', opacity: 1, startupSound: false }));
+    fs.writeFileSync(path.join(homeOf(n), 'settings.json'), JSON.stringify({ theme, opacity: 1, startupSound: false }));
     fs.writeFileSync(path.join(homeOf(n), 'no-login-service'), '');
   };
   let app = null;
@@ -115,7 +115,8 @@ async function main() {
   };
   try {
     // ubuntu first: desk's config names it by its link.
-    setup('ubuntu', { listen: `127.0.0.1:${UPORT}`, name: 'ubuntu' });
+    // ubuntu has a light theme: the window keeps desk's (settings are the client's).
+    setup('ubuntu', { listen: `127.0.0.1:${UPORT}`, name: 'ubuntu' }, 'gecko-light');
     const ubuntuURL = execFileSync(exe, ['url'], { env: envOf('ubuntu'), cwd: root, timeout: 30000 }).toString().split(/\r?\n/)[0].trim();
     execFileSync(exe, ['new', '-n', 'build'], { env: envOf('ubuntu'), cwd: root, timeout: 30000 });
     const tok = new URL(ubuntuURL).searchParams.get('token');
@@ -149,6 +150,7 @@ async function main() {
     check('Make anchor: the icon moves to ubuntu', s.anchorRow === 'ubuntu' && s.icon, JSON.stringify(s));
     check('Make anchor: "via ubuntu" in the bottom bar', s.via === 'via ubuntu', s.via);
     check('Make anchor: Back to desk is offered', s.prev.includes('desk'), JSON.stringify(s.prev));
+    check('Make anchor: the window keeps its own theme, not ubuntu\'s', s.theme === 'tokyo-night', s.theme);
     const saved = path.join(homeOf('desk'), 'state', 'desktop', 'anchor.json');
     let kept = '';
     try { kept = JSON.parse(fs.readFileSync(saved, 'utf8')).path; } catch {}

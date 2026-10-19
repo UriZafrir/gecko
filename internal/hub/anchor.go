@@ -94,7 +94,7 @@ func (h *Hub) OpenAnchor(name string, client string, path []string) (*Link, *pro
 	case reply.Version < proto.AnchorVersion:
 		return fail(errAnchorOld(name))
 	case reply.Scope == ScopeLocal:
-		return fail(fmt.Errorf("%s is reached through your account, which only lets %s open %s's own tabs. To make %s the anchor through the account, turn on \"Can be the anchor through my account\" on %s once (its Settings, or gecko anchor account on), or add %s by SSH or its Gecko link", name, h.name, name, name, name, name))
+		return fail(fmt.Errorf("%s turned off \"Can be the anchor through my account\", so through your account %s only opens %s's own tabs. Turn it back on there (the Devices dialog, or gecko anchor account on), or add %s by SSH or its Gecko link", name, h.name, name, name))
 	}
 	log.Printf("anchor: a client of %s made %s its anchor", h.name, name)
 	return link, reply, nil
@@ -129,26 +129,22 @@ func (h *Hub) trackHelper(pid int, on bool) {
 }
 
 // AnchorFromAccount reports whether the account's other machines may make
-// this one the anchor through the relay.
+// this one the anchor through the relay: on unless turned off.
 func (h *Hub) AnchorFromAccount() bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	return h.cfg.Anchor != nil && h.cfg.Anchor.FromAccount
+	return h.cfg.Anchor == nil || h.cfg.Anchor.FromAccount == nil || *h.cfg.Anchor.FromAccount
 }
 
-// SetAnchorFromAccount turns that on or off and saves it.
+// SetAnchorFromAccount turns that on (the default, so nothing is kept) or
+// off, and saves it.
 func (h *Hub) SetAnchorFromAccount(on bool) error {
 	h.mu.Lock()
 	if on {
-		if h.cfg.Anchor == nil {
-			h.cfg.Anchor = new(configAnchor)
-		}
-		h.cfg.Anchor.FromAccount = true
-	} else if h.cfg.Anchor != nil {
-		h.cfg.Anchor.FromAccount = false
-		if *h.cfg.Anchor == (configAnchor{}) {
-			h.cfg.Anchor = nil
-		}
+		h.cfg.Anchor = nil
+	} else {
+		off := false
+		h.cfg.Anchor = &configAnchor{FromAccount: &off}
 	}
 	h.mu.Unlock()
 	log.Printf("anchor: through the account %s", map[bool]string{true: "on", false: "off"}[on])

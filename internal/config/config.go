@@ -38,9 +38,9 @@ type Host struct {
 // AnchorConfig is how this Gecko may become another client's anchor.
 type AnchorConfig struct {
 	// FromAccount lets the account's other machines make this one the
-	// anchor through the relay, with full owner rights here. Off by
-	// default: relay peers only get this machine's own tabs.
-	FromAccount bool `json:"fromAccount,omitempty"`
+	// anchor of an owner's page through the relay (on when unset; false
+	// turns it off). See docs/anchor.md.
+	FromAccount *bool `json:"fromAccount,omitempty"`
 }
 
 // Config is ~/.config/gecko/config.json.

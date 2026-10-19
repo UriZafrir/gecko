@@ -266,12 +266,33 @@ owner already had through that link:
 
 - **SSH and Gecko links** already reach the other Gecko as its owner (an
   SSH login as you, or its main token): the anchor serves the page in full.
-- **The relay** is different: another machine of your account is a peer
-  there, and a peer must never become an owner by asking. A machine served
-  through the relay only accepts a forwarded page when its owner turned on
-  **Can be the anchor through my account** (the Devices dialog, or
-  `gecko anchor account on` on that machine). It is off by default. With
-  it off, Make anchor says how to turn it on.
+- **The relay**: another machine of your account is normally a peer
+  there (this machine's own tabs only). A door that forwards an owner's
+  page is served as the owner instead, so Make anchor works through the
+  account with no setup. **Can be the anchor through my account** is on by
+  default; turn it off on a machine (the Devices dialog, or
+  `gecko anchor account off`) and that machine only ever serves its own
+  tabs through the relay. With it off, Make anchor says how to turn it
+  back on.
+
+  What that means, plainly: any owner client of one account machine (its
+  window, its web token, its share link) can now act as the owner of any
+  other machine in the account, through the relay. That is acceptable
+  because every machine in the account is one you approved on the signed
+  device list: they are all yours, and you could already reach each of
+  them as the owner from its own window. Revoking a machine ends this at
+  once. Relay peers that aren't forwarding a page (another Gecko's hub
+  link) keep the 0.3.0 limits: this machine's own tabs and nothing else.
+
+### Settings stay the window's
+
+After a switch, the window keeps its own theme, font size, opacity, key
+bindings, key bar, quick replies and other interface settings: the door
+reads and saves them in its own `settings.json`, as before the switch,
+and passes only the tab order (which belongs to the anchor's tabs) on to
+the anchor. The anchor's own settings never change because a window
+switched to it. What belongs to a machine comes from the anchor: its
+machines, its tabs and their order, and its agents' notifications.
 
 ### Compatibility
 

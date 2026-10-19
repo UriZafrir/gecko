@@ -13,6 +13,9 @@ final class AnchorTest: GeckoUITestCase {
         var p = waitOnline()
         let door = p["host"] as? String ?? ""
         js("localStorage.removeItem('gecko.anchorPath'); gecko.anchorPath.length && location.reload()")
+        // A theme of the app's own (build-box has Tokyo Night): it stays after the switch.
+        js("gecko.setSetting('theme', 'nord')")
+        waitProbe("the app's theme") { ($0["theme"] as? String) == "nord" }
         // build-box is studio-mac's machine through gecko bridge, or (when
         // the runner has sshd) added here by its Gecko link.
         let bb = try link("GECKO_BUILDBOX_LINK")
@@ -39,6 +42,7 @@ final class AnchorTest: GeckoUITestCase {
             (p["host"] as? String) == "build-box" && (p["proxied"] as? Bool) == true && (p["anchorRow"] as? String) == "build-box"
         }
         XCTAssertEqual(p["door"] as? String, door)
+        XCTAssertEqual(p["theme"] as? String, "nord", "the window keeps its own theme, not build-box's")
         js("gecko.sessions.size || gecko.newTab({ name: 'on-build-box' })")
         waitProbe("via build-box in the bottom bar") { ($0["via"] as? String) == "via build-box" }
         js("getComputedStyle(document.getElementById('side')).position === 'fixed' && !document.body.classList.contains('drawer') && document.getElementById('menu-btn').click()")
@@ -61,6 +65,8 @@ final class AnchorTest: GeckoUITestCase {
         js("getComputedStyle(document.getElementById('side')).position === 'fixed' && !document.body.classList.contains('drawer') && document.getElementById('menu-btn').click()")
         beat(1.5)
         shot("anchor-6-back")
+        js("gecko.setSetting('theme', 'tokyo-night')")
+        waitProbe("Tokyo Night again") { ($0["theme"] as? String) == "tokyo-night" }
         if env["GECKO_REMOTE"] == "ssh" { js("gecko.conn.request({ t: 'rmhost', name: 'build-box' })") }
     }
 }

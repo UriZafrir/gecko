@@ -241,6 +241,35 @@ func tabNamed(ss map[string]proto.SessionInfo, host, name string) bool {
 
 // checkSwitch makes ubuntu the anchor of a page on phone and back, and
 // checks what each side sees.
+func writeSettings(t *testing.T, d *daemonProc, text string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(d.home, "settings.json"), []byte(text), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func settingsOf(t *testing.T, text string) map[string]any {
+	t.Helper()
+	var s map[string]any
+	if err := json.Unmarshal([]byte(text), &s); err != nil {
+		t.Fatalf("settings %q: %v", text, err)
+	}
+	return s
+}
+
+func waitSettings(t *testing.T, d *daemonProc, ok func(map[string]any) bool) {
+	t.Helper()
+	var b []byte
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(100 * time.Millisecond) {
+		b, _ = os.ReadFile(filepath.Join(d.home, "settings.json"))
+		var s map[string]any
+		if json.Unmarshal(b, &s) == nil && ok(s) {
+			return
+		}
+	}
+	t.Fatalf("%s's settings: %s", d.name, b)
+}
+
 func checkSwitch(t *testing.T, phone, ubuntu *daemonProc) {
 	t.Helper()
 	// The phone's own page: the phone is the anchor, ubuntu one of its machines.
@@ -255,6 +284,9 @@ func checkSwitch(t *testing.T, phone, ubuntu *daemonProc) {
 	if r := home.call(proto.Msg{T: proto.TCreate, Create: &proto.CreateReq{Name: "phone-tab", Argv: []string{"/bin/sh"}, Cols: 80, Rows: 24}}); r.Error != "" {
 		t.Fatal(r.Error)
 	}
+	// Different looks on each: the window's settings are the phone's.
+	writeSettings(t, phone, `{"theme":"gecko-light","fontSize":17,"order":["phone-order"]}`)
+	writeSettings(t, ubuntu, `{"theme":"tokyo-night","fontSize":12,"order":["ubuntu-order"]}`)
 	// ubuntu has a machine of its own the phone doesn't (by its link).
 	// Make anchor on ubuntu: the page says hello to the phone with
 	// anchor [ubuntu] and lands on ubuntu.
@@ -266,12 +298,23 @@ func checkSwitch(t *testing.T, phone, ubuntu *daemonProc) {
 		u := hostNamed(hs, "ubuntu")
 		return u != nil && u.Local && hostNamed(hs, "gpu") != nil && hostNamed(hs, "phone") == nil && !tabNamed(ss, "phone", "phone-tab")
 	})
+	// The window keeps the phone's theme and font size; the tab order is ubuntu's.
+	set := p.wait("settings", func(m proto.Msg) bool { return m.T == proto.TSettings })
+	if got := settingsOf(t, set.Text); got["theme"] != "gecko-light" || got["fontSize"] != 17.0 || fmt.Sprint(got["order"]) != "[ubuntu-order]" {
+		t.Fatalf("settings through the new anchor: %s", set.Text)
+	}
+	// Changing them: the look is saved on the phone, the order on ubuntu.
+	p.send(&proto.Msg{T: proto.TSetSettings, Text: `{"theme":"dracula","fontSize":17,"order":["new-order"]}`})
+	waitSettings(t, phone, func(s map[string]any) bool { return s["theme"] == "dracula" && fmt.Sprint(s["order"]) == "[phone-order]" })
+	waitSettings(t, ubuntu, func(s map[string]any) bool {
+		return s["theme"] == "tokyo-night" && s["fontSize"] == 12.0 && fmt.Sprint(s["order"]) == "[new-order]"
+	})
 	// New tabs open on ubuntu now, and it manages its machines (owner).
 	r := p.call(proto.Msg{T: proto.TCreate, Create: &proto.CreateReq{Name: "made-on-ubuntu", Argv: []string{"/bin/sh"}, Cols: 80, Rows: 24}})
 	if r.Error != "" || r.Session.Host != "ubuntu" {
 		t.Fatalf("create through the new anchor: %+v", r)
 	}
-	if r := p.call(proto.Msg{T: proto.TAnchor, Name: "account"}); r.Error != "" || r.Text != "off" {
+	if r := p.call(proto.Msg{T: proto.TAnchor, Name: "account"}); r.Error != "" || r.Text != "on" {
 		t.Fatalf("an owner request on the new anchor: %+v", r)
 	}
 	direct := openPage(t, ubuntu)

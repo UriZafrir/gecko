@@ -147,7 +147,7 @@ enum BridgeScript {
           r.screen = out.join('\\n');
         }
         r.drawer = document.body.classList.contains('drawer');
-        r.host = g.hostName || ''; r.proxied = !!g.proxied; r.door = g.door || '';
+        r.host = g.hostName || ''; r.proxied = !!g.proxied; r.door = g.door || ''; r.theme = (g.settings && g.settings.theme) || '';
         var via = document.querySelector('#statusline .sl-anchor'); r.via = via ? via.textContent : '';
         var anc = document.querySelector('#side .host.anchor'); r.anchorRow = anc ? anc.getAttribute('data-host') : '';
         r.prev = [].slice.call(document.querySelectorAll('#side .prev-anchor')).map(function (e) { return e.getAttribute('data-prev'); });

@@ -77,6 +77,8 @@ class AnchorSwitchTest {
             js(sc, "document.querySelector('#modal [data-yes]').click()")
             waitFor(sc, "window.gecko&&gecko.firstSync&&gecko.hostName==='ubuntu'&&gecko.proxied&&gecko.hosts.length>0", 60)
             assertEquals("[\"ubuntu\"]", anchors.get(LocalGecko.ID))
+            // The window keeps the phone's theme (ubuntu's is light).
+            assertEquals("\"tokyo-night\"", js(sc, "gecko.settings.theme"))
             js(sc, "gecko.sessions.size||gecko.newTab({name:'on-ubuntu'})")
             waitFor(sc, "document.querySelector('#statusline .sl-anchor')&&document.querySelector('#statusline .sl-anchor').textContent==='via ubuntu'")
             openDrawer(sc)

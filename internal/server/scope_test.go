@@ -278,36 +278,44 @@ func TestPeerCantChangeTheAnchor(t *testing.T) {
 		t.Fatalf("local-scope client asking for an anchor: %+v", lh)
 	}
 	restrictedChecks(t, "local-scope client that asked for an anchor", l, gpuTab)
-	// Saying it forwards for an owner gets a peer nothing while this
-	// machine doesn't accept anchor requests from the account (the default).
+	// Saying it forwards for an owner gets a peer nothing once this
+	// machine's owner turned off anchor requests from the account.
+	o, _ := connect(t, anchor, Serve, proto.Msg{Client: "web"})
+	if r := o.call(proto.Msg{T: proto.TAnchor, Name: "account", Data: "off"}); r.Text != "off" || anchor.AnchorFromAccount() {
+		t.Fatalf("owner turning it off: %+v", r)
+	}
 	d, dh := connect(t, anchor, ServePeer, proto.Msg{Client: "web", Scope: hub.ScopeAll, Door: "laptop"})
 	if dh.Scope != hub.ScopeLocal {
 		t.Fatalf("peer claiming to be a door: %+v", dh)
 	}
 	restrictedChecks(t, "peer claiming to be a door", d, gpuTab)
-	// Nor does asking to turn that on.
+	// Nor does asking to turn that back on.
 	if r := d.call(proto.Msg{T: proto.TAnchor, Name: "account", Data: "on"}); r.Error == "" || anchor.AnchorFromAccount() {
 		t.Fatalf("a peer turned on anchor requests from the account: %+v", r)
 	}
 }
 
-// With "Can be the anchor through my account" on (the owner's choice on
-// this machine), a peer forwarding a client for its owner is served as
-// the owner; one that doesn't say so still isn't.
-func TestAnchorFromAccountIsOptIn(t *testing.T) {
+// "Can be the anchor through my account" is on by default: a peer
+// forwarding a page for its owner is served as the owner (every relay
+// peer is one of the owner's approved machines); one that doesn't say so
+// still isn't. Off, the door is a peer like any other.
+func TestAnchorFromAccountIsOnByDefault(t *testing.T) {
 	anchor, _, gpuTab := anchorWithGPU(t)
+	if !anchor.AnchorFromAccount() {
+		t.Fatal("off by default")
+	}
 	o, _ := connect(t, anchor, Serve, proto.Msg{Client: "web"})
-	if r := o.call(proto.Msg{T: proto.TAnchor, Name: "account", Data: "on"}); r.Error != "" || r.Text != "on" || !anchor.AnchorFromAccount() {
-		t.Fatalf("owner turning it on: %+v", r)
+	if r := o.call(proto.Msg{T: proto.TAnchor, Name: "account"}); r.Error != "" || r.Text != "on" {
+		t.Fatalf("owner asking: %+v", r)
 	}
 	plain, ph := connect(t, anchor, ServePeer, proto.Msg{Client: "web", Scope: hub.ScopeAll})
 	if ph.Scope != hub.ScopeLocal {
 		t.Fatalf("a peer that isn't a door: %+v", ph)
 	}
-	restrictedChecks(t, "peer with the opt-in on", plain, gpuTab)
+	restrictedChecks(t, "peer that isn't switching", plain, gpuTab)
 	d, dh := connect(t, anchor, ServePeer, proto.Msg{Client: "web", Scope: hub.ScopeAll, Door: "laptop"})
 	if dh.Scope != hub.ScopeAll {
-		t.Fatalf("door with the opt-in on: %+v", dh)
+		t.Fatalf("door by default: %+v", dh)
 	}
 	if r := d.call(proto.Msg{T: proto.TCapture, ID: gpuTab}); r.Error != "" {
 		t.Fatalf("the new anchor's owner can't reach gpu: %+v", r)
@@ -317,5 +325,8 @@ func TestAnchorFromAccountIsOptIn(t *testing.T) {
 	}
 	if _, dh := connect(t, anchor, ServePeer, proto.Msg{Client: "web", Door: "laptop"}); dh.Scope != hub.ScopeLocal {
 		t.Fatalf("door after turning it off: %+v", dh)
+	}
+	if r := o.call(proto.Msg{T: proto.TAnchor, Name: "account", Data: "on"}); r.Text != "on" || !anchor.AnchorFromAccount() {
+		t.Fatalf("turning it back on: %+v", r)
 	}
 }

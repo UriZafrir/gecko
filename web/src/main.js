@@ -1861,7 +1861,7 @@ class App {
         ${pend ? `<ul class="devlist">${pend}</ul>` : ''}
         <ul class="devlist">${rows}</ul>
         <p class="sub">Revoking a machine takes it out of the account; its connections close within seconds. To add one, run <code>gecko login --relay ${esc(c.relay)} --account ${esc(c.account)}</code> on it.</p>
-        <label class="anchor-acct"><input type="checkbox" data-anchor-acct ${this.anchorAcct ? 'checked' : ''}> <span><b>${esc(this.hostName)} can be the anchor through my account</b><span class="dev-sub">Lets your other machines make ${esc(this.hostName)} the anchor through the relay, with full rights here. Off: through the relay they only open ${esc(this.hostName)}'s own tabs (SSH and Gecko links work either way).</span></span></label>
+        <label class="anchor-acct"><input type="checkbox" data-anchor-acct ${this.anchorAcct ? 'checked' : ''}> <span><b>${esc(this.hostName)} can be the anchor through my account</b><span class="dev-sub">On by default: your other machines can make ${esc(this.hostName)} the anchor through the relay, with full rights here. Off: through the relay they only open ${esc(this.hostName)}'s own tabs (SSH and Gecko links work either way).</span></span></label>
         <div class="row"><button class="primary" data-no>Done</button></div></div>`;
       const card = m.firstElementChild;
       card.addEventListener('click', (ev) => {
