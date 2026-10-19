@@ -5,7 +5,7 @@ name: iOS
 
 on:
   push:
-    branches: [feature/ios-app]
+    branches: [feature/ios-app, feature/anchor-switch]
   workflow_dispatch:
 
 permissions:
@@ -139,6 +139,9 @@ jobs:
           xcrun simctl ui "$SIM_ID" appearance light
           xcrun simctl ui "$SIM_ID" content_size large
           exit $s
+      - name: Make anchor (build-box through studio-mac, and back)
+        if: always()
+        run: ios/scripts/ci-uitest.sh "$(ls products/*.xctestrun | head -1)" AnchorTest - out
       - name: Demo videos (01 connect, 02 terminal, 03 agent) and an older Gecko
         if: always() && matrix.demos
         run: |

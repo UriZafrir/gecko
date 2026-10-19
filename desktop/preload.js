@@ -21,4 +21,8 @@ contextBridge.exposeInMainWorld('geckoDesktop', {
   setBounds: (b) => ipcRenderer.invoke('gecko:set-bounds', b),
   // Windows: the color of the caption buttons drawn over the tab bar.
   setTitleBar: (c) => ipcRenderer.send('gecko:title-bar', c),
+  // The anchor this window chose (web/src/anchor.js), kept in the app's
+  // settings so the next launch opens on it: a JSON list of machine names.
+  anchorPath: () => ipcRenderer.sendSync('gecko:anchor-get'),
+  setAnchorPath: (s) => ipcRenderer.send('gecko:anchor-set', String(s)),
 });

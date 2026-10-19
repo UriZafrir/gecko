@@ -70,6 +70,8 @@ Account (optional; see docs/cloud.md):
   gecko revoke <machine>     remove a machine from the account; its links close
   gecko logout               leave the account and delete this machine's keys
   gecko relay [--listen a]   run a relay (self-hosted)
+  gecko anchor account on|off   let the account's other machines make this one the anchor
+                             through the relay (off by default; see docs/anchor.md)
 
   gecko bridge               (internal) connect stdio to the daemon; used over ssh
   gecko version
@@ -161,6 +163,8 @@ func main() {
 		err = cmdLogin(args)
 	case "logout":
 		err = cmdLogout()
+	case "anchor":
+		err = cmdAnchor(args)
 	case "whoami", "devices":
 		err = cmdWhoami()
 	case "approve":

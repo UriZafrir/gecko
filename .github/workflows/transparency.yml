@@ -4,15 +4,17 @@
 # 50% and not at all at 100% (packaging/desktop/transparency/check.cjs).
 # Pull requests and feature branches also run the latest release the same
 # way ("before"), so the screenshots show what a change fixed. Screenshots
-# and results are uploaded per platform.
+# and results are uploaded per platform. The same job also checks Make
+# anchor in the desktop app against a second throwaway daemon
+# (packaging/desktop/anchor/check.cjs), with screenshots.
 name: Transparency
 
 on:
   push:
     branches: [main, 'feature/**']
-    paths: [desktop/**, web/src/**, packaging/desktop/transparency/**, .github/workflows/transparency.yml]
+    paths: [desktop/**, web/src/**, packaging/desktop/transparency/**, packaging/desktop/anchor/**, .github/workflows/transparency.yml]
   pull_request:
-    paths: [desktop/**, web/src/**, packaging/desktop/transparency/**, .github/workflows/transparency.yml]
+    paths: [desktop/**, web/src/**, packaging/desktop/transparency/**, packaging/desktop/anchor/**, .github/workflows/transparency.yml]
   workflow_dispatch:
     inputs:
       baseline:
@@ -95,6 +97,12 @@ jobs:
           CHECK_PORT: "17698"
           CHECK_CDP: "17699"
         run: node packaging/desktop/transparency/check.cjs . out/${{ matrix.name }} after
+      - name: Make anchor
+        if: always()
+        env:
+          CHECK_PORT: "17708"
+          CHECK_CDP: "17709"
+        run: node packaging/desktop/anchor/check.cjs . out/${{ matrix.name }}/anchor
       - name: Upload
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

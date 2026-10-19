@@ -29,5 +29,8 @@ export default defineConfig({
     { name: 'small-360', use: phone('Galaxy S9+', { viewport: { width: 360, height: 740 }, screen: { width: 360, height: 740 } }) },
     // A tablet: the sidebar beside the terminal, with touch.
     { name: 'tablet', use: phone('Galaxy Tab S4 landscape') },
+    // A browser tab on a computer (Make anchor works on every device).
+    { name: 'desktop-chrome', testMatch: /anchor\.spec/, use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 }, ...remote } },
+    { name: 'desktop-safari', testMatch: /anchor\.spec/, use: { ...devices['Desktop Safari'], viewport: { width: 1280, height: 800 } } },
   ],
 });

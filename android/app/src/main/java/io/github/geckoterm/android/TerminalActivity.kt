@@ -337,6 +337,16 @@ class TerminalActivity : AppCompatActivity() {
 
     val onThisPhone: Boolean get() = machine?.id == LocalGecko.ID
 
+    private val anchors by lazy { AnchorStore(PrefsKeyValue(Gecko.prefs(this))) }
+
+    /** The page's chosen anchor for the machine on show (see [Bridge.anchorPath]). */
+    fun anchorPath(): String = machine?.let { anchors.get(it.id) } ?: ""
+
+    fun setAnchorPath(json: String) {
+        machine?.let { anchors.set(it.id, json) }
+        WatchService.refresh(this) // its notifications follow the anchor
+    }
+
     /** Starts Gecko on this phone (in its service, so it keeps running), then shows it. */
     private fun loadLocal() {
         errorView.visibility = View.GONE; keys.visibility = View.VISIBLE

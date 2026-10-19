@@ -98,3 +98,24 @@ class MachineStore(private val kv: KeyValue, private val box: SecretBox) {
         kv.put(key, arr.toString())
     }
 }
+
+/**
+ * The anchor each saved machine's page chose (web/src/anchor.js): a JSON
+ * list of machine names, the path from that machine's Gecko to the anchor.
+ * Kept per machine so the app reopens on it, also for This phone, whose
+ * address (and so the page's own storage) can change between starts.
+ */
+class AnchorStore(private val kv: KeyValue) {
+    private fun key(machineId: String) = "anchor.$machineId"
+
+    /** The path as JSON ("" when the machine itself is the anchor). */
+    fun get(machineId: String): String = kv.get(key(machineId)) ?: ""
+
+    /** Saves a path from the page; anything but a short list of names clears it. */
+    fun set(machineId: String, json: String) {
+        val names = try { JSONArray(json) } catch (e: Exception) { null }
+        val ok = names != null && names.length() in 1..4 &&
+            (0 until names.length()).all { (names.opt(it) as? String)?.let { n -> n.isNotEmpty() && n.length <= 128 && n.none { c -> c.isWhitespace() || c == '/' } } == true }
+        kv.put(key(machineId), if (ok) names.toString() else null)
+    }
+}

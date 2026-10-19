@@ -232,17 +232,32 @@ body.reordering, body.reordering * { cursor: grabbing !important; }
 .st-connecting .hdot { background: var(--need); }
 .st-error .hdot { background: var(--red); }
 .host .err { padding: 0 14px 4px 29px; font-size: 12px; color: var(--red); overflow-wrap: anywhere; }
-/* Opened from another device: the Gecko this page talks to is the anchor.
-   It heads the machine list with a badge, and the machines it reaches sit
-   under it on a guide line (see anchor.js). */
+/* The anchor (the Gecko whose tabs and machines the page shows) always
+   has an anchor icon and a highlight with an accent edge, on every device,
+   its own window included. Opened from elsewhere, it heads the list and
+   the machines it reaches sit under it on a guide line (see anchor.js). */
 .anc { width: 13px; height: 13px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
-.host.anchor .host-row { background: color-mix(in srgb, var(--accent) 9%, transparent); }
+.host.anchor .host-row { background: color-mix(in srgb, var(--accent) 11%, transparent); box-shadow: inset 3px 0 0 var(--accent); }
 .host.anchor .nm { font-weight: 600; }
 .badge.anchor-badge { display: inline-flex; align-items: center; gap: 4px; color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent); flex: none; }
 .hostlist .under-anchor { margin-left: 19px; border-left: 1px solid var(--line); }
 .hostlist .hgroup.under-anchor { padding-left: 12px; text-transform: none; letter-spacing: 0; font-weight: 500; }
 .hostlist .host.under-anchor .host-main { padding-left: 10px; }
 .hostlist .host.under-anchor .err { padding-left: 27px; }
+/* The way back to the Geckos this page came through. */
+.host.prev-anchor .where { font-style: italic; }
+/* A long machine name (Android's are model names) shortens, never spills. */
+.host-main .nm, .host-main .where { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.host-main .nm { flex: 0 0 auto; max-width: 55%; }
+.host-main .where { flex: 0 1000 auto; } /* the place gives way before the name */
+.host.prev-anchor .plus.back { opacity: 1; color: var(--accent); display: inline-flex; }
+.hostlist .anchor-problem { margin: 2px 8px 6px; padding: 8px 10px; border-radius: 8px; font-size: 12px; line-height: 1.4; background: color-mix(in srgb, var(--need) 14%, transparent); color: var(--text); overflow-wrap: anywhere; }
+.hostlist .anchor-problem .anc { vertical-align: -2px; margin-right: 5px; color: var(--need); }
+.hostlist .anchor-problem .acts { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.hostlist .anchor-problem button { font: inherit; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--text); cursor: pointer; }
+.devices .anchor-acct { display: flex; gap: 10px; align-items: flex-start; margin: 10px 0 4px; font-size: 13px; cursor: pointer; }
+.devices .anchor-acct input { margin-top: 3px; accent-color: var(--accent); }
+.devices .anchor-acct .dev-sub { display: block; }
 #statusline .sl-anchor { display: inline-flex; align-items: center; gap: 5px; flex: none; color: var(--accent); font-weight: 600; overflow: visible; }
 /* Signed in to an account: machines grouped by how they are reached. */
 .group h3 .h3-actions { display: inline-flex; gap: 2px; }

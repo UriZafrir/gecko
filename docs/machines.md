@@ -57,7 +57,13 @@ an **anchor** badge on devbox in the sidebar with its machines listed under
 it, and "Add a machine to devbox" in the dialog. Machines added on the
 laptop's own Gecko stay the laptop's (add the laptop itself to the anchor
 to see its tabs). Adding the same Gecko twice, or a link back to the anchor
-itself, is refused. Details, the security model and the trade-offs:
+itself, is refused.
+
+The anchor is always marked in the sidebar (an anchor icon and a
+highlight), and any machine there can become it: long-press or right-click
+it and choose **Make anchor**. The page then shows that machine's tabs and
+machines (nothing is copied to it), and **Back to** in the sidebar
+switches back. Details, the security model and the trade-offs:
 [The anchor](anchor.md).
 
 ## Another Gecko by its link

@@ -2,7 +2,8 @@
 
 [Docs](README.md)
 
-Status: built in protocol 10 (see [What changed in the code](#what-changed-in-the-code)).
+Status: built in protocol 10; any machine can be made the anchor since
+protocol 11 (see [Make anchor](#make-anchor-protocol-11)).
 
 You keep one machine on all the time, say your dev box, and open its Gecko
 from everywhere else: the phone (the web app through `gecko share`,
@@ -202,22 +203,105 @@ Compatibility:
 
 ## What the UI shows
 
-When the page is opened from another device (its address isn't
-`127.0.0.1` or `localhost`):
+The sidebar always marks the anchor, wherever the page runs: an anchor
+icon and the word **anchor** next to its name, a highlighted row with an
+accent edge, readable in light and dark themes and at 360 dp. Under the
+name it says where the anchor is: "this machine" (its own window, the
+desktop app, Android's This phone), "connected here" (the Gecko you opened
+from another device) or "through laptop" (an anchor you picked, reached
+through laptop).
+
+Whenever the anchor isn't the device in your hand:
 
 - **Bottom bar**: `via devbox` with an anchor mark, on desktop and on
   phones (where the status line is otherwise hidden it shows as a slim bar
   under the terminal).
-- **Sidebar**: the Machines group opens with the anchor: its name, an
-  **anchor** badge and "you're connected here". Every machine it reaches is
-  listed under it, indented, with how it's reached and its round trip.
-  "this machine" is never used for the anchor on another device.
+- **Sidebar**: the anchor first, every machine it reaches listed under
+  it, indented, with how it's reached and its round trip.
 - **Add a machine**: titled "Add a machine to devbox", and the text says
   devbox's SSH keys and devbox's network, so it's clear who dials.
 
-Opened on the anchor itself (its own window, the desktop app, Android's
-This phone at 127.0.0.1), nothing changes: there, the anchor is "this
-machine".
+## Make anchor (protocol 11)
+
+Any machine in the sidebar can become the anchor. Long-press it (or
+right-click it), choose **Make anchor**, and confirm; the command palette
+has "Make ubuntu the anchor" too. The page reconnects and from then on
+shows ubuntu's tabs and machines, ubuntu dials the rest, the icon moves to
+ubuntu and the bottom bar says `via ubuntu`.
+
+How it works: the page still connects to the same Gecko (the **door**: the
+desktop app's own daemon, This phone, the Gecko a browser tab opened). It
+says hello with the path to the anchor (`"anchor": ["ubuntu"]`), and the
+door forwards the whole connection to ubuntu over the link it already has
+to ubuntu (SSH bridge, Gecko link or relay), asking ubuntu for the full
+scope. A path can go through up to 4 Geckos (ubuntu, then one of
+ubuntu's machines, and so on); each hop forwards to the next.
+
+Nothing is copied. ubuntu shows only its own machines: no link tokens, SSH
+entries or keys move from the door to ubuntu. So you're never stranded,
+the sidebar keeps a **Back to** list of the anchors you came through (the
+door at least); choosing one, or Make anchor on the door or This phone,
+switches back.
+
+The choice is remembered per device:
+
+| Device | Where the anchor is kept |
+|---|---|
+| Desktop app (macOS, Windows, Linux) | the app's settings (`anchor.json` in its user data) |
+| Browser tab, PWA (iOS Safari, Android Chrome) | the page's storage, per Gecko address |
+| Android app (This phone and machines opened directly) | the app's preferences, per saved machine |
+| iOS app (saved machines) | the page's storage, per saved machine's address |
+| Termux | a machine like any other: it can be the anchor, or the door |
+
+If a remembered anchor can't be reached on launch, the page stays on the
+door and says so, with **Try again** and **Stay on devbox**.
+
+### Who may switch
+
+Only owner clients (the web token, the share link, the socket) may send
+a path; the door refuses it from a relay peer or from a client that asked
+for the local scope. The door dials the anchor with *its own* credentials
+for that machine, so switching never gives the page more than the door's
+owner already had through that link:
+
+- **SSH and Gecko links** already reach the other Gecko as its owner (an
+  SSH login as you, or its main token): the anchor serves the page in full.
+- **The relay**: another machine of your account is normally a peer
+  there (this machine's own tabs only). A door that forwards an owner's
+  page is served as the owner instead, so Make anchor works through the
+  account with no setup. **Can be the anchor through my account** is on by
+  default; turn it off on a machine (the Devices dialog, or
+  `gecko anchor account off`) and that machine only ever serves its own
+  tabs through the relay. With it off, Make anchor says how to turn it
+  back on.
+
+  What that means, plainly: any owner client of one account machine (its
+  window, its web token, its share link) can now act as the owner of any
+  other machine in the account, through the relay. That is acceptable
+  because every machine in the account is one you approved on the signed
+  device list: they are all yours, and you could already reach each of
+  them as the owner from its own window. Revoking a machine ends this at
+  once. Relay peers that aren't forwarding a page (another Gecko's hub
+  link) keep the 0.3.0 limits: this machine's own tabs and nothing else.
+
+### Settings stay the window's
+
+After a switch, the window keeps its own theme, font size, opacity, key
+bindings, key bar, quick replies and other interface settings: the door
+reads and saves them in its own `settings.json`, as before the switch,
+and passes only the tab order (which belongs to the anchor's tabs) on to
+the anchor. The anchor's own settings never change because a window
+switched to it. What belongs to a machine comes from the anchor: its
+machines, its tabs and their order, and its agents' notifications.
+
+### Compatibility
+
+- Protocol 11 is additive: the hello carries `anchor` and `door`, the
+  reply carries `door`, and a failed switch comes back as an `anchor`
+  error. Clients that don't send a path are unchanged.
+- An older target: "Update Gecko on ubuntu to make it the anchor".
+- An older door: the page keeps the door as the anchor and says
+  "Update Gecko on devbox to choose another anchor from here".
 
 ## What changed in the code
 
@@ -231,6 +315,18 @@ machine".
 - `web/src/anchor.js` (+ tests): when the page is remote, the bottom-bar
   label, the anchor badge and grouping in the sidebar, and the Add machine
   copy.
+
+Protocol 11 (Make anchor):
+
+- `internal/proto`: version 11, `Msg.Anchor`, `Msg.Door`, `TAnchor`.
+- `internal/hub/anchor.go`: `OpenAnchor` dials the next Gecko on the path
+  over the machine's existing transport and checks its reply.
+- `internal/server/anchor.go`: who may forward, the 4 hop limit, the relay
+  opt-in (`anchor.fromAccount`), and the forwarding itself.
+- `cmd/gecko`: `gecko anchor account [on|off]`.
+- `web/src/anchor.js`, `main.js`: the icon and highlight in every mode,
+  Make anchor, Back to, the remembered path; the desktop app, Android and
+  iOS keep it natively.
 
 ## Not built (follow-ups)
 

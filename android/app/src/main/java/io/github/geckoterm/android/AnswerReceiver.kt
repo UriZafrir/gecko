@@ -34,7 +34,7 @@ class AnswerReceiver : BroadcastReceiver() {
             }
             client.newWebSocket(req, object : WebSocketListener() {
                 override fun onOpen(webSocket: WebSocket, response: Response) {
-                    webSocket.send("""{"t":"hello","client":"android"}""")
+                    webSocket.send(Wire.hello(Wire.anchorOf(ctx, machine.id)))
                     webSocket.send(Wire.inputFrame(session, Wire.keyText(key)).toByteString())
                     webSocket.close(1000, null)
                 }
