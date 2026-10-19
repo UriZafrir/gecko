@@ -164,6 +164,15 @@ final class FeatureTour: GeckoUITestCase {
         beat(0.8)
         app.typeText("seq 1 5000\n")
         p = waitProbe("seq's output", timeout: 15) { ($0["baseY"] as? Int ?? 0) > 4000 }
+        // The end of the output, once seq is done (taken while lines still
+        // arrive, the bottom would be too early and a flick back could look
+        // like no scroll at all).
+        var last = -1
+        p = waitProbe("seq done", timeout: 15) { q in
+            let y = q["baseY"] as? Int ?? 0
+            defer { last = y }
+            return y == last && (q["screen"] as? String ?? "").contains("5000")
+        }
         let bottom = p["baseY"] as? Int ?? 0
         key("hide-keyboard").tap()
         beat(1.5)
