@@ -169,6 +169,62 @@ test('Make anchor on ubuntu, the icon moves and "via ubuntu" shows; it survives 
   await synced(page, 'phone');
 });
 
+// The owner's report: on Android, with the keyboard up, a long-press on a
+// machine flickered and no menu stayed, so Make anchor meant closing the
+// keyboard first. The long-press takes the focus from the terminal, the
+// keyboard goes, and the page grows taller: the menu has to stay. Chrome
+// on Android resizes the page with the keyboard, as here.
+test('keyboard up: a long-press on ubuntu opens its menu on the first try, and Make anchor works', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium' || !test.info().project.use.hasTouch, 'a long-press and a keyboard that resizes the page: Chromium with touch');
+  const full = page.viewportSize();
+  await page.goto(phoneURL);
+  await page.evaluate(() => { localStorage.removeItem('gecko.anchorPath'); });
+  await page.reload();
+  await synced(page, 'phone');
+  await page.waitForFunction(() => window.gecko.hosts.some((h) => h.name === 'ubuntu' && h.status === 'connected'), null, { timeout: 30_000 });
+  await page.evaluate(async () => { if (!window.gecko.sessions.size) await window.gecko.newTab({ name: 'shell' }); });
+  await page.waitForFunction(() => window.gecko.activePane()?.term.textarea);
+  // The keyboard comes up for the terminal, and goes when it loses focus.
+  await page.evaluate(() => {
+    const ta = window.gecko.activePane().term.textarea;
+    ta.focus();
+    ta.addEventListener('focusout', () => { window.keyboardGone = true; });
+  });
+  await page.setViewportSize({ width: full.width, height: full.height - 320 });
+  await page.waitForTimeout(400);
+  // The drawer over the terminal, as the edge swipe opens it: the keyboard stays.
+  if (await page.evaluate(() => getComputedStyle(document.getElementById('side')).position === 'fixed')) {
+    await page.evaluate(() => window.gecko.toggleSidebar());
+    await page.waitForTimeout(450);
+  }
+  await expect(page.locator('#side .host[data-host="ubuntu"]')).toBeVisible();
+  // A long-press on ubuntu's row, as Chrome on Android sends it (seen on
+  // the emulator): the row takes the focus, so the keyboard starts to go,
+  // then the context menu. (Headless Chromium makes no long-press of its
+  // own from touches.)
+  await page.locator('#side .host[data-host="ubuntu"] .host-main').evaluate((b) => {
+    const r = b.getBoundingClientRect();
+    b.focus();
+    b.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: r.left + 30, clientY: r.top + r.height / 2 }));
+  });
+  await expect(page.locator('#ctxmenu')).toBeVisible();
+  expect(await page.evaluate(() => window.keyboardGone)).toBe(true);
+  // The keyboard is gone: the page gets its height back.
+  await page.setViewportSize(full);
+  await page.waitForTimeout(500);
+  const item = page.locator('#ctxmenu button', { hasText: 'Make anchor' });
+  await expect(item).toBeVisible();
+  await shot(page, 'keyboard-menu');
+  await item.tap();
+  await expect(page.locator('#modal [data-yes]')).toHaveText('Make anchor');
+  await page.locator('#modal [data-yes]').tap();
+  await synced(page, 'ubuntu');
+  expect(await page.evaluate(() => window.gecko.proxied)).toBe(true);
+  // Back to phone, for the tests after this one.
+  await page.evaluate(() => window.gecko.makeAnchor('phone'));
+  await synced(page, 'phone');
+});
+
 test('the command palette offers Make anchor', async ({ page }) => {
   await page.goto(phoneURL);
   await synced(page, 'phone');

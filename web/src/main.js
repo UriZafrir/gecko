@@ -2396,7 +2396,7 @@ class App {
   }
 
   // A small menu at the pointer: arrow keys and Enter, or click; Escape,
-  // a click elsewhere or scrolling closes it.
+  // a click elsewhere, scrolling or a change of width closes it.
   showMenu(x, y, items) {
     this.closeMenu?.();
     // Drop empty entries and separators that would start, end or double up.
@@ -2428,8 +2428,18 @@ class App {
       window.removeEventListener('pointerdown', outside, true);
       window.removeEventListener('keydown', key, true);
       window.removeEventListener('blur', close);
-      window.removeEventListener('resize', close);
+      window.removeEventListener('resize', resized);
       window.removeEventListener('wheel', close, true);
+    };
+    // A rotation, a fold or a resized window closes it, but not the
+    // keyboard coming or going (Chrome on Android resizes the page's
+    // height with it): a long-press with the keyboard up takes the focus
+    // from the terminal, the keyboard goes, and the menu stays, kept on
+    // the screen.
+    const width = innerWidth;
+    const resized = () => {
+      if (innerWidth !== width) return close();
+      el.style.top = Math.max(4, Math.min(parseFloat(el.style.top), innerHeight - el.offsetHeight - 4)) + 'px';
     };
     const run = (b) => {
       close();
@@ -2450,7 +2460,7 @@ class App {
     window.addEventListener('pointerdown', outside, true);
     window.addEventListener('keydown', key, true);
     window.addEventListener('blur', close);
-    window.addEventListener('resize', close);
+    window.addEventListener('resize', resized);
     window.addEventListener('wheel', close, true);
     this.closeMenu = close;
   }
