@@ -38,7 +38,7 @@
 - **Sessions outlive everything.** A small daemon owns every shell and agent.
   Close the window, lose Wi-Fi or upgrade Gecko, and tabs keep running and
   resume from the last byte. The daemon starts at login.
-- **Agents at a glance.** Claude Code, Codex, Gemini, Aider and others are
+- **Agents at a glance.** Claude Code, Codex, OpenCode, Gemini, Aider and others are
   recognised in a tab, inside tmux panes, and over ssh or mosh from their
   terminal titles. The dock shows which are working and which need you.
 - **Every machine.** Add hosts by their SSH destination. Or turn on sticky

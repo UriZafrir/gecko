@@ -22,7 +22,9 @@
   (from the terminal title the agent sets). tmux windows in the sidebar show
   the agent in their active pane. The agent dock shows each one as *working*, *needs you* or
   *idle*, with the line it is showing, and one-tap replies (`1`, `2`, `y`,
-  `esc`, `⏎`). You get a notification when an agent stops for you.
+  `esc`, `⏎`). Claude Code, Codex and OpenCode are read by what they really
+  draw, so a dialog waiting for you or an agent stopped with Esc never shows
+  as working. You get a notification when an agent stops for you.
 - **[Android app](android.md).** The same UI as a native app: scan the QR code
   to connect, terminal keys above the keyboard, notifications with answer
   buttons when an agent needs you (even with the app closed), the real

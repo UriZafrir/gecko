@@ -60,10 +60,16 @@ New in 0.3.0:
   text size, and tabs that switch on every tap. `make test-pwa` runs it in
   WebKit and Chromium, and CI also runs Safari in the iOS Simulator.
 
-Agent status is a heuristic. It looks for screen text such as "esc to
-interrupt" and approval prompts, plus output activity, bells and OSC 9/777
-notifications. It works well for Claude Code and Codex-style TUIs. Other agents
-may need patterns added in `internal/session/session.go`.
+Agent status is read from the screen. Codex and OpenCode each have a reader
+of their own, made from their real screens (recorded in
+`internal/session/testdata/agents`, with the versions there): their working
+markers, their approval dialogs and questions with the answers on offer, and
+where Esc leaves them. Codex also reports its state with OSC 7501 and in its
+title, which count too. For these two, output alone never means working:
+they redraw while they wait. Other agents get general rules, made from
+Claude Code's screens: text such as "esc to interrupt" and approval prompts,
+output activity, bells and OSC 9/777 notifications. An agent they don't fit
+may need a reader in `internal/session/agents.go`.
 
 Sessions survive client, network and SSH loss, and upgrades.
 `gecko upgrade` (which `make install` runs for you, and which is also in the
