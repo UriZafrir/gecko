@@ -12,6 +12,7 @@ import (
 	"github.com/gecko-term/gecko/internal/hub"
 	"github.com/gecko-term/gecko/internal/proto"
 	"github.com/gecko-term/gecko/internal/session"
+	"github.com/gorilla/websocket"
 )
 
 func TestPrivatePeer(t *testing.T) {
@@ -112,5 +113,29 @@ func TestShareOnlyOnLocalSocket(t *testing.T) {
 	var st proto.ShareState
 	if r.Error != "" || json.Unmarshal([]byte(r.Text), &st) != nil || !st.On {
 		t.Errorf("cli: %+v", r)
+	}
+}
+
+// A client that finishes connecting while sharing stops is cut off too:
+// CloseClients ran before it was listed, and it stayed connected.
+func TestCloseClientsCutsLateClient(t *testing.T) {
+	h := hub.New(&config.Config{Name: "test"}, session.NewManager(session.Options{Host: "test", Shell: "/bin/sh", ScriptsDir: t.TempDir()}))
+	s := &HTTP{Hub: h, Token: "secret-token-123456"}
+	hs := httptest.NewServer(s.Handler())
+	defer hs.Close()
+	s.CloseClients()
+	ws, _, err := websocket.DefaultDialer.Dial("ws"+hs.URL[4:]+"/ws", http.Header{"Authorization": {"Bearer " + s.Token}})
+	if err != nil {
+		t.Fatalf("websocket: %v", err)
+	}
+	defer ws.Close()
+	_ = ws.SetReadDeadline(time.Now().Add(2 * time.Second))
+	for {
+		if _, _, err := ws.ReadMessage(); err != nil {
+			if ne, ok := err.(net.Error); ok && ne.Timeout() {
+				t.Fatal("a client that connected after CloseClients is still connected")
+			}
+			return
+		}
 	}
 }

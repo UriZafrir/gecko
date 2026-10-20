@@ -30,8 +30,9 @@ type HTTP struct {
 	// data included.
 	PrivateOnly bool
 
-	mu    sync.Mutex
-	conns map[*websocket.Conn]struct{}
+	mu     sync.Mutex
+	conns  map[*websocket.Conn]struct{}
+	closed bool // CloseClients ran: a client still upgrading is closed too
 
 	// WebTransport, between StartWT and CloseWT (see wt.go).
 	wtMu      sync.Mutex
@@ -125,6 +126,7 @@ func PrivatePeer(addr string) bool {
 func (s *HTTP) CloseClients() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.closed = true
 	for c := range s.conns {
 		_ = c.Close()
 	}
@@ -180,6 +182,13 @@ func (s *HTTP) ws(w http.ResponseWriter, r *http.Request) {
 	}
 	c.SetReadLimit(16 << 20)
 	s.mu.Lock()
+	if s.closed {
+		// Upgraded while sharing stopped: CloseClients didn't see it, and
+		// it would have stayed connected with a token no longer valid.
+		s.mu.Unlock()
+		_ = c.Close()
+		return
+	}
 	if s.conns == nil {
 		s.conns = map[*websocket.Conn]struct{}{}
 	}
