@@ -239,9 +239,17 @@ final class SafariPWATests: XCTestCase {
             let theme = safari.buttons.matching(NSPredicate(format: "label CONTAINS 'Gecko Light'")).firstMatch
             if theme.waitForExistence(timeout: 3) {
                 theme.tap()
-                beat(1.2)
+                // The page applies it at once; the daemon's settings.json
+                // follows once the change has gone over the connection,
+                // which a busy Simulator took more than a second for.
+                let until = Date().addingTimeInterval(6)
+                var seen: Any = ""
+                repeat {
+                    beat(0.5)
+                    seen = settings()["theme"] ?? probe(safari)["theme"] ?? ""
+                } while (seen as? String) != "gecko-light" && Date() < until
                 shot("safari-09-theme-light")
-                results["themeAfterTap"] = settings()["theme"] ?? probe(safari)["theme"] ?? ""
+                results["themeAfterTap"] = seen
                 XCTAssertEqual(results["themeAfterTap"] as? String, "gecko-light", "the theme changed")
                 safari.buttons.matching(NSPredicate(format: "label CONTAINS 'Tokyo Night'")).firstMatch.tap()
                 beat(1)
@@ -317,6 +325,11 @@ final class SafariPWATests: XCTestCase {
         var add: XCUIElement? = nil
         for attempt in 0..<3 where add == nil {
             guard let button = attempt == 0 ? Optional(share) : shareButton() else { beat(1); continue }
+            // Safari greys its toolbar out while the page is still loading,
+            // and a tap on Share then does nothing.
+            let enabledBy = Date().addingTimeInterval(15)
+            while !button.isEnabled && Date() < enabledBy { beat(0.5) }
+            results["shareWaited\(attempt)"] = 15 - max(0, enabledBy.timeIntervalSinceNow)
             button.tap()
             let sheetUp = Date().addingTimeInterval(4)
             while add == nil && Date() < sheetUp { beat(0.4); add = findAdd() }
