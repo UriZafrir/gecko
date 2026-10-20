@@ -57,7 +57,20 @@ final class SafariPWATests: XCTestCase {
     func hittable(_ e: XCUIElement) -> Bool { e.exists && e.isHittable }
 
     /// The page's state (main.js, ?probe), from whichever app shows it.
-    func probe(_ app: XCUIApplication) -> [String: Any] {
+    /// Tries for up to `within` seconds: one snapshot can come back empty on
+    /// a busy Simulator, and a check read from it then saw -1 (no zoom, no
+    /// font size) where the page had the right answer.
+    func probe(_ app: XCUIApplication, within: TimeInterval = 3) -> [String: Any] {
+        let until = Date().addingTimeInterval(within)
+        repeat {
+            let p = probeOnce(app)
+            if !p.isEmpty { return p }
+            beat(0.3)
+        } while Date() < until
+        return [:]
+    }
+
+    func probeOnce(_ app: XCUIApplication) -> [String: Any] {
         // From a snapshot: reading .label off an element that went away
         // between two lookups fails the test ("Failed to get matching
         // snapshot"); a snapshot only throws, and the caller tries again.
@@ -72,7 +85,7 @@ final class SafariPWATests: XCTestCase {
         let until = Date().addingTimeInterval(timeout)
         var last: [String: Any] = [:]
         while Date() < until {
-            last = probe(app)
+            last = probeOnce(app)
             if ok(last) { return last }
             beat(0.3)
         }
@@ -354,7 +367,7 @@ final class SafariPWATests: XCTestCase {
         for id in ["com.apple.webapp", "com.apple.webapp1", "com.apple.WebSheet", "com.apple.mobilesafari", "com.apple.springboard"] {
             let a = XCUIApplication(bundleIdentifier: id)
             states[id] = Int(a.state.rawValue)
-            if a.state != .notRunning, !probe(a).isEmpty { app = a; results["standaloneApp"] = id; break }
+            if a.state != .notRunning, !probe(a, within: 1).isEmpty { app = a; results["standaloneApp"] = id; break }
         }
         results["appStates"] = states
         guard let app else {
