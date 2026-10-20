@@ -30,8 +30,9 @@ type HTTP struct {
 	// data included.
 	PrivateOnly bool
 
-	mu    sync.Mutex
-	conns map[*websocket.Conn]struct{}
+	mu     sync.Mutex
+	conns  map[*websocket.Conn]struct{}
+	closed bool // Stop ran: a client still upgrading is closed too
 
 	// WebTransport, between StartWT and CloseWT (see wt.go).
 	wtMu      sync.Mutex
@@ -130,6 +131,16 @@ func (s *HTTP) CloseClients() {
 	}
 }
 
+// Stop drops every WebSocket client for good: also one still upgrading,
+// which CloseClients alone would miss (it isn't listed yet) and which
+// would then stay connected with a token no longer valid.
+func (s *HTTP) Stop() {
+	s.mu.Lock()
+	s.closed = true
+	s.mu.Unlock()
+	s.CloseClients()
+}
+
 func securityHeaders(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -180,6 +191,12 @@ func (s *HTTP) ws(w http.ResponseWriter, r *http.Request) {
 	}
 	c.SetReadLimit(16 << 20)
 	s.mu.Lock()
+	if s.closed {
+		// Upgraded while the listener stopped (see Stop).
+		s.mu.Unlock()
+		_ = c.Close()
+		return
+	}
 	if s.conns == nil {
 		s.conns = map[*websocket.Conn]struct{}{}
 	}

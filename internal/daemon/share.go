@@ -93,7 +93,7 @@ func (s *sharer) stopLocked() {
 		return
 	}
 	_ = s.srv.Close() // the listener and plain HTTP connections
-	s.web.CloseClients()
+	s.web.Stop() // also a client still connecting
 	s.srv, s.web, s.asked = nil, nil, ""
 	s.state = proto.ShareState{}
 	log.Printf("stopped sharing with other devices")
