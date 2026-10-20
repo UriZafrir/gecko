@@ -49,6 +49,9 @@ import { siClaude, siGooglegemini, siCursor, siGithubcopilot, siQwen, siOpencode
 import { $, esc, ago, shortPath, copyText, readClipboard, fuzzy, store, save, isTouch, isMac, native, compactLayout, COMPACT } from './util.js';
 
 const MAX_LIVE_PANES = 12;
+// A window counts as in use for this long after a touch, a key or coming
+// back to it (see inUse).
+const IN_USE_MS = 2 * 60_000;
 
 // Turns the mouse wheel over el into next (+1) / previous (-1) steps for
 // elements matching sel. A wheel notch is one step; a trackpad has to
@@ -360,6 +363,7 @@ class App {
     this.dockOpen = null; // phones: the agent chip showing its answers
     this.agentSeen = new Map();
     this.pendingFocus = null;
+    this.lastUse = Date.now();
     this.applyTheme();
 
     this.conn = new Conn({
@@ -367,8 +371,9 @@ class App {
       onOpen: () => {
         splash.set(0.85);
         for (const p of this.panes.values()) if (p.attached) p.attach();
-        const a = this.activePane();
-        if (a) a.sendSize(true);
+        // Not a window left open on another screen: reconnecting, it took the
+        // session back to its own size under the phone in use.
+        if (this.inUse()) this.activePane()?.sendSize(true);
       },
       onStatus: () => this.renderSoon(),
       onRTT: () => this.renderNet(),
@@ -540,6 +545,22 @@ class App {
   activePane() {
     const id = this.activeId();
     return id ? this.panes.get(id) : null;
+  }
+
+  // The device someone is using decides a session's size. A window open on
+  // another screen (the desktop, while you're on the phone) is not in use:
+  // it doesn't take the size back on its own.
+  inUse() {
+    return !document.hidden && document.hasFocus() && Date.now() - this.lastUse < IN_USE_MS;
+  }
+
+  // A touch, a key or coming back: this device is in use, and the session
+  // takes its size if another device changed it meanwhile (that left the
+  // text jumbled until a pinch).
+  used(back = false) {
+    this.lastUse = Date.now();
+    const p = this.activePane(), s = p && this.sessions.get(p.id);
+    if (p?.visible && s && (back || s.cols !== p.term.cols || s.rows !== p.term.rows)) p.sendSize(true);
   }
 
   // ---------------------------------------------------------------- agents
@@ -2196,11 +2217,13 @@ class App {
       this.renderDock();
       this.activePane()?.layout(true);
     });
-    window.addEventListener('focus', () => {
-      const p = this.activePane();
-      if (p) p.sendSize(true);
+    window.addEventListener('focus', () => this.used(true));
+    // Phones come back to the app without a focus event.
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) this.used(true);
+      this.updateTitle();
     });
-    document.addEventListener('visibilitychange', () => this.updateTitle());
+    for (const t of ['pointerdown', 'keydown', 'wheel']) window.addEventListener(t, () => this.used(), { capture: true, passive: true });
   }
 
   // Tab numbers stay hidden until they're useful: while dragging (see
