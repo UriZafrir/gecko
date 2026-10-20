@@ -24,6 +24,19 @@ Apps and packages, each built and smoke-tested in CI:
 - **Termux:** Gecko runs in [Termux](android.md#termux) on Android, and the
   Android app opens it like any other machine.
 
+New in 0.3.2:
+
+- **Codex and OpenCode, first class:** each has its own status reader,
+  built from their real screens, so a paused, stopped or waiting agent no
+  longer shows as working, approvals show their choices in the agent dock,
+  and a new OpenCode tab is Idle, not Needs you. Codex is also recognised
+  over ssh.
+- **Long-press with the keyboard up:** on Android, a long-press on a machine
+  opens its menu (and Make anchor) on the first try; the keyboard going no
+  longer closes it.
+- **Share off cuts everyone off:** `gecko share off` also closes a browser
+  that was still connecting when sharing stopped.
+
 New in 0.3.1:
 
 - **Make anchor (protocol 11):** any machine in the sidebar can become the
