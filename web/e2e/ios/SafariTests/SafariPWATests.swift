@@ -42,11 +42,28 @@ final class SafariPWATests: XCTestCase {
 
     func beat(_ s: Double = 1) { Thread.sleep(forTimeInterval: s) }
 
+    /// Taps e if it shows up within timeout. Safari's own prompts can close
+    /// by themselves between finding one and tapping it, and a plain tap()
+    /// then fails the test: this taps where it was, from a snapshot.
+    @discardableResult
+    func tapIfPresent(_ app: XCUIApplication, _ e: XCUIElement, timeout: TimeInterval = 1) -> Bool {
+        guard e.waitForExistence(timeout: timeout), let f = try? e.snapshot().frame, !f.isEmpty else { return false }
+        app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: f.midX, dy: f.midY)).tap()
+        return true
+    }
+
+    /// Whether e is there and can be tapped, without failing the test when
+    /// it isn't there at all (isHittable on a missing element does).
+    func hittable(_ e: XCUIElement) -> Bool { e.exists && e.isHittable }
+
     /// The page's state (main.js, ?probe), from whichever app shows it.
     func probe(_ app: XCUIApplication) -> [String: Any] {
+        // From a snapshot: reading .label off an element that went away
+        // between two lookups fails the test ("Failed to get matching
+        // snapshot"); a snapshot only throws, and the caller tries again.
         let e = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'gecko.probe '")).firstMatch
-        guard e.exists else { return [:] }
-        let json = String(e.label.dropFirst("gecko.probe ".count))
+        guard let label = try? e.snapshot().label else { return [:] }
+        let json = String(label.dropFirst("gecko.probe ".count))
         return (try? JSONSerialization.jsonObject(with: Data(json.utf8))) as? [String: Any] ?? [:]
     }
 
@@ -83,7 +100,7 @@ final class SafariPWATests: XCTestCase {
         }
         XCUIDevice.shared.system.open(u)
         XCTAssertTrue(safari.wait(for: .runningForeground, timeout: 20), "Safari opened")
-        for b in ["Continue", "Not Now", "Close"] where safari.buttons[b].waitForExistence(timeout: 1) { safari.buttons[b].tap() }
+        for b in ["Continue", "Not Now", "Close"] { tapIfPresent(safari, safari.buttons[b].firstMatch) }
         let ready: ([String: Any]) -> Bool = { ($0["online"] as? String) == "online" && ($0["sync"] as? Bool) == true }
         var p = waitProbe(safari, 15, ready)
         if p.isEmpty {
@@ -122,7 +139,9 @@ final class SafariPWATests: XCTestCase {
         if let tabs = p["tabs"] as? [[String: Any]], tabs.count >= 2, let nb = p["newTab"] as? [Any] {
             let anchorCSS = nums(nb)
             for i in 0..<24 {
-                let now = probe(safari)
+                // One snapshot can come back empty on a busy Simulator: wait
+                // for the next one instead of ending the loop.
+                let now = waitProbe(safari, 5) { ($0["tabs"] as? [Any])?.count ?? 0 >= 2 }
                 guard let list = now["tabs"] as? [[String: Any]], list.count >= 2 else { break }
                 let k = (i * 3 + 1) % list.count
                 let t = list[k]
@@ -274,42 +293,51 @@ final class SafariPWATests: XCTestCase {
         }
         XCTAssertNotNil(found, "Safari's Share button")
         guard let share = found else { shot("home-00-no-share"); print(safari.debugDescription); return }
-        func findAdd() -> XCUIElement {
-            var add = safari.buttons["Add to Home Screen"].firstMatch
-            if !add.exists { add = safari.cells["Add to Home Screen"].firstMatch }
-            if !add.exists { add = safari.staticTexts["Add to Home Screen"].firstMatch }
-            return add
+        func findAdd() -> XCUIElement? {
+            for e in [safari.buttons["Add to Home Screen"].firstMatch, safari.cells["Add to Home Screen"].firstMatch,
+                      safari.staticTexts["Add to Home Screen"].firstMatch] where e.exists { return e }
+            return nil
         }
-        share.tap()
-        beat(1.5)
-        var add = findAdd()
-        if !add.exists, let again = shareButton() {
-            // The tap can land while the toolbar is still moving: once more.
-            again.tap()
-            beat(1.5)
-            add = findAdd()
+        // The sheet can open late, not at all (a tap while the toolbar is
+        // still moving), or with Add to Home Screen below its fold: open it,
+        // wait for it, scroll it, and start over if it isn't there.
+        var add: XCUIElement? = nil
+        for attempt in 0..<3 where add == nil {
+            guard let button = attempt == 0 ? Optional(share) : shareButton() else { beat(1); continue }
+            button.tap()
+            let sheetUp = Date().addingTimeInterval(4)
+            while add == nil && Date() < sheetUp { beat(0.4); add = findAdd() }
+            if attempt == 0 { shot("home-01-share-sheet") }
+            for _ in 0..<5 where add.map({ !hittable($0) }) ?? true {
+                let sheet = safari.otherElements["ActivityListView"].firstMatch, list = safari.collectionViews.firstMatch
+                let target: XCUIElement = sheet.exists ? sheet : list.exists ? list : safari
+                target.swipeUp()
+                beat(0.6)
+                add = findAdd()
+            }
+            if add.map({ !hittable($0) }) ?? true {
+                add = nil
+                tapIfPresent(safari, safari.buttons["Close"].firstMatch) // the sheet, before trying again
+                beat(1)
+            }
         }
-        shot("home-01-share-sheet")
-        var tries = 0
-        while !add.isHittable && tries < 4 {
-            safari.swipeUp()
-            tries += 1
-            beat(0.6)
-        }
-        XCTAssertTrue(add.exists, "Add to Home Screen in the share sheet")
-        add.tap()
+        XCTAssertNotNil(add, "Add to Home Screen in the share sheet")
+        guard let addItem = add else { shot("home-01b-no-add"); return }
+        addItem.tap()
         beat(1.5)
         shot("home-02-add")
         let addButton = safari.buttons["Add"].firstMatch
         results["addSheetName"] = safari.textFields.firstMatch.exists ? (safari.textFields.firstMatch.value as? String ?? "") : ""
         XCTAssertTrue(addButton.waitForExistence(timeout: 5), "the Add button")
         addButton.tap()
+        // A tap during the sheet's animation can be lost: the sheet stays.
+        if !addButton.waitForNonExistence(timeout: 4) { tapIfPresent(safari, addButton) }
         beat(2)
         XCUIDevice.shared.press(.home)
         beat(1.5)
         shot("home-03-springboard")
         let icon = springboard.icons["Gecko"].firstMatch
-        XCTAssertTrue(icon.waitForExistence(timeout: 10), "the Gecko icon on the Home Screen")
+        XCTAssertTrue(icon.waitForExistence(timeout: 20), "the Gecko icon on the Home Screen")
         // A new icon can land on another Home Screen page.
         for _ in 0..<4 where !icon.isHittable {
             springboard.swipeLeft()
