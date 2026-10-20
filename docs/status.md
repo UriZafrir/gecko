@@ -39,6 +39,14 @@ New in 0.3.1:
   [Where gecko lives](install.md#where-gecko-lives)). A restart that can't
   work (a binary still being copied) now fails up front with the reason and
   leaves the machines connected, instead of "write |1: file already closed".
+- **Closed tabs stay closed:** a closed tab could stay listed and come back
+  on every reconnect, its shell left a zombie. Closing now always ends it,
+  and an upgrade is no longer refused while a closed tab is still ending.
+- **Phones keep their size:** a session open on the phone and on a window
+  left open elsewhere no longer turns jumbled on the phone until a pinch.
+  Only the device in use (touched, typed in or come back to in the last 2
+  minutes) sets the size after a reconnect, and coming back to the app or
+  touching the terminal takes the size back.
 
 New in 0.3.0:
 
