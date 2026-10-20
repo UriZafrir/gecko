@@ -107,7 +107,7 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/dev.gecko.app.
 %attr(4755,root,root) %{_prefix}/lib/gecko-desktop/chrome-sandbox
 
 %changelog
-* Mon Oct 19 2026 Gecko contributors <gecko@users.noreply.github.com> - 0.3.1-1
+* Tue Oct 20 2026 Gecko contributors <gecko@users.noreply.github.com> - 0.3.1-1
 - New upstream release 0.3.1
 
 * Sun Oct 18 2026 Gecko contributors <gecko@users.noreply.github.com> - 0.3.0-1
