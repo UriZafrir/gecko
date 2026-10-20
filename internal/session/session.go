@@ -291,6 +291,9 @@ type Session struct {
 	// was seen under (ssh, say): when that changes, the agent is gone.
 	titleAgent, titleStatus string
 	titleAgentPid           int
+	// The same for an agent that reports its state (OSC 7501).
+	stateAgent, stateStatus string
+	stateAgentPid           int
 }
 
 // Info returns a snapshot of the session's metadata.
@@ -514,7 +517,13 @@ func (s *Session) osc(num int, payload string) {
 		if t != s.info.Title {
 			s.info.Title, s.dirty = t, true
 		}
-		if a, st, ok := inspect.TitleAgent(t, s.titleAgent); ok {
+		// Titles that only keep an agent count for the one in the
+		// foreground too (Codex's spinner), not just one a title named.
+		current := s.titleAgent
+		if current == "" && s.info.Agent != nil {
+			current = s.info.Agent.Name
+		}
+		if a, st, ok := inspect.TitleAgent(t, current); ok {
 			if a != s.titleAgent {
 				s.titleAgentPid = 0
 			}
@@ -536,6 +545,7 @@ func (s *Session) osc(num int, payload string) {
 		case payload == "A" || strings.HasPrefix(payload, "A;"):
 			s.pendingCmd = ""
 			s.clearTitleAgent() // back at a prompt: whatever set the title is gone
+			s.clearStateAgent()
 			if s.startup != "" {
 				go s.sendStartup()
 			}
@@ -568,14 +578,57 @@ func (s *Session) osc(num int, payload string) {
 			s.notify(strings.ReplaceAll(rest, ";", ": "))
 		}
 	case 99: // kitty notifications
-		if _, body, ok := strings.Cut(payload, ";"); ok {
+		// Not a query of what the terminal supports ("p=?"), as OpenCode
+		// sends on start, nor an empty body.
+		if meta, body, ok := strings.Cut(payload, ";"); ok && !strings.Contains(meta, "p=?") && strings.TrimSpace(body) != "" {
 			s.notify(body)
 		}
+	case 7501:
+		// An agent's own state, e.g. Codex's "state=working:app=codex".
+		s.agentState(payload)
 	}
 }
 
 func (s *Session) clearTitleAgent() {
 	s.titleAgent, s.titleStatus, s.titleAgentPid = "", "", 0
+}
+
+func (s *Session) clearStateAgent() {
+	s.stateAgent, s.stateStatus, s.stateAgentPid = "", "", 0
+}
+
+// agentState reads the state an agent reports with OSC 7501, fields
+// separated by colons: "state=idle:app=codex", "state=working:...",
+// "state=blocked:..." (waiting for the user). "?" asks whether the
+// terminal listens; nothing answers it.
+func (s *Session) agentState(payload string) {
+	var state, app string
+	for _, f := range strings.Split(payload, ":") {
+		k, v, _ := strings.Cut(f, "=")
+		switch k {
+		case "state":
+			state = v
+		case "app":
+			app = v
+		}
+	}
+	a := inspect.AgentName(app)
+	if a == "" {
+		return
+	}
+	st := ""
+	switch state {
+	case "idle":
+		st = "idle"
+	case "working", "busy":
+		st = "working"
+	case "blocked", "waiting":
+		st = "needs-input"
+	}
+	if a != s.stateAgent {
+		s.stateAgentPid = 0
+	}
+	s.stateAgent, s.stateStatus, s.dirty = a, st, true
 }
 
 func (s *Session) setCwd(d string) {
@@ -703,7 +756,7 @@ func (m *Manager) inspect(ss []*Session, slow bool) {
 			if tmuxSess != "" || s.info.RemoteTmux != "" {
 				screen = withoutTmuxStatus(screen)
 			}
-			st := agentStatus(screen, now.Sub(s.lastOutput), now.Sub(s.lastInput), s.info.Attention)
+			st := agentStatusOf(name, screen, now.Sub(s.lastOutput), now.Sub(s.lastInput), s.info.Attention)
 			st.Status = withHint(st.Status, hint)
 			if s.info.Agent == nil || s.info.Agent.Name != name || s.info.Agent.Status != st.Status {
 				st.Since = now.UnixMilli()
@@ -726,34 +779,51 @@ func (m *Manager) inspect(ss []*Session, slow bool) {
 }
 
 // agentOf decides which coding agent runs in a session, if any, and what
-// its title says about its status: the foreground process first, then the
-// pane a tmux client shows, then the terminal title (for agents beyond the
-// process table, as over ssh). Called with s.mu held.
+// it says about its status: the foreground process first, then the pane a
+// tmux client shows, then what the agent itself reports, its state (OSC
+// 7501, as Codex sends it) or its terminal title (for agents beyond the
+// process table, as over ssh). The state beats the title: it is what the
+// agent means to say. Called with s.mu held.
 func (s *Session) agentOf(cls inspect.Info, paneAgent, paneStatus string) (name, hint string) {
 	switch {
 	case cls.Agent != "":
+		if s.stateAgent == cls.Agent && s.stateStatus != "" {
+			return cls.Agent, s.stateStatus
+		}
 		if s.titleAgent == cls.Agent {
 			return cls.Agent, s.titleStatus
 		}
 		return cls.Agent, ""
 	case cls.Kind == "tmux":
 		return paneAgent, paneStatus
-	case s.titleAgent == "":
+	case s.titleAgent == "" && s.stateAgent == "":
 		return "", ""
 	case cls.Kind == "shell":
 		// The shell is in the foreground again: the agent exited without
 		// resetting the title (or the title came from the prompt).
 		s.clearTitleAgent()
+		s.clearStateAgent()
 		return "", ""
 	case cls.Pid != 0:
-		// Bind the title to the process it appeared under; another
-		// process in the foreground means it's stale.
-		if s.titleAgentPid == 0 {
-			s.titleAgentPid = cls.Pid
-		} else if s.titleAgentPid != cls.Pid {
-			s.clearTitleAgent()
-			return "", ""
+		// Bind the title and the state to the process they appeared
+		// under; another process in the foreground means they're stale.
+		if s.titleAgent != "" {
+			if s.titleAgentPid == 0 {
+				s.titleAgentPid = cls.Pid
+			} else if s.titleAgentPid != cls.Pid {
+				s.clearTitleAgent()
+			}
 		}
+		if s.stateAgent != "" {
+			if s.stateAgentPid == 0 {
+				s.stateAgentPid = cls.Pid
+			} else if s.stateAgentPid != cls.Pid {
+				s.clearStateAgent()
+			}
+		}
+	}
+	if s.stateAgent != "" {
+		return s.stateAgent, s.stateStatus
 	}
 	return s.titleAgent, s.titleStatus
 }
