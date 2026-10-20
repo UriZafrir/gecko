@@ -136,7 +136,8 @@ export class Pane {
     });
   }
 
-  layout(now = false) {
+  // quiet: fit this window without telling the session its size.
+  layout(now = false, quiet = false) {
     if (this.holdSize || !this.visible || !this.el.clientWidth || !this.el.clientHeight) return;
     const dims = this.fit.proposeDimensions();
     if (!dims || !Number.isFinite(dims.cols) || !Number.isFinite(dims.rows)) return;
@@ -149,6 +150,7 @@ export class Pane {
     }
     if (cols !== this.term.cols || rows !== this.term.rows) this.resizeKeepingView(cols, rows);
     clearTimeout(this.sizeTimer);
+    if (quiet) return;
     if (now) this.sendSize();
     else this.sizeTimer = setTimeout(() => this.sendSize(), 120);
   }
@@ -241,7 +243,7 @@ export class Pane {
     if (!this.holdSize) return;
     this.holdSize = false;
     clearTimeout(this.holdTimer);
-    this.layout(true);
+    this.layout(true, !this.app.inUse()); // after a reconnect, only the device in use resizes
   }
 
   markExited(code) {
