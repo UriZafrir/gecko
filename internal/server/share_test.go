@@ -117,13 +117,13 @@ func TestShareOnlyOnLocalSocket(t *testing.T) {
 }
 
 // A client that finishes connecting while sharing stops is cut off too:
-// CloseClients ran before it was listed, and it stayed connected.
-func TestCloseClientsCutsLateClient(t *testing.T) {
+// Stop ran before it was listed, and it stayed connected.
+func TestStopCutsLateClient(t *testing.T) {
 	h := hub.New(&config.Config{Name: "test"}, session.NewManager(session.Options{Host: "test", Shell: "/bin/sh", ScriptsDir: t.TempDir()}))
 	s := &HTTP{Hub: h, Token: "secret-token-123456"}
 	hs := httptest.NewServer(s.Handler())
 	defer hs.Close()
-	s.CloseClients()
+	s.Stop()
 	ws, _, err := websocket.DefaultDialer.Dial("ws"+hs.URL[4:]+"/ws", http.Header{"Authorization": {"Bearer " + s.Token}})
 	if err != nil {
 		t.Fatalf("websocket: %v", err)
@@ -133,7 +133,7 @@ func TestCloseClientsCutsLateClient(t *testing.T) {
 	for {
 		if _, _, err := ws.ReadMessage(); err != nil {
 			if ne, ok := err.(net.Error); ok && ne.Timeout() {
-				t.Fatal("a client that connected after CloseClients is still connected")
+				t.Fatal("a client that connected after Stop is still connected")
 			}
 			return
 		}
