@@ -218,8 +218,9 @@ var (
 	reOCMeta = regexp.MustCompile(`^▣\s`)
 	// A reasoning step, folded: "+ Thought: 1.0s".
 	reOCThought = regexp.MustCompile(`^[+-] Thought: `)
-	// A hint among a dialog's buttons: "ctrl+f fullscreen", "⇆ select".
-	reOCKeyHint = regexp.MustCompile(`(?i)(ctrl\+|⇆|\bselect\b|\benter confirm\b|\bfullscreen\b)`)
+	// The key hints after a dialog's buttons: "ctrl+f fullscreen",
+	// "⇆ select", "enter confirm" (cut short on a narrow screen).
+	reOCKeyHint = regexp.MustCompile(`(?i)^(ctrl\+|⇆|enter\b|esc\b|tab\b)|\bselect\b|\bfullscreen\b`)
 	reOCGap     = regexp.MustCompile(`\s{2,}`)
 	// Where the sidebar's text starts on a line that has its own.
 	reOCSidebar = regexp.MustCompile(`\S\s{8,}\S`)
@@ -349,7 +350,9 @@ func opencodeButtons(lines []string) []proto.Choice {
 		l = strings.TrimSpace(strings.TrimLeft(l, "┃"))
 		var labels []string
 		for _, q := range reOCGap.Split(l, -1) {
-			if q = strings.TrimSpace(q); q != "" && !reOCKeyHint.MatchString(q) {
+			if q = strings.TrimSpace(q); reOCKeyHint.MatchString(q) {
+				break
+			} else if q != "" {
 				labels = append(labels, q)
 			}
 		}

@@ -23,7 +23,7 @@
 
 
                                            ┃
-                                           ┃  Ask anything… "Fix broken tests"
+                                           ┃  Ask anything… "Fix a TODO in the codebase"
                                            ┃
                                            ┃  Build · Mock Model Mock
                                            ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀

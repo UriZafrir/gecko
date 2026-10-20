@@ -5,10 +5,10 @@ Screens of real coding agents, as Gecko's own vt sees them, for the tests in
 driven through its states by a script, and each file is the screen at one
 of them.
 
-| Agent    | Version                        | Sizes                 |
-|----------|--------------------------------|-----------------------|
-| codex    | codex-cli 0.163.0 (npm)        | 100x30, 50x30, 160x40 |
-| opencode | opencode 1.19.3 (snap)         | 100x30, 50x30, 160x40 |
+| Agent    | Version                        | Sizes                        |
+|----------|--------------------------------|------------------------------|
+| codex    | codex-cli 0.163.0 (npm)        | 100x30, 50x30, 80x24, 160x40 |
+| opencode | opencode 1.19.3 (snap)         | 100x30, 50x30, 80x24, 160x40 |
 
 A file starts with a header, then `#---`, then the screen:
 

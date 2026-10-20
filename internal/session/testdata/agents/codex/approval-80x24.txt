@@ -1,0 +1,30 @@
+# agent: codex-cli 0.163.0
+# state: approval-80x24
+# size: 80x24, recorded 2026-10-20 with testdata/agents/rec
+# title: [ ! ] Action Required | gecko-agent-demo
+# osc7501: state=blocked:app=codex
+#---
+
+
+› list files here
+
+
+• Exploring
+  └ List ls
+    + Show details
+
+
+  Would you like to run the following command?
+
+  Environment: local
+
+  Reason: List the files in this folder
+
+  $ ls
+
+
+› 1. Yes, proceed (y)
+  2. Yes, and don't ask again for commands that start with `ls` (p)
+  3. No, and tell Codex what to do differently (esc)
+
+  Press enter to confirm or esc to cancel

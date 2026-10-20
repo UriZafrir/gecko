@@ -38,7 +38,7 @@ codex)
 	mock='model_providers.mock={name="Mock",base_url="{{MOCK}}",wire_api="responses"}'
 	fresh
 	run 100x30 record.rec env CODEX_HOME="$tmp/home" codex -c "$mock"
-	for size in 50x30 160x40; do
+	for size in 50x30 80x24 160x40; do
 		fresh
 		run $size record-size.rec env CODEX_HOME="$tmp/home" codex -c "$mock"
 	done
@@ -56,7 +56,7 @@ opencode)
 	}
 	fresh
 	run 100x30 record.rec env OPENCODE_CONFIG_CONTENT="$config" XDG_DATA_HOME="$tmp/data" XDG_STATE_HOME="$tmp/state" XDG_CONFIG_HOME="$tmp/config" XDG_CACHE_HOME="$cache" opencode
-	for size in 50x30 160x40; do
+	for size in 50x30 80x24 160x40; do
 		fresh
 		run $size record-size.rec env OPENCODE_CONFIG_CONTENT="$config" XDG_DATA_HOME="$tmp/data" XDG_STATE_HOME="$tmp/state" XDG_CONFIG_HOME="$tmp/config" XDG_CACHE_HOME="$cache" opencode
 	done

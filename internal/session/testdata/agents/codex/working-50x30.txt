@@ -1,7 +1,7 @@
 # agent: codex-cli 0.163.0
 # state: working-50x30
 # size: 50x30, recorded 2026-10-20 with testdata/agents/rec
-# title: ⠹ ⠹ | gecko-agent-demo
+# title: ⠸ ⠸ | gecko-agent-demo
 # osc7501: state=working:app=codex
 #---
 
@@ -32,5 +32,5 @@
 
 › Ask Codex to do anything
 
-  mock-model default · ~/gecko-agent-demo · ⠹
+  mock-model default · ~/gecko-agent-demo · ⠸
   ? for shortcuts                        ⚠ 3 · f2

@@ -12,7 +12,7 @@
 
 • Hi! How can I help you today?
 
-  Worked for <1s • 6:15 PM
+  Worked for <1s • 6:35 PM
 
 
 › list files here
@@ -25,9 +25,9 @@
     + Show details
 
 • The directory has one file: a.txt.
-  └ Tip: Use /hooks to view and manage lifecycle hooks.
+  └ Tip: Use /keymap to configure keyboard shortcuts.
 
-  Worked for 4s • 6:16 PM
+  Worked for 4s • 6:35 PM
 
 
 › Ask Codex to do anything
