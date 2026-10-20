@@ -305,7 +305,9 @@ func checkSwitch(t *testing.T, phone, ubuntu *daemonProc) {
 	}
 	// Changing them: the look is saved on the phone, the order on ubuntu.
 	p.send(&proto.Msg{T: proto.TSetSettings, Text: `{"theme":"dracula","fontSize":17,"order":["new-order"]}`})
-	waitSettings(t, phone, func(s map[string]any) bool { return s["theme"] == "dracula" && fmt.Sprint(s["order"]) == "[phone-order]" })
+	waitSettings(t, phone, func(s map[string]any) bool {
+		return s["theme"] == "dracula" && fmt.Sprint(s["order"]) == "[phone-order]"
+	})
 	waitSettings(t, ubuntu, func(s map[string]any) bool {
 		return s["theme"] == "tokyo-night" && s["fontSize"] == 12.0 && fmt.Sprint(s["order"]) == "[new-order]"
 	})

@@ -47,7 +47,8 @@
   See [Machines](docs/machines.md) and [Accounts and the relay](docs/cloud.md).
 - **[The anchor](docs/anchor.md).** Open one Gecko from your phone or anywhere
   else and manage every machine through it. Peers that reach it over the
-  relay only ever see that machine's own tabs.
+  relay only ever see that machine's own tabs. Any machine in the sidebar
+  can become the anchor with **Make anchor**, and the choice is remembered.
 - **Latency you can see.** The status line shows the round trip and the
   transport (WebTransport over QUIC, or WebSocket), and each machine shows its
   own hop. A dead connection is noticed in about 3 seconds and redialed at
