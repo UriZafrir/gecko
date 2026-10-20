@@ -81,6 +81,10 @@ var agentNames = map[string]string{
 // AddAgent registers an extra agent executable name.
 func AddAgent(exe, name string) { agentNames[exe] = name }
 
+// AgentName returns the agent a name stands for (an executable's, or the
+// one an agent reports itself by), or "" if it isn't a known agent.
+func AgentName(s string) string { return agentNames[s] }
+
 var editors = map[string]bool{"vim": true, "nvim": true, "vi": true, "emacs": true, "nano": true,
 	"hx": true, "helix": true, "micro": true, "kak": true, "less": true, "man": true, "htop": true, "top": true, "btop": true}
 

@@ -1,0 +1,35 @@
+# agent: opencode 1.19.3, openrouter/moonshotai/kimi-k3
+# state: real-done
+# size: 100x30, recorded 2026-10-20 with testdata/agents/rec
+# title: OpenCode
+#---
+
+  ┃
+  ┃  say hi
+  ┃
+
+     + Thought: 270ms
+
+     Hi! 👋 How can I help you today?
+
+     ▣  Build · Kimi K3 · 2.0s
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ┃
+  ┃
+  ┃
+  ┃  Build · Kimi K3 OpenRouter
+  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+   /home/user/gecko-agent-demo                                 10.3K (1%) · $0.00  ctrl+p commands
+

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/gecko-term/gecko/internal/inspect"
+	"github.com/gecko-term/gecko/internal/proto"
 	"github.com/gecko-term/gecko/internal/vt"
 )
 
@@ -109,5 +110,81 @@ func TestWithoutTmuxStatus(t *testing.T) {
 	got := withoutTmuxStatus([]string{"❯ hi", "", "[main] 0:claude* 1:bash-", ""})
 	if len(got) != 2 || got[0] != "❯ hi" {
 		t.Fatalf("%q", got)
+	}
+}
+
+// What Codex sends about itself, recorded from codex-cli 0.163 in a pty:
+// its state (OSC 7501) and its title, at its prompt, while it works and
+// while it waits for an approval (the title blinking).
+const (
+	codexIdle    = "\x1b]0;gecko-agent-demo\x07\x1b]7501;state=idle:app=codex\x07"
+	codexWorking = "\x1b]7501;state=working:app=codex\x07\x1b]0;⠋ gecko-agent-demo\x07\x1b]0;⠙ gecko-agent-demo\x07"
+	codexBlocked = "\x1b]0;[ ! ] Action Required | gecko-agent-demo\x07\x1b]7501;state=blocked:app=codex\x07\x1b]0;[ . ] Action Required | gecko-agent-demo\x07"
+)
+
+func TestAgentStateOSC(t *testing.T) {
+	// A local codex: its state is the hint, the title's too when there is
+	// no state.
+	s := titleSession()
+	s.info.Agent = &proto.AgentState{Name: "codex"}
+	local := inspect.Info{Kind: "agent", Agent: "codex", Pid: 9}
+	for _, c := range []struct{ step, out, hint string }{
+		{"idle", codexIdle, "idle"},
+		{"working", codexWorking, "working"},
+		{"blocked", codexBlocked, "needs-input"},
+		{"idle again", codexIdle, "idle"},
+	} {
+		s.vt.Write([]byte(c.out))
+		if n, h := s.agentOf(local, "", ""); n != "codex" || h != c.hint {
+			t.Errorf("%s: agentOf = %q %q, want codex %q", c.step, n, h, c.hint)
+		}
+	}
+	s = titleSession()
+	s.info.Agent = &proto.AgentState{Name: "codex"}
+	s.vt.Write([]byte("\x1b]0;⠋ gecko-agent-demo\x07"))
+	if _, h := s.agentOf(local, "", ""); h != "working" {
+		t.Errorf("spinner title alone: %q", h)
+	}
+
+	// Over ssh: the state says which agent runs, until the process it
+	// came under goes or a prompt shows.
+	s = titleSession()
+	ssh := inspect.Info{Kind: "ssh", Proc: "ssh", Pid: 42}
+	s.vt.Write([]byte("user@box:~$ codex\r\n" + codexIdle))
+	if n, h := s.agentOf(ssh, "", ""); n != "codex" || h != "idle" {
+		t.Fatalf("ssh idle: %q %q", n, h)
+	}
+	s.vt.Write([]byte(codexBlocked))
+	if n, h := s.agentOf(ssh, "", ""); n != "codex" || h != "needs-input" {
+		t.Fatalf("ssh blocked: %q %q", n, h)
+	}
+	if n, _ := s.agentOf(inspect.Info{Kind: "ssh", Pid: 43}, "", ""); n != "" {
+		t.Fatalf("another ssh: %q", n)
+	}
+	s.vt.Write([]byte(codexWorking + "\x1b]133;A\x07"))
+	if n, _ := s.agentOf(ssh, "", ""); n != "" {
+		t.Fatalf("after a prompt: %q", n)
+	}
+	// Queries, unknown apps and states say nothing.
+	for _, p := range []string{"?", "state=working:app=vim", "state=working", "app=codex"} {
+		s.vt.Write([]byte("\x1b]7501;" + p + "\x07"))
+		if n, h := s.agentOf(ssh, "", ""); h != "" || (n != "" && n != "codex") {
+			t.Errorf("%q: %q %q", p, n, h)
+		}
+	}
+}
+
+// OpenCode asks on start whether the terminal shows kitty notifications
+// (recorded from opencode 1.19): a question, not a notification, so it
+// isn't waiting for the user.
+func TestKittyNotificationProbe(t *testing.T) {
+	s := titleSession()
+	s.vt.Write([]byte("\x1b]99;i=opentui-notifications:p=?;\x07"))
+	if s.info.Attention {
+		t.Fatal("the probe raised attention")
+	}
+	s.vt.Write([]byte("\x1b]99;i=1:d=1;Build finished\x07"))
+	if !s.info.Attention || s.info.Notice != "Build finished" {
+		t.Fatalf("a notification: %v %q", s.info.Attention, s.info.Notice)
 	}
 }

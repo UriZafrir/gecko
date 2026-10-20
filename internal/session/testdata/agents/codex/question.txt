@@ -1,0 +1,36 @@
+# agent: codex-cli 0.163.0
+# state: question
+# size: 100x30, recorded 2026-10-20 with testdata/agents/rec
+# title: [ ! ] Action Required | gecko-agent-demo
+# osc7501: state=blocked:app=codex
+#---
+  Worked for 4s • 6:35 PM
+
+
+› list files here
+
+
+✗ You canceled the request to run ls
+
+• Explored · 1 failed
+  └ List ls (exit 1)
+    + Show details
+
+■ Conversation interrupted - use /feedback if something went wrong
+
+• Model changed to mock-model medium for Plan mode.
+
+
+› ask me something
+
+
+
+  Question 1/1 (1 unanswered)
+  Which color should the button be?
+
+  › 1. Blue               Calm and familiar
+    2. Green              Fresh and bright
+    3. None of the above  Optionally, add details in notes (tab)
+
+  tab to add notes | enter to submit answer | esc to interrupt
+

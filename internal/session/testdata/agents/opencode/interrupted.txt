@@ -1,0 +1,35 @@
+# agent: opencode 1.19.3
+# state: interrupted
+# size: 100x30, recorded 2026-10-20 with testdata/agents/rec
+# title: OC | Greeting
+#---
+
+  ┃
+  ┃  count slow please
+  ┃
+
+     Counting slowly: 1 2 3 4 5 6
+
+     ▣  Build · Mock Model · interrupted
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ┃
+  ┃
+  ┃
+  ┃  Build · Mock Model Mock
+  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+   /home/user/gecko-agent-demo                                         tab agents  ctrl+p commands
+

@@ -1,0 +1,35 @@
+# agent: opencode 1.19.3
+# state: approved
+# size: 100x30, recorded 2026-10-20 with testdata/agents/rec
+# title: OC | Greeting
+#---
+
+  ┃
+  ┃  say hi
+  ┃
+
+     Hi! How can I help you today?
+
+     ▣  Build · Mock Model · 378ms
+
+  ┃
+  ┃  list files here
+  ┃
+
+  ┃
+  ┃  $ ls
+  ┃
+  ┃  a.txt
+  ┃
+
+     The directory has one file: a.txt.
+
+     ▣  Build · Mock Model · 5.8s
+
+  ┃
+  ┃
+  ┃
+  ┃  Build · Mock Model Mock
+  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+   /home/user/gecko-agent-demo                                                110  ctrl+p commands
+

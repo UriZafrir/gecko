@@ -1,0 +1,36 @@
+# agent: codex-cli 0.163.0
+# state: approved
+# size: 100x30, recorded 2026-10-20 with testdata/agents/rec
+# title: gecko-agent-demo
+# osc7501: state=idle:app=codex
+#---
+■ Conversation interrupted - use /feedback if something went wrong
+
+
+› say hi
+
+
+• Hi! How can I help you today?
+
+  Worked for <1s • 6:35 PM
+
+
+› list files here
+
+
+✔ You approved codex to run ls this time
+
+• Explored
+  └ List ls
+    + Show details
+
+• The directory has one file: a.txt.
+  └ Tip: Use /keymap to configure keyboard shortcuts.
+
+  Worked for 4s • 6:35 PM
+
+
+› Ask Codex to do anything
+
+  mock-model default · ~/gecko-agent-demo
+  ? for shortcuts                                                         ⚠ 3 warnings · f2 to view

@@ -32,6 +32,16 @@ var TitleRules = []TitleRule{
 	{Agent: "gemini", Status: "idle", Start: true, Re: regexp.MustCompile(`^◇\s+Ready \(.*\)$`)},
 	{Agent: "gemini", Status: "working", Re: regexp.MustCompile(`^✦\s+.*\(.*\)$`)},
 	{Agent: "gemini", Status: "", Start: true, Re: regexp.MustCompile(`^Gemini - \S`)},
+	// Codex: "<dir>" when idle, "⠋ <dir>" spinning while it works, and
+	// "[ ! ] Action Required | <dir>" blinking with "[ . ]" while it waits
+	// for an answer (recorded from codex-cli 0.163). Neither is distinctive
+	// enough on its own: Codex is known by its process or its OSC 7501 state.
+	{Agent: "codex", Status: "needs-input", Re: regexp.MustCompile(`^\[ [!.] \] Action Required\b`)},
+	{Agent: "codex", Status: "working", Re: regexp.MustCompile(`^[⠁-⣿]\s+\S`)},
+	// OpenCode: "OpenCode" at start, "OC | <session title>" after
+	// (opencode 1.19); nothing about its status.
+	{Agent: "opencode", Status: "", Start: true, Re: regexp.MustCompile(`^OpenCode$`)},
+	{Agent: "opencode", Status: "", Start: true, Re: regexp.MustCompile(`^OC \| \S`)},
 }
 
 // TitleAgent reads a terminal title. current is the agent already seen in

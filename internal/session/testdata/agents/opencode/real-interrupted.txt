@@ -1,0 +1,35 @@
+# agent: opencode 1.19.3, openrouter/moonshotai/kimi-k3
+# state: real-interrupted
+# size: 100x30, recorded 2026-10-20 with testdata/agents/rec
+# title: OpenCode
+#---
+
+  ┃
+  ┃  $ ls
+  ┃
+  ┃  a.txt
+  ┃
+
+     + Thought: 389ms
+
+     The directory contains one file:
+
+     - a.txt
+
+     ▣  Build · Kimi K3 · 6.2s
+
+  ┃
+  ┃  write a long story about a gecko
+  ┃
+
+     + Thought: 1.0s
+
+     ▣  Build · Kimi K3 · interrupted
+
+  ┃
+  ┃
+  ┃
+  ┃  Build · Kimi K3 OpenRouter
+  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+   /home/user/gecko-agent-demo                                 10.5K (1%) · $0.01  ctrl+p commands
+

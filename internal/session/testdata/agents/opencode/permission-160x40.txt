@@ -1,0 +1,45 @@
+# agent: opencode 1.19.3
+# state: permission-160x40
+# size: 160x40, recorded 2026-10-20 with testdata/agents/rec
+# title: OC | Greeting
+#---
+
+  ┃                                                                                                                     Greeting
+  ┃  count slow please                                                                                                  ses_ea60ac50fffeafsHaBIpRbEazi
+  ┃
+                                                                                                                        Context
+     ▣  Build · Mock Model · interrupted                                                                                0 tokens
+                                                                                                                        0% used
+  ┃                                                                                                                     $0.00 spent
+  ┃  list files here
+  ┃                                                                                                                     LSP
+                                                                                                                        LSPs are disabled
+     $ ls
+
+     ▣  Build · Mock Model
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ┃
+  ┃  △ Permission required
+  ┃    # Shell command
+  ┃
+  ┃  $ ls
+  ┃
+  ┃                                                                                                                     ~/gecko-agent-demo:main
+  ┃   Allow once   Allow always   Reject                               ctrl+f fullscreen  ⇆ select  enter confirm
+  ┃                                                                                                                     • OpenCode 1.19.3
+

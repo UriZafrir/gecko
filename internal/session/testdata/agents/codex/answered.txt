@@ -1,0 +1,36 @@
+# agent: codex-cli 0.163.0
+# state: answered
+# size: 100x30, recorded 2026-10-20 with testdata/agents/rec
+# title: gecko-agent-demo
+# osc7501: state=idle:app=codex
+#---
+› list files here
+
+
+✗ You canceled the request to run ls
+
+• Explored · 1 failed
+  └ List ls (exit 1)
+    + Show details
+
+■ Conversation interrupted - use /feedback if something went wrong
+
+• Model changed to mock-model medium for Plan mode.
+
+
+› ask me something
+
+
+• Questions 1/1 answered
+  • Which color should the button be?
+    answer: Blue
+
+• Got it, thanks.
+
+  Worked for 3s • 6:35 PM
+
+
+› Ask Codex to do anything
+
+  mock-model medium · ~/gecko-agent-demo                            Plan mode (shift+tab to cycle)
+  ? for shortcuts                                                         ⚠ 3 warnings · f2 to view

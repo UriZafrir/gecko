@@ -40,6 +40,22 @@ func TestClassify(t *testing.T) {
 	if i := Classify([]*Proc{{Args: []string{"codex"}}}); i.Agent != "codex" {
 		t.Errorf("got %+v", i)
 	}
+	// Codex from npm (its node script, then the binary it starts) and
+	// OpenCode from snap, as ps shows them.
+	for _, args := range [][]string{
+		{"node", "/home/u/.local/bin/codex", "-c", "model=x"},
+		{"/home/u/.local/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex", "-c", "model=x"},
+		{"node", "/usr/lib/node_modules/@openai/codex/bin/codex.js"},
+	} {
+		if i := Classify([]*Proc{{Pid: 11, Args: args}}); i.Agent != "codex" {
+			t.Errorf("%q: got %+v", args, i)
+		}
+	}
+	for _, args := range [][]string{{"/snap/opencode/277/bin/opencode"}, {"/snap/bin/opencode", "run", "hi"}, {"opencode"}} {
+		if i := Classify([]*Proc{{Pid: 12, Args: args}}); i.Agent != "opencode" {
+			t.Errorf("%q: got %+v", args, i)
+		}
+	}
 	if i := Classify(nil); i.Kind != "shell" {
 		t.Errorf("got %+v", i)
 	}
@@ -57,6 +73,16 @@ func TestTitleAgent(t *testing.T) {
 		{"✋  Action Required (gecko)", "", "gemini", "needs-input"},
 		{"", "claude", "", ""},
 		{"user@box: ~/src", "claude", "", ""},
+		// Recorded from codex-cli 0.163 and opencode 1.19.
+		{"⠹ gecko-agent-demo", "codex", "codex", "working"},
+		{"⠹ ⠹ | gecko-agent-demo", "codex", "codex", "working"},
+		{"⠹ gecko-agent-demo", "", "", ""},
+		{"[ ! ] Action Required | gecko-agent-demo", "codex", "codex", "needs-input"},
+		{"[ . ] Action Required | ⠇ | gecko-agent-demo", "codex", "codex", "needs-input"},
+		{"[ ! ] Action Required | gecko-agent-demo", "", "", ""},
+		{"gecko-agent-demo", "codex", "", ""},
+		{"OpenCode", "", "opencode", ""},
+		{"OC | Greeting", "", "opencode", ""},
 	}
 	for _, c := range cases {
 		a, st, ok := TitleAgent(c.title, c.current)

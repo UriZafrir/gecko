@@ -1,0 +1,35 @@
+# agent: opencode 1.19.3
+# state: permission-50x30
+# size: 50x30, recorded 2026-10-20 with testdata/agents/rec
+# title: OC | Greeting
+#---
+
+  ┃
+  ┃  count slow please
+  ┃
+
+     ▣  Build · Mock Model · interrupted
+
+  ┃
+  ┃  list files here
+  ┃
+
+     $ ls
+
+     ▣  Build · Mock Model
+
+
+
+
+  ┃
+  ┃  △ Permission required
+  ┃    # Shell command
+  ┃
+  ┃  $ ls
+  ┃
+  ┃
+  ┃   Allow once   Allow always   Reject
+  ┃
+  ┃  ctrl+f fullscreen  ⇆ select  enter confirm
+  ┃
+
