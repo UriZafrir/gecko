@@ -1,0 +1,45 @@
+# agent: opencode 1.19.3
+# state: question-160x40
+# size: 160x40, recorded 2026-10-20 with testdata/agents/rec
+# title: OC | Greeting
+#---
+  ┃
+  ┃  count slow please                                                                                                  Greeting
+  ┃                                                                                                                     ses_ea61bb4c5ffeetqUZvXMry3oCM
+
+     ▣  Build · Mock Model · interrupted                                                                                Context
+                                                                                                                        110 tokens
+  ┃                                                                                                                     0% used
+  ┃  list files here                                                                                                    $0.00 spent
+  ┃
+                                                                                                                        LSP
+  ┃                                                                                                                     LSPs are disabled
+  ┃  $ ls
+  ┃
+  ┃  a.txt
+  ┃
+
+     The directory has one file: a.txt.
+
+     ▣  Build · Mock Model · 1.9s
+
+  ┃
+  ┃  ask me something
+  ┃
+
+     → Asked 1 question
+
+     ▣  Build · Mock Model
+
+  ┃
+  ┃  Which color should the button be?
+  ┃
+  ┃  1. Blue
+  ┃     Calm and familiar
+  ┃  2. Green
+  ┃     Fresh and bright
+  ┃  3. Type your own answer
+  ┃                                                                                                                     ~/gecko-agent-demo:main
+  ┃  ↑↓ select  enter submit  esc dismiss
+  ┃                                                                                                                     • OpenCode 1.19.3
+

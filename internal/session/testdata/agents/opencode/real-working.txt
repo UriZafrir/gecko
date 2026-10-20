@@ -1,0 +1,35 @@
+# agent: opencode 1.19.3, openrouter/moonshotai/kimi-k3
+# state: real-working
+# size: 100x30, recorded 2026-10-20 with testdata/agents/rec
+# title: OpenCode
+#---
+
+  ┃
+  ┃  say hi
+  ┃
+
+     ▣  Build · Kimi K3
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ┃
+  ┃
+  ┃
+  ┃  Build · Kimi K3 OpenRouter
+  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+   ⬝⬝■■■■■■  esc interrupt                                             tab agents  ctrl+p commands
+

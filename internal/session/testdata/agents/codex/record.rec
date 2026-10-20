@@ -1,0 +1,58 @@
+# Codex against the stand-in model (internal/agentmock), from a fresh
+# CODEX_HOME, at 100x30. See ../README.md.
+wait 30 Trust this folder
+sleep 500
+dump trust
+keys "\r"
+wait 10 Ask Codex to do anything
+sleep 1000
+dump idle-start
+type count slow please
+keys "\r"
+wait 5 esc to interrupt
+dump working
+wait 10 Counting slowly: 1 2
+dump working-streaming
+keys "\x1b"
+wait 5 Conversation interrupted
+sleep 1000
+activity 2000
+dump interrupted
+type say hi
+keys "\r"
+wait 10 How can I help you today\?(.|\n)*Worked for
+sleep 1000
+dump done
+type list files here
+keys "\r"
+wait 10 Press enter to confirm
+sleep 1500
+activity 2000
+dump approval
+keys "y"
+wait 10 one file: a.txt(.|\n)*Worked for
+sleep 1000
+dump approved
+type list files here
+keys "\r"
+wait 10 Press enter to confirm
+sleep 500
+keys "3"
+wait 10 You canceled
+sleep 1000
+dump approval-canceled
+type /plan
+sleep 500
+keys "\r"
+wait 10 Plan mode
+sleep 500
+type ask me something
+keys "\r"
+wait 10 Question 1/1
+sleep 1500
+activity 2000
+dump question
+keys "1"
+wait 10 Got it, thanks
+sleep 1000
+dump answered

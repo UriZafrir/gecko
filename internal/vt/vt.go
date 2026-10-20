@@ -79,6 +79,9 @@ func (t *Terminal) screen() [][]rune {
 // Size returns the current dimensions.
 func (t *Terminal) Size() (int, int) { return t.cols, t.rows }
 
+// Cursor returns the cursor position, zero based.
+func (t *Terminal) Cursor() (x, y int) { return t.cx, t.cy }
+
 // AltScreen reports whether the alternate screen is active.
 func (t *Terminal) AltScreen() bool { return t.altOn }
 

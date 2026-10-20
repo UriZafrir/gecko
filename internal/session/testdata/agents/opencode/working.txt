@@ -1,0 +1,35 @@
+# agent: opencode 1.19.3
+# state: working
+# size: 100x30, recorded 2026-10-20 with testdata/agents/rec
+# title: OC | Greeting
+#---
+
+  ┃
+  ┃  count slow please
+  ┃
+
+     ▣  Build · Mock Model
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ┃
+  ┃
+  ┃
+  ┃  Build · Mock Model Mock
+  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+   ■⬝⬝⬝⬝⬝⬝⬝  esc interrupt                                             tab agents  ctrl+p commands
+

@@ -1,0 +1,45 @@
+# agent: opencode 1.19.3
+# state: home-160x40
+# size: 160x40, recorded 2026-10-20 with testdata/agents/rec
+# title: OpenCode
+#---
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                                                                              ▄
+                                                             █▀▀█ █▀▀█ █▀▀█ █▀▀▄ █▀▀▀ █▀▀█ █▀▀█ █▀▀█
+                                                             █  █ █  █ █▀▀▀ █  █ █    █  █ █  █ █▀▀▀
+                                                             ▀▀▀▀ █▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀
+
+
+                                           ┃
+                                           ┃  Ask anything… "Fix broken tests"
+                                           ┃
+                                           ┃  Build · Mock Model Mock
+                                           ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+                                                                                           tab agents  ctrl+p commands
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ~/gecko-agent-demo:main                                                                                                                               1.19.3
+

@@ -1,0 +1,36 @@
+# agent: codex-cli 0.163.0
+# state: approval-canceled
+# size: 100x30, recorded 2026-10-20 with testdata/agents/rec
+# title: gecko-agent-demo
+# osc7501: state=idle:app=codex
+#---
+› list files here
+
+
+✔ You approved codex to run ls this time
+
+• Explored
+  └ List ls
+    + Show details
+
+• The directory has one file: a.txt.
+
+  Worked for 4s • 6:16 PM
+
+
+› list files here
+
+
+✗ You canceled the request to run ls
+
+• Explored · 1 failed
+  └ List ls (exit 1)
+    + Show details
+
+■ Conversation interrupted - use /feedback if something went wrong
+
+
+› Ask Codex to do anything
+
+  mock-model default · ~/gecko-agent-demo
+  ? for shortcuts                                                         ⚠ 3 warnings · f2 to view

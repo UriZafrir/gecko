@@ -1,0 +1,34 @@
+# OpenCode with a real model (whatever it is set up with), three tiny
+# prompts. Costs a little; see ../README.md.
+wait 60 Ask anything
+sleep 1000
+type say hi
+keys "\r"
+wait 20 [⬝■]{8}
+sleep 300
+dump real-working
+gone 120 [⬝■]{8}
+sleep 1500
+dump real-done
+type run the shell command ls
+keys "\r"
+wait 120 Permission required
+sleep 1500
+activity 2000
+dump real-permission
+keys "\r"
+gone 20 Permission required
+gone 120 [⬝■]{8}
+sleep 1500
+dump real-approved
+type write a long story about a gecko
+keys "\r"
+wait 20 [⬝■]{8}
+sleep 1500
+keys "\x1b"
+sleep 200
+keys "\x1b"
+wait 10 interrupted
+sleep 1500
+activity 2000
+dump real-interrupted

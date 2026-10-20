@@ -1,0 +1,36 @@
+# agent: codex-cli 0.163.0
+# state: approved-50x30
+# size: 50x30, recorded 2026-10-20 with testdata/agents/rec
+# title: gecko-agent-demo
+# osc7501: state=idle:app=codex
+#---
+
+  >_ OpenAI Codex (v0.163.0)
+     ~/gecko-agent-demo
+
+
+› count slow please
+
+
+■ Conversation interrupted - use /feedback if
+something went wrong
+
+
+› list files here
+
+
+✔ You approved codex to run ls this time
+
+• Explored
+  └ List ls
+    + Show details
+
+• The directory has one file: a.txt.
+
+  Worked for 2s • 6:16 PM
+
+
+› Ask Codex to do anything
+
+  mock-model default · ~/gecko-agent-demo
+  ? for shortcuts                        ⚠ 3 · f2

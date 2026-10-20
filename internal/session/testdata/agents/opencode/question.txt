@@ -1,0 +1,35 @@
+# agent: opencode 1.19.3
+# state: question
+# size: 100x30, recorded 2026-10-20 with testdata/agents/rec
+# title: OC | Greeting
+#---
+     The directory has one file: a.txt.
+
+     ▣  Build · Mock Model · 5.8s
+
+  ┃
+  ┃  list files here
+  ┃
+
+     $ ls
+
+  ┃
+  ┃  ask me something
+  ┃
+
+     → Asked 1 question
+
+     ▣  Build · Mock Model
+
+  ┃
+  ┃  Which color should the button be?
+  ┃
+  ┃  1. Blue
+  ┃     Calm and familiar
+  ┃  2. Green
+  ┃     Fresh and bright
+  ┃  3. Type your own answer
+  ┃
+  ┃  ↑↓ select  enter submit  esc dismiss
+  ┃
+

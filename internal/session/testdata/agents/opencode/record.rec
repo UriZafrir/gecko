@@ -1,0 +1,64 @@
+# OpenCode against the stand-in model (internal/agentmock), with bash
+# set to ask, from fresh data and state directories, at 100x30. See
+# ../README.md.
+wait 60 Ask anything
+sleep 1000
+activity 2000
+dump home
+type count slow please
+keys "\r"
+wait 5 esc interrupt
+dump working
+wait 10 Counting slowly: 1 2
+activity 2000
+dump working-streaming
+keys "\x1b"
+wait 5 esc again to interrupt
+dump interrupt-pending
+keys "\x1b"
+wait 5 interrupted
+sleep 1000
+activity 2000
+dump interrupted
+type say hi
+keys "\r"
+wait 10 How can I help you today\?\s*▣  Build · Mock Model · \d
+sleep 1000
+dump done
+type list files here
+keys "\r"
+wait 10 Permission required
+sleep 1500
+activity 2000
+dump permission
+keys "\x1b[C"
+sleep 300
+keys "\r"
+wait 10 Always allow
+sleep 1000
+dump always-allow
+keys "\x1b"
+wait 10 Permission required
+sleep 500
+keys "\r"
+wait 10 one file: a.txt
+sleep 1500
+dump approved
+type list files here
+keys "\r"
+wait 10 Permission required
+sleep 500
+keys "\x1b"
+gone 10 Permission required
+sleep 1500
+dump rejected
+type ask me something
+keys "\r"
+wait 10 Which color
+sleep 1500
+activity 2000
+dump question
+keys "1"
+wait 10 Got it, thanks
+sleep 1000
+dump answered

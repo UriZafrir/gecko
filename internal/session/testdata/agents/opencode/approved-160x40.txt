@@ -1,0 +1,45 @@
+# agent: opencode 1.19.3
+# state: approved-160x40
+# size: 160x40, recorded 2026-10-20 with testdata/agents/rec
+# title: OC | Greeting
+#---
+
+  ┃                                                                                                                     Greeting
+  ┃  count slow please                                                                                                  ses_ea61bb4c5ffeetqUZvXMry3oCM
+  ┃
+                                                                                                                        Context
+     ▣  Build · Mock Model · interrupted                                                                                110 tokens
+                                                                                                                        0% used
+  ┃                                                                                                                     $0.00 spent
+  ┃  list files here
+  ┃                                                                                                                     LSP
+                                                                                                                        LSPs are disabled
+  ┃
+  ┃  $ ls
+  ┃
+  ┃  a.txt
+  ┃
+
+     The directory has one file: a.txt.
+
+     ▣  Build · Mock Model · 1.9s
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ┃
+  ┃
+  ┃
+  ┃  Build · Mock Model Mock                                                                                            ~/gecko-agent-demo:main
+  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+   /home/user/gecko-agent-demo                                                                  110  ctrl+p commands    • OpenCode 1.19.3
+

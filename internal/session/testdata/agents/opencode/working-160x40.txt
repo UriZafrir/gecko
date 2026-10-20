@@ -1,0 +1,45 @@
+# agent: opencode 1.19.3
+# state: working-160x40
+# size: 160x40, recorded 2026-10-20 with testdata/agents/rec
+# title: OC | Greeting
+#---
+
+  ┃                                                                                                                     Greeting
+  ┃  count slow please                                                                                                  ses_ea61bb4c5ffeetqUZvXMry3oCM
+  ┃
+                                                                                                                        Context
+     ▣  Build · Mock Model                                                                                              0 tokens
+                                                                                                                        0% used
+                                                                                                                        $0.00 spent
+
+                                                                                                                        LSP
+                                                                                                                        LSPs are disabled
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ┃
+  ┃
+  ┃
+  ┃  Build · Mock Model Mock                                                                                            ~/gecko-agent-demo:main
+  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+   ■■⬝⬝⬝⬝⬝⬝  esc interrupt                                                               tab agents  ctrl+p commands    • OpenCode 1.19.3
+

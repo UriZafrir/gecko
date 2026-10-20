@@ -1,0 +1,5 @@
+# Codex with no account and no provider configured: its sign-in screen.
+wait 30 Sign in with ChatGPT
+sleep 1000
+activity 2000
+dump login

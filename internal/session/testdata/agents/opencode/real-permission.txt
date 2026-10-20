@@ -1,0 +1,35 @@
+# agent: opencode 1.19.3, openrouter/moonshotai/kimi-k3
+# state: real-permission
+# size: 100x30, recorded 2026-10-20 with testdata/agents/rec
+# title: OpenCode
+#---
+  ┃
+  ┃  say hi
+  ┃
+
+     + Thought: 270ms
+
+     Hi! 👋 How can I help you today?
+
+     ▣  Build · Kimi K3 · 2.0s
+
+  ┃
+  ┃  run the shell command ls
+  ┃
+
+     + Thought: 397ms
+
+     $ ls
+
+     ▣  Build · Kimi K3
+
+  ┃
+  ┃  △ Permission required
+  ┃    # Shell command
+  ┃
+  ┃  $ ls
+  ┃
+  ┃
+  ┃   Allow once   Allow always   Reject             ctrl+f fullscreen  ⇆ select  enter confirm
+  ┃
+
