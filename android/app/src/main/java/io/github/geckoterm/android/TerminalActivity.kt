@@ -240,6 +240,9 @@ class TerminalActivity : AppCompatActivity() {
         super.onResume()
         Gecko.foregroundMachine = machine?.id
         if (Gecko.prefs(this).getBoolean(Gecko.BACKGROUND, false)) WatchService.refresh(this)
+        // Back in the app: the session takes this phone's size again, if a
+        // window elsewhere changed it meanwhile (the text was jumbled).
+        if (::web.isInitialized && pageTrusted) web.evaluateJavascript("window.gecko&&gecko.used&&gecko.used(true)", null)
     }
 
     override fun onPause() {
