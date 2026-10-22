@@ -1,0 +1,20 @@
+internal/inspect/inspect.go
+  h_9854f70d7b1e60 79,118-120
+internal/inspect/inspect_test.go
+  h_9854f70d7b1e60 59-68,96-101
+internal/inspect/title.go
+  h_9854f70d7b1e60 45-48
+internal/session/titleagent_test.go
+  h_9854f70d7b1e60 26-33,53-59,83
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "87c0f3638d14539f4ae213103cc8e9acf856e145",
+  "prompts": {},
+  "humans": {
+    "h_9854f70d7b1e60": {
+      "author": "uri zafrir <urizaf@gmail.com>"
+    }
+  }
+}
